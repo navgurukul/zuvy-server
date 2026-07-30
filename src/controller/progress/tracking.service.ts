@@ -1,6 +1,16 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and, SQL, desc, lt, isNotNull } from 'drizzle-orm';
+import {
+  eq,
+  sql,
+  inArray,
+  and,
+  SQL,
+  asc,
+  desc,
+  lt,
+  isNotNull,
+} from 'drizzle-orm';
 import { error, log } from 'console';
 import {
   zuvyAssignmentSubmission,
@@ -24,6 +34,7 @@ import {
   zuvyOutsourseAssessments,
   zuvySessions,
   zuvyStudentAttendance,
+  zuvySessionAttendanceJobs,
   zuvyBootcamps,
   zuvyBootcampType,
   zuvyCourseProjects,
@@ -39,6 +50,10 @@ import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { courseEnrolments } from 'drizzle/tables';
 import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
+import {
+  resolveZoomAttendanceReadiness,
+  resolveGoogleMeetAttendanceReadiness,
+} from 'src/services/attendance/attendance-readiness';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -1205,6 +1220,11 @@ export class TrackingService {
 
   async getChapterDetailsWithStatus(chapterId: number, userId: number) {
     try {
+      // The batch this student is enrolled in for the chapter's bootcamp —
+      // used further down to tell "not yet computed" apart from "this
+      // student was never enrolled in the batch this session belongs to".
+      let studentBatchId: number | null = null;
+
       // This initial block to update class status can remain the same
       const chapter = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
@@ -1225,6 +1245,7 @@ export class TrackingService {
             columns: { batchId: true },
           });
           if (enrollment?.batchId) {
+            studentBatchId = enrollment.batchId;
             await this.classesService.updatingStatusOfClass(
               courseModule.bootcampId,
               enrollment.batchId,
@@ -1267,6 +1288,7 @@ export class TrackingService {
           status: true,
           isZoomMeet: true,
           batchId: true,
+          secondBatchId: true,
           bootcampId: true,
           zoomMeetingId: true, // Fetch the new flag
         },
@@ -1292,54 +1314,138 @@ export class TrackingService {
                 : session.s3link;
           }
         }
-        let attendanceStatus = 'absent';
+        let attendanceStatus: string;
+        let attendanceMessage: string | null = null;
         let durationSeconds = 0;
 
-        // ✅ --- NEW CONDITIONAL LOGIC ---
-        if (session.isZoomMeet === true) {
-          // --- Zoom Path: Fetch from zuvy_student_attendance_records ---
-          const zoomAttendance =
-            await db.query.zuvyStudentAttendanceRecords.findFirst({
-              where: (rec, { and, eq }) =>
-                and(eq(rec.sessionId, session.id), eq(rec.userId, userId)),
-              columns: { status: true, duration: true },
-            });
+        // This session was scheduled for whichever batch(es) batchId /
+        // secondBatchId name — not necessarily the batch this student is
+        // currently enrolled in for the bootcamp (shared chapters across
+        // batches, or a batch reassignment after the fact both happen). A
+        // student who was never invited to this specific class was never
+        // "absent" from it, so 'N/A' avoids implying they missed something
+        // they were never expected to attend. Checked first, and always
+        // wins regardless of readiness, so it's also the cheapest path —
+        // no attendance queries at all for a student outside the batch.
+        const belongsToSessionBatch =
+          studentBatchId != null &&
+          (studentBatchId === session.batchId ||
+            (session.secondBatchId != null &&
+              studentBatchId === session.secondBatchId));
 
-          if (zoomAttendance) {
-            attendanceStatus = zoomAttendance.status;
-            durationSeconds = zoomAttendance.duration ?? 0;
-          }
+        if (!belongsToSessionBatch) {
+          attendanceStatus = 'N/A';
+          attendanceMessage =
+            'You are not enrolled in the batch this class was scheduled for, so attendance does not apply to you.';
         } else {
-          // --- Google Meet Path (Original Logic): Fetch from zuvy_student_attendance ---
-          const userDetails = await db.query.users.findFirst({
-            where: (users, { eq }) => eq(users.id, BigInt(userId)),
-            columns: { email: true },
-          });
+          const isZoomMeetSession = session.isZoomMeet === true;
+          const now = new Date();
+          const sessionEndTime = new Date(session.endTime);
+          let readiness;
 
-          const sessionAttendance =
-            await db.query.zuvyStudentAttendance.findFirst({
-              where: (att, { eq }) => eq(att.meetingId, session.meetingId),
-              columns: { attendance: true },
-            });
+          if (isZoomMeetSession) {
+            // Same "check real records before the job queue" rule as
+            // ClassesService.getSessionAttendanceStatus — older sessions
+            // can have real attendance rows without ever having gone
+            // through the webhook job pipeline. Fetched for the whole
+            // session (not just this user) since readiness reflects
+            // whether the session was processed at all, and ordered
+            // ascending by id so a duplicate row for this student resolves
+            // to the same "latest row wins" record AttendanceCalculationService
+            // would pick.
+            const rows = await db
+              .select({
+                userId: zuvyStudentAttendanceRecords.userId,
+                status: zuvyStudentAttendanceRecords.status,
+                duration: zuvyStudentAttendanceRecords.duration,
+              })
+              .from(zuvyStudentAttendanceRecords)
+              .where(eq(zuvyStudentAttendanceRecords.sessionId, session.id))
+              .orderBy(asc(zuvyStudentAttendanceRecords.id));
+            const hasExistingRecords = rows.length > 0;
 
-          if (sessionAttendance?.attendance && userDetails?.email) {
-            const attendanceArray = Array.isArray(sessionAttendance.attendance)
-              ? (sessionAttendance.attendance as any[])
-              : [];
-            const studentAttendance = attendanceArray.find(
-              (record: any) =>
-                (record.email || record.student)?.toLowerCase() ===
-                userDetails.email.toLowerCase(),
+            let thisUserRecord: { status: string; duration: number } | null =
+              null;
+            for (const r of rows) {
+              if (Number(r.userId) === Number(userId)) {
+                thisUserRecord = {
+                  status: r.status,
+                  duration: r.duration ?? 0,
+                };
+              }
+            }
+
+            const latestJobRows = await db
+              .select({
+                status: zuvySessionAttendanceJobs.status,
+                lastError: zuvySessionAttendanceJobs.lastError,
+              })
+              .from(zuvySessionAttendanceJobs)
+              .where(eq(zuvySessionAttendanceJobs.sessionId, session.id))
+              .orderBy(desc(zuvySessionAttendanceJobs.id))
+              .limit(1);
+
+            // Deliberately NOT gated on session.status — it's only
+            // refreshed as a side effect of unrelated endpoints and can
+            // stay stale at 'ongoing' long after the class is done.
+            readiness = resolveZoomAttendanceReadiness(
+              now,
+              sessionEndTime,
+              latestJobRows[0] || null,
+              hasExistingRecords,
             );
 
-            if (studentAttendance) {
-              attendanceStatus = studentAttendance.attendance || 'absent';
-              // Ensure duration is treated as a number
-              durationSeconds = Number(studentAttendance.duration) || 0;
+            if (!readiness.ready) {
+              attendanceStatus = 'processing';
+              attendanceMessage = readiness.reason;
+            } else {
+              attendanceStatus = thisUserRecord?.status || 'absent';
+              durationSeconds = thisUserRecord?.duration ?? 0;
+            }
+          } else {
+            const userDetails = await db.query.users.findFirst({
+              where: (users, { eq }) => eq(users.id, BigInt(userId)),
+              columns: { email: true },
+            });
+
+            const sessionAttendance = session.meetingId
+              ? await db.query.zuvyStudentAttendance.findFirst({
+                  where: (att, { eq }) => eq(att.meetingId, session.meetingId),
+                  columns: { attendance: true },
+                })
+              : null;
+
+            readiness = resolveGoogleMeetAttendanceReadiness(
+              now,
+              sessionEndTime,
+              sessionAttendance != null,
+            );
+
+            if (!readiness.ready) {
+              attendanceStatus = 'processing';
+              attendanceMessage = readiness.reason;
+            } else {
+              attendanceStatus = 'absent';
+              if (sessionAttendance?.attendance && userDetails?.email) {
+                const attendanceArray = Array.isArray(
+                  sessionAttendance.attendance,
+                )
+                  ? (sessionAttendance.attendance as any[])
+                  : [];
+                const studentAttendance = attendanceArray.find(
+                  (record: any) =>
+                    (record.email || record.student)?.toLowerCase() ===
+                    userDetails.email.toLowerCase(),
+                );
+
+                if (studentAttendance) {
+                  attendanceStatus = studentAttendance.attendance || 'absent';
+                  durationSeconds = Number(studentAttendance.duration) || 0;
+                }
+              }
             }
           }
         }
-        // ✅ --- END OF CONDITIONAL LOGIC ---
 
         const durationMinutes = Math.round(durationSeconds / 60);
 
@@ -1348,6 +1454,7 @@ export class TrackingService {
           {
             ...session,
             attendance: attendanceStatus,
+            attendanceMessage,
             duration: durationMinutes,
           },
         ];
