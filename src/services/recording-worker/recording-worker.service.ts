@@ -1012,13 +1012,14 @@ export class RecordingWorkerService implements OnModuleInit {
         // Validate downloaded file
         try {
           const stats = fs.statSync(tempPath);
-          const expectedSize = parseInt(file.file_size || '0');
+          const targetFile = file || segmentObj;
+          const expectedSize = Number(targetFile?.file_size || 0);
 
           this.logJob('log', job, 'Download complete - validating file', {
             downloadedSize: stats.size,
             expectedSize: expectedSize,
             filePath: finalPath,
-            recordingType: file.recording_type,
+            recordingType: targetFile?.recording_type,
           });
 
           // Check minimum file size (anything under 100KB is suspicious for a video)
@@ -1282,10 +1283,13 @@ export class RecordingWorkerService implements OnModuleInit {
     }
 
     // Update DB
+    const relativeSegmentPaths = inputPaths.map((p) => path.basename(p));
     if (job.table === 'mentor') {
       await db.execute(sql`
       UPDATE zuvy_mentor_session_recordings
       SET
+        local_segment_paths = ${JSON.stringify(relativeSegmentPaths)},
+        segments_count = ${relativeSegmentPaths.length},
         merged_file_path = ${mergedPath},
         is_final_merged = TRUE,
         status = 'MERGED'
@@ -1295,6 +1299,8 @@ export class RecordingWorkerService implements OnModuleInit {
       await db.execute(sql`
       UPDATE zuvy_session_recordings
       SET
+        local_segment_paths = ${JSON.stringify(relativeSegmentPaths)},
+        segments_count = ${relativeSegmentPaths.length},
         merged_file_path = ${mergedPath},
         is_final_merged = TRUE,
         status = 'MERGED'
@@ -1369,6 +1375,110 @@ export class RecordingWorkerService implements OnModuleInit {
     });
   }
 
+  /**
+   * Check 2 mandatory conditions before uploading to YouTube:
+   * 1. Session scheduled end time + 5 minutes must have passed.
+   * 2. Zoom meeting must not be live/ongoing AND no recordings are currently processing on Zoom Cloud.
+   */
+  private async checkPreUploadEligibility(
+    job: any,
+  ): Promise<{ eligible: boolean; reason?: string }> {
+    // ---------------------------------------------------
+    // Condition 1: Session scheduled End Time + 5 minutes
+    // ---------------------------------------------------
+    let sessionEndTime: Date | null = null;
+    try {
+      if (job.table === 'mentor' && job.mentor_booking_id) {
+        const mentorRow = await db.execute(sql`
+          SELECT end_time FROM zuvy_mentor_slot_booking WHERE id = ${job.mentor_booking_id}
+        `);
+        if (mentorRow.rows?.[0]?.end_time) {
+          sessionEndTime = new Date(mentorRow.rows[0].end_time as any);
+        }
+      } else if (job.session_id) {
+        const sessionRow = await db.execute(sql`
+          SELECT end_time FROM zuvy_sessions WHERE id = ${job.session_id}
+        `);
+        if (sessionRow.rows?.[0]?.end_time) {
+          sessionEndTime = new Date(sessionRow.rows[0].end_time as any);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to fetch session end time for job ${job.id}: ${err.message}`,
+      );
+    }
+
+    const now = Date.now();
+
+    if (sessionEndTime && !isNaN(sessionEndTime.getTime())) {
+      const cutoffTime = sessionEndTime.getTime() + 5 * 60 * 1000;
+      if (now < cutoffTime) {
+        const minutesRemaining = Math.ceil((cutoffTime - now) / (1000 * 60));
+        return {
+          eligible: false,
+          reason: `Session scheduled end time + 5 minutes has not passed yet (${minutesRemaining}m remaining until ${new Date(cutoffTime).toISOString()}).`,
+        };
+      }
+    } else {
+      // Fallback if DB end_time is missing: check recording_end + 5 minutes
+      const manifest = this.parseJsonArray<RecordingSegment>(
+        job.zoom_recording_manifest,
+      );
+      const lastSegment = manifest[manifest.length - 1];
+      const lastEndTimeStr = lastSegment?.recording_end || job.recording_end;
+
+      if (lastEndTimeStr) {
+        const lastEndTime = new Date(lastEndTimeStr).getTime();
+        const cutoffTime = lastEndTime + 5 * 60 * 1000;
+        if (now < cutoffTime) {
+          const minutesRemaining = Math.ceil((cutoffTime - now) / (1000 * 60));
+          return {
+            eligible: false,
+            reason: `Recording quiet window (5 minutes after last segment end) has not passed yet (${minutesRemaining}m remaining).`,
+          };
+        }
+      }
+    }
+
+    // ---------------------------------------------------
+    // Condition 2: Session Live OR Zoom Cloud Recording Processing
+    // ---------------------------------------------------
+    try {
+      const isLive = await this.zoomService.isMeetingLiveViaDashboard(
+        job.zoom_meeting_id,
+      );
+      if (isLive) {
+        return {
+          eligible: false,
+          reason: `Zoom meeting ${job.zoom_meeting_id} is currently live / ongoing on Zoom.`,
+        };
+      }
+    } catch (liveErr: any) {
+      this.logger.warn(
+        `Live meeting check error for job ${job.id}: ${liveErr.message}`,
+      );
+    }
+
+    try {
+      const isProcessing = await this.zoomService.isRecordingProcessingOnZoom(
+        job.zoom_meeting_id,
+      );
+      if (isProcessing) {
+        return {
+          eligible: false,
+          reason: `A cloud recording for Zoom meeting ${job.zoom_meeting_id} is currently processing on Zoom Cloud.`,
+        };
+      }
+    } catch (procErr: any) {
+      this.logger.warn(
+        `Zoom cloud processing check error for job ${job.id}: ${procErr.message}`,
+      );
+    }
+
+    return { eligible: true };
+  }
+
   private async uploadToYoutube(job: any) {
     console.log(`Uploading recording for job ${job.id} to YouTube...`);
     if (!YOUTUBE_UPLOAD_ENABLED) {
@@ -1407,37 +1517,26 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    // Live Meeting Guard: Defer upload if meeting is currently live on Zoom
-    try {
-      const isLive = await this.zoomService.isMeetingLiveViaDashboard(
-        job.zoom_meeting_id,
+    // Mandatory Pre-Upload Eligibility Check (Condition 1: End time + 5min, Condition 2: Session active or Zoom cloud recording processing)
+    const eligibility = await this.checkPreUploadEligibility(job);
+    if (!eligibility.eligible) {
+      this.logJob(
+        'warn',
+        job,
+        `Deferring YouTube upload: ${eligibility.reason}`,
       );
-      if (isLive) {
-        this.logJob(
-          'warn',
-          job,
-          'Meeting is currently live on Zoom. Deferring YouTube upload until session ends.',
-        );
-        const deferTime = new Date(Date.now() + 3 * 60 * 1000);
-        if (job.table === 'mentor') {
-          await db.execute(sql`
-            UPDATE zuvy_mentor_session_recordings
-            SET status = 'METADATA_READY', next_retry_at = ${deferTime}
-            WHERE id = ${job.id}
-          `);
-        } else {
-          await db.execute(sql`
-            UPDATE zuvy_session_recordings
-            SET status = 'METADATA_READY', next_retry_at = ${deferTime}
-            WHERE id = ${job.id}
-          `);
-        }
-        return;
-      }
-    } catch (liveErr: any) {
-      this.logger.warn(
-        `Live meeting check error for job ${job.id}: ${liveErr.message}`,
-      );
+
+      const deferTime = new Date(Date.now() + 3 * 60 * 1000);
+      const tableName = this.getTableName(job);
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          status = 'METADATA_READY',
+          next_retry_at = ${deferTime}
+        WHERE id = ${job.id}
+      `);
+      return;
     }
 
     // Final Instance Sync: Re-check Zoom API to capture all past meeting instances

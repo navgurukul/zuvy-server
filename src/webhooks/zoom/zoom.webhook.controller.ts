@@ -95,15 +95,14 @@ export class ZoomWebhookController {
       });
     }
 
-    const eventType = body?.event;
+    const eventType = body?.event || body?.event_type || 'unknown';
+    const meetingObjId = body?.payload?.object?.id?.toString() || '';
+    const meetingObjUuid = body?.payload?.object?.uuid || '';
+    const fileId = body?.payload?.object?.recording_files?.[0]?.id || '';
+
     const eventId =
-      body?.event_id ??
-      crypto
-        .createHash('sha256')
-        .update(
-          `${req.headers['x-zm-request-timestamp']}:${req.headers['x-zm-signature']}`,
-        )
-        .digest('hex');
+      body?.event_id ||
+      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}`;
 
     this.logger.debug({
       msg: 'Zoom webhook rawBody diagnostics',

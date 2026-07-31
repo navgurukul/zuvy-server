@@ -1668,4 +1668,67 @@ export class ZoomService {
       instances_found: uuidsProcessed.size,
     };
   }
+
+  /**
+   * Check if any cloud recording for this Zoom meeting ID is currently processing on Zoom Cloud.
+   */
+  async isRecordingProcessingOnZoom(
+    meetingId: string | number,
+  ): Promise<boolean> {
+    try {
+      const headers = await this.getHeaders();
+      const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+      const instancesRes = await axios.get(instancesUrl, { headers });
+      const meetings = instancesRes.data?.meetings || [];
+
+      for (const instance of meetings) {
+        if (!instance.uuid) continue;
+        const encodedUuid = encodeURIComponent(
+          encodeURIComponent(instance.uuid),
+        );
+        try {
+          const recUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+          const recRes = await axios.get(recUrl, { headers });
+
+          if (recRes.data?.status === 'processing') {
+            return true;
+          }
+
+          const files = recRes.data?.recording_files || [];
+          for (const f of files) {
+            if (
+              f.file_type === 'MP4' &&
+              (f.status === 'processing' || !f.download_url)
+            ) {
+              return true;
+            }
+          }
+        } catch (err: any) {
+          if (err.response?.status === 404) {
+            // Recording object created but files not yet available on Zoom
+            return true;
+          }
+        }
+      }
+
+      try {
+        const directUrl = `${this.baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`;
+        const directRes = await axios.get(directUrl, { headers });
+        if (directRes.data?.status === 'processing') return true;
+        const files = directRes.data?.recording_files || [];
+        for (const f of files) {
+          if (
+            f.file_type === 'MP4' &&
+            (f.status === 'processing' || !f.download_url)
+          ) {
+            return true;
+          }
+        }
+      } catch (directErr: any) {}
+    } catch (err: any) {
+      // Ignore API errors and return false
+    }
+
+    return false;
+  }
 }
