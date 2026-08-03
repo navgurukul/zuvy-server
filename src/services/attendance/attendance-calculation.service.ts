@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
   zuvyBatchEnrollments,
@@ -20,6 +20,8 @@ export { CompletedSessionRow } from './attendance-aggregation';
 type AttendanceScope =
   | { userId: number; userEmail: string }
   | { batchId: number };
+
+const ATTENDANCE_COMPLETION_GRACE_MS = 5 * 60 * 1000;
 
 /**
  * Single source of truth for "how many completed classes did this student
@@ -44,14 +46,24 @@ export class AttendanceCalculationService {
       toDate?: Date;
     },
   ): Promise<CompletedSessionRow[]> {
+    const completedCutoffIso = new Date(
+      Date.now() - ATTENDANCE_COMPLETION_GRACE_MS,
+    ).toISOString();
+
     const sessions = await db.query.zuvySessions.findMany({
-      where: (session, { and, eq, or, ilike, gte, lte }) =>
+      where: (session, { and, eq, ne, or, ilike, gte, lte, isNull }) =>
         and(
           options?.bootcampId
             ? eq(session.bootcampId, options.bootcampId)
             : undefined,
           or(eq(session.batchId, batchId), eq(session.secondBatchId, batchId)),
-          eq(session.status, helperVariable.completed),
+          or(
+            eq(session.status, helperVariable.completed),
+            and(
+              or(isNull(session.status), ne(session.status, 'cancelled')),
+              lte(session.endTime, completedCutoffIso),
+            ),
+          ),
           options?.searchTerm
             ? ilike(session.title, `%${options.searchTerm}%`)
             : undefined,
@@ -96,8 +108,17 @@ export class AttendanceCalculationService {
    */
   async getUnifiedAttendanceMap(
     sessions: CompletedSessionRow[],
-    scope: AttendanceScope,
+    rawScope: AttendanceScope,
   ): Promise<Map<number, Map<number, AttendanceStatusEntry>>> {
+    // Normalize userId to a number once, here, regardless of what the caller
+    // passed in (e.g. a JWT's `sub` claim is always a string). Every map key
+    // and lookup below assumes a numeric userId — a stray string would
+    // silently miss every entry via Map's strict-equality key comparison.
+    const scope: AttendanceScope =
+      'userId' in rawScope
+        ? { ...rawScope, userId: Number(rawScope.userId) }
+        : rawScope;
+
     const map = new Map<number, Map<number, AttendanceStatusEntry>>();
     const setEntry = (
       sessionId: number,
@@ -118,6 +139,15 @@ export class AttendanceCalculationService {
     );
 
     if (zoomSessionIds.length > 0) {
+      // zuvy_student_attendance_records has no unique constraint on
+      // (session_id, user_id), so duplicate rows for the same student+
+      // session are possible. Ordered ascending by id so the forEach below
+      // — which lets the last-processed row win via Map.set — always
+      // prefers the most recently inserted row, deterministically. Any
+      // other reader of this table for the same session+user (e.g. the raw
+      // fields read directly in ClassesService.getSessionAttendanceStatus)
+      // must use this same "latest row wins" rule or the two can disagree
+      // about which row is authoritative for a given student.
       const rows = await db
         .select({
           sessionId: zuvyStudentAttendanceRecords.sessionId,
@@ -136,7 +166,8 @@ export class AttendanceCalculationService {
                 inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds),
               )
             : inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds),
-        );
+        )
+        .orderBy(asc(zuvyStudentAttendanceRecords.id));
 
       rows.forEach((r) => {
         setEntry(r.sessionId, Number(r.userId), {
