@@ -646,10 +646,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name:
-            module['projectData'].length == 0
-              ? module.name
-              : module['projectData'][0]['title'],
+          name: module.name || module['projectData']?.[0]?.title || module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
@@ -1376,6 +1373,19 @@ export class ContentService {
           .where(eq(zuvyCourseModules.id, moduleId))
           .returning();
         newModule = updated[0] || null;
+
+        const newName = reorderData.moduleDto?.name;
+        const projectIdToUse = newModule?.projectId ?? moduleInfo[0]?.projectId;
+        if (
+          typeof newName === 'string' &&
+          newName.trim() !== '' &&
+          projectIdToUse
+        ) {
+          await db
+            .update(zuvyCourseProjects)
+            .set({ title: newName })
+            .where(eq(zuvyCourseProjects.id, projectIdToUse));
+        }
       }
 
       // Fall back to a fresh SELECT only if none of the update branches above
