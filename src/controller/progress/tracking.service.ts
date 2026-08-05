@@ -375,29 +375,65 @@ export class TrackingService {
               100,
           );
 
-          // fix: single upsert against the (userId, bootcampId) unique
-          // constraint instead of select-then-insert-or-update — removes
-          // both the extra existence-check round trip and the race window
-          // where two concurrent requests for the same user+bootcamp could
-          // each see "no row" and both attempt an insert.
-          await db
-            .insert(zuvyBootcampTracking)
-            .values({
-              userId,
-              bootcampId,
-              progress: bootcampProgress,
-              updatedAt: sql`NOW()`,
-            } as any)
-            .onConflictDoUpdate({
-              target: [
-                zuvyBootcampTracking.userId,
-                zuvyBootcampTracking.bootcampId,
-              ],
-              set: {
+          // Single upsert against the (userId, bootcampId) unique constraint
+          // added by migration 0039_add_performance_indexes.sql. That
+          // migration must be applied manually (CREATE INDEX CONCURRENTLY
+          // can't run inside the transaction the regular migration runner
+          // uses) - until it has been, Postgres rejects this ON CONFLICT
+          // with error 42P10. Fall back to a plain select-then-insert-or-
+          // update in that case so the endpoint keeps working either way
+          // (see the identical fallback in the bootcampProgress lookup
+          // below in this file).
+          try {
+            await db
+              .insert(zuvyBootcampTracking)
+              .values({
+                userId,
+                bootcampId,
                 progress: bootcampProgress,
                 updatedAt: sql`NOW()`,
-              } as any,
-            });
+              } as any)
+              .onConflictDoUpdate({
+                target: [
+                  zuvyBootcampTracking.userId,
+                  zuvyBootcampTracking.bootcampId,
+                ],
+                set: {
+                  progress: bootcampProgress,
+                  updatedAt: sql`NOW()`,
+                } as any,
+              });
+          } catch (err) {
+            if (err.code !== '42P10') {
+              throw err;
+            }
+            const existingBootcampTracking =
+              await db.query.zuvyBootcampTracking.findFirst({
+                where: (bootcampTracking, { and, eq }) =>
+                  and(
+                    eq(bootcampTracking.userId, userId),
+                    eq(bootcampTracking.bootcampId, bootcampId),
+                  ),
+              });
+            if (existingBootcampTracking) {
+              await db
+                .update(zuvyBootcampTracking)
+                .set({
+                  progress: bootcampProgress,
+                  updatedAt: sql`NOW()`,
+                } as any)
+                .where(
+                  eq(zuvyBootcampTracking.id, existingBootcampTracking.id),
+                );
+            } else {
+              await db.insert(zuvyBootcampTracking).values({
+                userId,
+                bootcampId,
+                progress: bootcampProgress,
+                updatedAt: sql`NOW()`,
+              } as any);
+            }
+          }
 
           return {
             status: 'success',

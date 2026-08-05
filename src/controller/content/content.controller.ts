@@ -1043,7 +1043,7 @@ export class ContentController {
     }
   }
 
-  @Get('/students/assessmentId=:assessmentId')
+  @Get('/students/assessmentId/:assessmentId')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth('JWT-auth')
   async getStudentsOfAssessment(
@@ -1063,7 +1063,7 @@ export class ContentController {
   }
 
   @Get(
-    '/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart',
+    '/startAssessmentForStudent/assessmentOutsourseId/:assessmentOutsourseId/newStart/:newStart',
   )
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth('JWT-auth')
