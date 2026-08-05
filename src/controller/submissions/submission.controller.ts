@@ -409,7 +409,7 @@ export class SubmissionController {
     );
   }
 
-  @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
+  @Patch('/quiz/assessmentSubmissionId/:assessmentSubmissionId')
   async submitQuiz(
     @Body() QuizSubmission: QuizSubmissionDtoList,
     @Param('assessmentSubmissionId') assessmentSubmissionId: number,
@@ -440,7 +440,7 @@ export class SubmissionController {
     }
   }
 
-  @Patch('/openended/assessmentSubmissionId=:assessmentSubmissionId')
+  @Patch('/openended/assessmentSubmissionId/:assessmentSubmissionId')
   async submitOpenended(
     @Body() OpenEndedQuestionSubmission: OpenEndedQuestionSubmissionDtoList,
     @Param('assessmentSubmissionId') assessmentSubmissionId: number,

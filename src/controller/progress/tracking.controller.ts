@@ -412,7 +412,7 @@ export class TrackingController {
     }
   }
 
-  @Get('assessment/submissionId=:submissionId')
+  @Get('assessment/submissionId/:submissionId')
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({

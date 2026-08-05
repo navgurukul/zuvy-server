@@ -7,6 +7,7 @@ import { Public } from 'src/auth/decorators/public.decorator';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { RecordingWorkerTriggerService } from '../../services/recording-worker/recording-worker-trigger.service';
+import { RecordingWorkerService } from '../../services/recording-worker/recording-worker.service';
 import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
 
 const ATTENDANCE_JOB_INITIAL_DELAY_MS = 3 * 60 * 1000;
@@ -60,6 +61,7 @@ export class ZoomWebhookController {
 
   constructor(
     private readonly recordingWorkerTrigger: RecordingWorkerTriggerService,
+    private readonly recordingWorkerService: RecordingWorkerService,
     private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
   ) {}
 
@@ -95,15 +97,14 @@ export class ZoomWebhookController {
       });
     }
 
-    const eventType = body?.event;
+    const eventType = body?.event || body?.event_type || 'unknown';
+    const meetingObjId = body?.payload?.object?.id?.toString() || '';
+    const meetingObjUuid = body?.payload?.object?.uuid || '';
+    const fileId = body?.payload?.object?.recording_files?.[0]?.id || '';
+
     const eventId =
-      body?.event_id ??
-      crypto
-        .createHash('sha256')
-        .update(
-          `${req.headers['x-zm-request-timestamp']}:${req.headers['x-zm-signature']}`,
-        )
-        .digest('hex');
+      body?.event_id ||
+      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}`;
 
     this.logger.debug({
       msg: 'Zoom webhook rawBody diagnostics',
@@ -165,186 +166,72 @@ export class ZoomWebhookController {
       if (event === 'recording.completed') {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
+        const recordingFiles = payload.object.recording_files || [];
 
-        this.logger.log(` Recording completed for meeting ${meetingId}`);
+        this.logger.log({
+          msg: 'Recording completed — ingesting instance',
+          meetingId,
+          meetingUuid,
+          mp4Segments: recordingFiles.filter((f: any) => f.file_type === 'MP4')
+            .length,
+        });
 
-        // 1️ Find session
+        // A given zoom_meeting_id belongs to either a class session or a
+        // mentor booking (never both) — check both, ingest into whichever
+        // owns it. ingestRecordingCompleted() merges this instance's
+        // segments into any prior instances for the same owner instead of
+        // overwriting them (see RecordingWorkerService.ingestRecordingCompleted).
+        const cleanId = String(meetingId || '').replace(/\D/g, '');
+
         const session = await db.query.zuvySessions.findFirst({
-          where: (s, { eq }) => eq(s.zoomMeetingId, meetingId),
+          where: (s, { or, eq, sql: dSql }) =>
+            or(
+              eq(s.zoomMeetingId, meetingId),
+              eq(s.meetingId, meetingId),
+              dSql`REPLACE(${s.zoomMeetingId}, ' ', '') = ${cleanId}`,
+              dSql`REPLACE(${s.meetingId}, ' ', '') = ${cleanId}`,
+            ),
           columns: { id: true },
         });
 
-        if (!session) {
-          this.logger.warn(`Session not found for meeting ${meetingId}`);
-          return res.status(200).send();
+        if (session) {
+          await this.recordingWorkerService.ingestRecordingCompleted({
+            table: 'session',
+            ownerId: session.id,
+            meetingId,
+            meetingUuid,
+            recordingFiles,
+            fallbackStartTime: payload.object.start_time,
+          });
+          this.recordingWorkerTrigger.triggerNow();
         }
 
-        this.logger.log({
-          msg: 'Creating recording job',
-          meetingId,
-          meetingUuid,
-          mp4Segments: payload.object.recording_files?.filter(
-            (f: any) => f.file_type === 'MP4',
-          ).length,
+        const mentorBooking = await db.query.zuvyMentorSlotBooking.findFirst({
+          where: (b, { or, eq, sql: dSql }) =>
+            or(
+              eq(b.zoomMeetingId, meetingId),
+              dSql`REPLACE(${b.zoomMeetingId}, ' ', '') = ${cleanId}`,
+            ),
+          columns: { id: true },
         });
 
-        // 2️ Insert NEW recording row per UUID (restart-safe)
-        const recordingFiles = payload.object.recording_files || [];
+        if (mentorBooking) {
+          await this.recordingWorkerService.ingestRecordingCompleted({
+            table: 'mentor',
+            ownerId: mentorBooking.id,
+            meetingId,
+            meetingUuid,
+            recordingFiles,
+            fallbackStartTime: payload.object.start_time,
+          });
+          this.recordingWorkerTrigger.triggerNow();
+        }
 
-        // keep only mp4 recordings
-        const manifest = recordingFiles
-          .filter((f: any) => f.file_type === 'MP4')
-          .map((f: any) => ({
-            id: f.id,
-            download_url: f.download_url,
-            file_type: f.file_type,
-            file_size: f.file_size,
-            recording_type: f.recording_type,
-            recording_start: f.recording_start,
-            recording_end: f.recording_end,
-            meeting_uuid: meetingUuid,
-          }));
-
-        await db.execute(sql`
-  UPDATE zuvy_session_recordings
-  SET
-    zoom_recording_id = ${manifest[0]?.id ?? null},
-          zoom_recording_manifest = ${JSON.stringify(manifest)},
-          metadata_verified = TRUE,
-          recording_start = ${manifest[0]?.recording_start ?? payload.object.start_time},
-          recording_end = ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
-          segments_count = ${manifest.length},
-
-          status = CASE
-      WHEN status IN(
-            'PROCESSING_METADATA',
-            'METADATA_READY',
-            'PROCESSING_DOWNLOAD',
-            'DOWNLOADED',
-            'MERGING',
-            'MERGED',
-            'PROCESSING_UPLOAD',
-            'COMPLETED'
-          )
-      THEN status
-      ELSE 'DISCOVERED'
-    END,
-
-          retry_count = CASE
-      WHEN status IN('FAILED', 'PERMANENT_FAILED')
-      THEN 0
-      ELSE retry_count
-    END,
-
-          last_error = CASE
-      WHEN status IN('FAILED', 'PERMANENT_FAILED')
-      THEN NULL
-      ELSE last_error
-    END,
-
-          next_retry_at = CASE
-      WHEN status IN('FAILED', 'PERMANENT_FAILED')
-      THEN NULL
-      ELSE next_retry_at
-    END,
-
-          updated_at = NOW()
-
-  WHERE session_id = ${session.id}
-    AND(
-            zoom_meeting_id = ${meetingId}
-      OR zoom_meeting_uuid = ${meetingUuid}
-          )
-            `);
-
-        await db.execute(sql`
-          INSERT INTO zuvy_session_recordings (
-    session_id,
-    zoom_meeting_id,
-    zoom_meeting_uuid,
-    zoom_recording_id,
-    zoom_recording_manifest,
-    metadata_verified,
-    status,
-    recording_start,
-    recording_end,
-    segments_count,
-    retry_count
-)
-          SELECT
-    ${session.id},
-    ${meetingId},
-    ${meetingUuid},
-    ${manifest[0]?.id ?? null},
-    ${JSON.stringify(manifest)},
-    TRUE,
-    'DISCOVERED',
-    ${manifest[0]?.recording_start ?? payload.object.start_time},
-    ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
-    ${manifest.length},
-    0
-          WHERE NOT EXISTS(
-            SELECT 1
-            FROM zuvy_session_recordings
-            WHERE session_id = ${session.id}
-              AND(
-              zoom_meeting_id = ${meetingId}
-                OR zoom_meeting_uuid = ${meetingUuid}
-            )
-          )
-          `);
-
-        // Also update mentor session recordings
-        await db.execute(sql`
-  UPDATE zuvy_mentor_session_recordings
-  SET
-    zoom_recording_id = ${manifest[0]?.id ?? null},
-    zoom_recording_manifest = ${JSON.stringify(manifest)},
-    metadata_verified = TRUE,
-    recording_start = ${manifest[0]?.recording_start ?? payload.object.start_time},
-    recording_end = ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
-    segments_count = ${manifest.length},
-
-    status = CASE
-      WHEN status IN (
-        'PROCESSING_METADATA',
-        'METADATA_READY',
-        'PROCESSING_DOWNLOAD',
-        'DOWNLOADED',
-        'MERGING',
-        'MERGED',
-        'PROCESSING_UPLOAD',
-        'COMPLETED'
-      )
-      THEN status
-      ELSE 'DISCOVERED'
-    END,
-
-    retry_count = CASE
-      WHEN status IN ('FAILED','PERMANENT_FAILED')
-      THEN 0
-      ELSE retry_count
-    END,
-
-    last_error = CASE
-      WHEN status IN ('FAILED','PERMANENT_FAILED')
-      THEN NULL
-      ELSE last_error
-    END,
-
-    next_retry_at = CASE
-      WHEN status IN ('FAILED','PERMANENT_FAILED')
-      THEN NULL
-      ELSE next_retry_at
-    END,
-
-    updated_at = NOW()
-
-WHERE zoom_meeting_id = ${meetingId}
-   OR zoom_meeting_uuid = ${meetingUuid}
-`);
-
-        this.recordingWorkerTrigger.triggerNow();
+        if (!session && !mentorBooking) {
+          this.logger.warn(
+            `No session or mentor booking found for meeting ${meetingId}`,
+          );
+        }
 
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events
@@ -364,7 +251,8 @@ WHERE zoom_meeting_id = ${meetingId}
 
         this.logger.log(` Meeting ended: ${meetingId}`);
 
-        // Optional: ensure recording job exists
+        // Ensure a recording job exists (one row per owner going forward —
+        // ingestRecordingCompleted() is what merges further instances in).
         await db.execute(sql`
           INSERT INTO zuvy_session_recordings (
             session_id,
@@ -382,14 +270,29 @@ WHERE zoom_meeting_id = ${meetingId}
           FROM zuvy_sessions s
           WHERE s.zoom_meeting_id = ${meetingId}
             AND NOT EXISTS (
-            SELECT 1
-              FROM zuvy_session_recordings r
-              WHERE r.session_id = s.id
-                AND (
-              r.zoom_meeting_id = ${meetingId}
-                  OR r.zoom_meeting_uuid = ${meetingUuid}
+              SELECT 1 FROM zuvy_session_recordings r WHERE r.session_id = s.id
             )
+          `);
+
+        await db.execute(sql`
+          INSERT INTO zuvy_mentor_session_recordings (
+            mentor_booking_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            status,
+            retry_count
           )
+          SELECT
+            b.id,
+          ${meetingId},
+          ${meetingUuid},
+          'DISCOVERED',
+          0
+          FROM zuvy_mentor_slot_booking b
+          WHERE b.zoom_meeting_id = ${meetingId}
+            AND NOT EXISTS (
+              SELECT 1 FROM zuvy_mentor_session_recordings m WHERE m.mentor_booking_id = b.id
+            )
           `);
 
         this.recordingWorkerTrigger.triggerNow();

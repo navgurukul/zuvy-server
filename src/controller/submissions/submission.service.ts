@@ -1417,11 +1417,13 @@ export class SubmissionService {
             project['batch_name'] ??
             enrollment?.batchName ??
             null;
-          project['submitted_date'] =
-            project['submitted_date'] ?? project['submittedDate'] ?? null;
 
           project['createdAt'] =
             project['createdAt'] ?? project['created_at'] ?? null;
+
+          project['submitted_date'] =
+            project['updatedAt'] ?? project['createdAt'];
+
           return project;
         });
 
@@ -1531,7 +1533,8 @@ export class SubmissionService {
                 moduleId: true,
                 batchId: true,
                 grades: true,
-                submitted_date: true,
+                // submitted_date: true,
+                updatedAt: true,
                 createdAt: true,
                 projectLink: true,
               },
@@ -3564,18 +3567,18 @@ Zuvy LMS Team
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? [session.batchId, session.secondBatchId].find((id: any) =>
+              ? ([session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null
-              : session.batchId ?? session.secondBatchId ?? null;
+                null)
+              : (session.batchId ?? session.secondBatchId ?? null);
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? batchMap[Number(resolvedBatchId)] ?? null
+                ? (batchMap[Number(resolvedBatchId)] ?? null)
                 : null;
             const isCompleted = completedUserIdsSet.has(Number(record.userId));
             allRecords.push({
