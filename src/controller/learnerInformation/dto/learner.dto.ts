@@ -391,6 +391,12 @@ class EndDateAfterStartDate implements ValidatorConstraintInterface {
   }
 }
 
+const MAX_GRADUATION_YEARS_AHEAD: Record<string, number> = {
+  '1st': 4,
+  '2nd': 3,
+  '3rd': 2,
+  '4th': 1,
+};
 @ValidatorConstraint({
   name: 'GraduationDateBasedOnYearOfStudy',
   async: false,
@@ -425,7 +431,15 @@ class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
       return !isFuture;
     }
 
-    return !isPast;
+    if (isPast) {
+      return false;
+    }
+
+    // Prevent unrealistic graduation years
+    const maxAllowedYear =
+      currentYear + (MAX_GRADUATION_YEARS_AHEAD[dto.yearOfStudy] ?? 2);
+
+    return dto.graduationYear <= maxAllowedYear;
   }
 
   defaultMessage(args: ValidationArguments) {
@@ -435,7 +449,7 @@ class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
       return 'Graduation date cannot be in the future.';
     }
 
-    return 'Graduation date cannot be in the past.';
+    return 'Graduation date is not valid for the selected year of study.';
   }
 }
 
