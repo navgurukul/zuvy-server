@@ -48,7 +48,7 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
 export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) {}
 
-  @Post('/practicecode/questionId=:questionId')
+  @Post('/practicecode/questionId/:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({
@@ -104,7 +104,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Get('/submissions/questionId=:questionId')
+  @Get('/submissions/questionId/:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({

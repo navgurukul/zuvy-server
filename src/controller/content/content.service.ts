@@ -3508,11 +3508,7 @@ export class ContentService {
       });
 
       if (!assessment || assessment.length === 0) {
-        throw {
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        };
+        throw new NotFoundException('Assessment not found');
       }
 
       // Update assessment state using AssessmentStateService; it now returns
