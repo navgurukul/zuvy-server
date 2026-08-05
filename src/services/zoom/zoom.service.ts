@@ -9,6 +9,10 @@ import {
   zuvyUserLicenses,
 } from '../../../drizzle/schema';
 import { eq, sql } from 'drizzle-orm';
+import {
+  computeMergedDurationsByKey,
+  ParticipantConnection,
+} from 'src/services/attendance/attendance-duration-merge';
 
 export interface ZoomMeetingRequest {
   topic: string;
@@ -135,6 +139,11 @@ export interface ZoomParticipantReportResponse {
   total_records?: number;
   next_page_token?: string;
   participants: ZoomParticipant[];
+  // Meeting-level fields (identical across every page of one occurrence) —
+  // duration is in seconds, matching each participant row's own `duration`.
+  duration?: number;
+  start_time?: string;
+  end_time?: string;
 }
 
 interface ZoomParticipant {
@@ -1005,6 +1014,11 @@ export class ZoomService {
       const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
       let allParticipants: ZoomParticipant[] = [];
       let nextPageToken = ''; // Start with an empty token
+      // Meeting-level fields are identical on every page — capture once,
+      // from the first page, for the interval-merge duration cap below.
+      let meetingDuration: number | undefined;
+      let meetingStartTime: string | undefined;
+      let meetingEndTime: string | undefined;
 
       // Use a do...while loop to fetch all pages of participants
       do {
@@ -1017,13 +1031,23 @@ export class ZoomService {
         if (response.data && response.data.participants) {
           allParticipants = allParticipants.concat(response.data.participants);
         }
+        if (meetingDuration === undefined) {
+          meetingDuration = response.data.duration;
+          meetingStartTime = response.data.start_time;
+          meetingEndTime = response.data.end_time;
+        }
 
         // Get the token for the next page. If it's empty or null, the loop will end.
         nextPageToken = response.data.next_page_token;
       } while (nextPageToken);
 
       // Return the complete list of participants from all pages
-      return { participants: allParticipants };
+      return {
+        participants: allParticipants,
+        duration: meetingDuration,
+        start_time: meetingStartTime,
+        end_time: meetingEndTime,
+      };
     } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`,
@@ -1294,37 +1318,64 @@ export class ZoomService {
 
       if (!pastSessions || pastSessions.length === 0) return [];
 
-      // Step 2: Fetch all participant lists from all sessions
-      const allSessionReports = [];
+      // Step 2: Fetch all participant lists from all sessions, keeping each
+      // occurrence's own reported meeting duration alongside its
+      // participants — needed below to cap that occurrence's merged
+      // durations. Must not be mixed across occurrences: each has its own
+      // actual length.
+      const allSessionReports: Array<{
+        participants: ZoomParticipant[];
+        meetingDurationSeconds: number | null;
+      }> = [];
       for (const session of pastSessions) {
         const report = await this.getMeetingParticipants(session.uuid);
         if (report && report.participants && report.participants.length > 0) {
-          allSessionReports.push(report.participants);
+          allSessionReports.push({
+            participants: report.participants,
+            meetingDurationSeconds: report.duration ?? null,
+          });
         }
       }
 
       if (allSessionReports.length === 0) return [];
 
       // ========================================================================
-      // NEW STEP: Consolidate each report to handle users rejoining the SAME session
+      // Consolidate each report to handle users connecting more than once in
+      // the SAME occurrence (dropped/rejoined, or — just as commonly — joined
+      // from a second device concurrently). Duration is derived by merging
+      // each person's join/leave intervals rather than summing each row's
+      // own duration, so a genuine overlap isn't double-counted the way
+      // naive addition would (this previously let a single participant's
+      // reported duration exceed the meeting's own length). See
+      // attendance-duration-merge.ts.
       // ========================================================================
-      const consolidatedReports = allSessionReports.map((report) => {
-        const consolidatedMap = new Map<string, ZoomParticipant>();
-        for (const participant of report) {
-          const key = participant.user_email || participant.name;
-          if (!key) continue;
+      const consolidatedReports = allSessionReports.map(
+        ({ participants, meetingDurationSeconds }) => {
+          const connections: ParticipantConnection[] = participants
+            .map((p) => ({
+              key: p.user_email || p.name,
+              joinTime: p.join_time,
+              leaveTime: p.leave_time,
+            }))
+            .filter((c): c is ParticipantConnection => Boolean(c.key));
 
-          if (consolidatedMap.has(key)) {
-            // If we've already seen this person in THIS report, just add their duration
-            const existingRecord = consolidatedMap.get(key)!;
-            existingRecord.duration += participant.duration;
-          } else {
-            // Otherwise, add them to the map for this report
-            consolidatedMap.set(key, { ...participant });
+          const mergedDurations = computeMergedDurationsByKey(
+            connections,
+            meetingDurationSeconds,
+          );
+
+          const consolidatedMap = new Map<string, ZoomParticipant>();
+          for (const participant of participants) {
+            const key = participant.user_email || participant.name;
+            if (!key || consolidatedMap.has(key)) continue;
+            consolidatedMap.set(key, {
+              ...participant,
+              duration: mergedDurations.get(key) ?? participant.duration,
+            });
           }
-        }
-        return Array.from(consolidatedMap.values());
-      });
+          return Array.from(consolidatedMap.values());
+        },
+      );
 
       // Step 3: Identify the main summary report from the CLEANED reports
       consolidatedReports.sort((a, b) => b.length - a.length);
