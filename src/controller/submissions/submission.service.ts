@@ -1417,11 +1417,13 @@ export class SubmissionService {
             project['batch_name'] ??
             enrollment?.batchName ??
             null;
-          project['submitted_date'] =
-            project['submitted_date'] ?? project['submittedDate'] ?? null;
 
           project['createdAt'] =
             project['createdAt'] ?? project['created_at'] ?? null;
+
+          project['submitted_date'] =
+            project['updatedAt'] ?? project['createdAt'];
+
           return project;
         });
 
@@ -1531,7 +1533,8 @@ export class SubmissionService {
                 moduleId: true,
                 batchId: true,
                 grades: true,
-                submitted_date: true,
+                // submitted_date: true,
+                updatedAt: true,
                 createdAt: true,
                 projectLink: true,
               },

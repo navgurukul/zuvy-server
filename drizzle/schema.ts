@@ -4593,7 +4593,9 @@ export const zuvySessionRecordings = main.table(
 
     driveFileId: text('drive_file_id'),
     driveLink: text('drive_link'),
-
+    // superseded YouTube video id, pending best-effort deletion once a
+    // re-merged upload (triggered by a later recording instance) succeeds
+    previousDriveFileId: text('previous_drive_file_id'),
 
     recordingStart: timestamp('recording_start', {
       withTimezone: true,
@@ -4606,6 +4608,11 @@ export const zuvySessionRecordings = main.table(
     }),
 
     isFinalMerged: boolean('is_final_merged').default(false),
+
+    // Zoom meeting UUIDs already folded into zoomRecordingManifest — makes
+    // merging multiple recording instances of the same meeting idempotent.
+    ingestedMeetingUuids: jsonb('ingested_meeting_uuids').default([]),
+
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -4664,6 +4671,7 @@ export const zuvyMentorSessionRecordings = main.table(
 
     driveFileId: text('drive_file_id'),
     driveLink: text('drive_link'),
+    previousDriveFileId: text('previous_drive_file_id'),
 
     recordingStart: timestamp('recording_start', {
       withTimezone: true,
@@ -4675,6 +4683,8 @@ export const zuvyMentorSessionRecordings = main.table(
     }),
 
     isFinalMerged: boolean('is_final_merged').default(false),
+
+    ingestedMeetingUuids: jsonb('ingested_meeting_uuids').default([]),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,

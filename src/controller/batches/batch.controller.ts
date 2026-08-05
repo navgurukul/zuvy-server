@@ -166,7 +166,7 @@ export class BatchesController {
     return res;
   }
 
-  @Patch('reassign/student_id=:student_id/new_batch_id=:new_batch_id')
+  @Patch('reassign/student_id/:student_id/new_batch_id/:new_batch_id')
   @ApiQuery({
     name: 'old_batch_id',
     required: false,
