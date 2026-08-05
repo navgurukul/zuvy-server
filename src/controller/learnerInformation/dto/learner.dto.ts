@@ -386,9 +386,90 @@ class EndDateAfterStartDate implements ValidatorConstraintInterface {
     if (!endDate || !dto.startDate) return true;
     return new Date(endDate) >= new Date(dto.startDate);
   }
-
   defaultMessage() {
     return 'endDate must not be before startDate';
+  }
+}
+
+@ValidatorConstraint({
+  name: 'GraduationDateBasedOnYearOfStudy',
+  async: false,
+})
+class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
+  validate(_: unknown, args: ValidationArguments) {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    if (
+      !dto.yearOfStudy ||
+      dto.graduationMonth == null ||
+      dto.graduationYear == null
+    ) {
+      return true;
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const isPast =
+      dto.graduationYear < currentYear ||
+      (dto.graduationYear === currentYear &&
+        dto.graduationMonth < currentMonth);
+
+    const isFuture =
+      dto.graduationYear > currentYear ||
+      (dto.graduationYear === currentYear &&
+        dto.graduationMonth > currentMonth);
+
+    if (dto.yearOfStudy === 'passed_out') {
+      return !isFuture;
+    }
+
+    return !isPast;
+  }
+
+  defaultMessage(args: ValidationArguments) {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    if (dto.yearOfStudy === 'passed_out') {
+      return 'Graduation date cannot be in the future.';
+    }
+
+    return 'Graduation date cannot be in the past.';
+  }
+}
+
+@ValidatorConstraint({
+  name: 'WorkExperienceStateValidator',
+  async: false,
+})
+class WorkExperienceStateValidator implements ValidatorConstraintInterface {
+  validate(_: unknown, args: ValidationArguments): boolean {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    // Working users cannot select "No, I'm a Fresher"
+    if (dto.currentStatus === 'Working' && dto.hasWorkExperience === false) {
+      return false;
+    }
+
+    // If learner has experience, at least one work experience is required
+    if (dto.hasWorkExperience === true) {
+      return (
+        Array.isArray(dto.workExperiences) && dto.workExperiences.length > 0
+      );
+    }
+
+    return true;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    if (dto.currentStatus === 'Working' && dto.hasWorkExperience === false) {
+      return 'Working users cannot select "No, I\'m a Fresher".';
+    }
+
+    return 'Please add at least one work experience.';
   }
 }
 
@@ -676,6 +757,7 @@ export class SaveCompleteProfileDto {
   @IsInt({ message: 'Please select graduation year' })
   @Min(2000)
   @Max(2050)
+  @Validate(GraduationDateBasedOnYearOfStudy)
   graduationYear?: number;
 
   @ApiPropertyOptional({
@@ -770,6 +852,7 @@ export class SaveCompleteProfileDto {
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
+  @Validate(WorkExperienceStateValidator)
   hasWorkExperience?: boolean;
 
   @ApiPropertyOptional({ type: [WorkExperienceDto] })
