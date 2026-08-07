@@ -326,6 +326,7 @@ export class UsersService {
       .select({
         id: zuvyUserRoles.id,
         name: zuvyUserRoles.name,
+        orgId: zuvyUserRoles.orgId,
       })
       .from(zuvyUserRoles)
       .where(eq(zuvyUserRoles.id, roleId))
@@ -480,11 +481,20 @@ export class UsersService {
 
       const roleCheck = await this.roleCheck(roleId);
 
-      if (!roleCheck) {
+      if (!roleCheck || !('orgId' in roleCheck)) {
         return {
           status: 'error',
           code: 404,
           message: 'Role not found',
+          data: null,
+        };
+      }
+
+      if (Number(roleCheck.orgId) !== Number(orgId)) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Role does not belong to this organization',
           data: null,
         };
       }
@@ -866,6 +876,16 @@ export class UsersService {
 
       createUserDto.email = normalizedEmail;
 
+      const role = await this.roleCheck(createUserDto.roleId);
+      if (!role || !('orgId' in role)) {
+        throw new BadRequestException('Role not found');
+      }
+      if (Number(role.orgId) !== Number(createUserDto.orgId)) {
+        throw new BadRequestException(
+          'Role does not belong to this organization',
+        );
+      }
+
       return await db.transaction(async (tx) => {
         const [existingUser] = await tx
           .select()
@@ -1197,6 +1217,17 @@ export class UsersService {
               'Organization ID is required when updating role',
             );
           }
+
+          const role = await this.roleCheck(updateUserDto.roleId);
+          if (!role || !('orgId' in role)) {
+            throw new BadRequestException('Role not found');
+          }
+          if (Number(role.orgId) !== Number(updateUserDto.orgId)) {
+            throw new BadRequestException(
+              'Role does not belong to this organization',
+            );
+          }
+
           const existingRole = await tx
             .select()
             .from(zuvyUserRolesAssigned)
