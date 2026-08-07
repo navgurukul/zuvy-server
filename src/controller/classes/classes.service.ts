@@ -266,8 +266,8 @@ export class ClassesService {
   private isPendingZoomMeetingId(meetingId?: string | null) {
     return Boolean(
       meetingId &&
-      (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
-        meetingId.startsWith('activating-')),
+        (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
+          meetingId.startsWith('activating-')),
     );
   }
 
@@ -1651,8 +1651,8 @@ export class ClassesService {
 
               throw new Error(
                 nextAvailableAt &&
-                  nextAvailableAt.getTime() >
-                    new Date(original.startTime).getTime()
+                nextAvailableAt.getTime() >
+                  new Date(original.startTime).getTime()
                   ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
                   : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
