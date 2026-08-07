@@ -453,40 +453,6 @@ class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
   }
 }
 
-@ValidatorConstraint({
-  name: 'WorkExperienceStateValidator',
-  async: false,
-})
-class WorkExperienceStateValidator implements ValidatorConstraintInterface {
-  validate(_: unknown, args: ValidationArguments): boolean {
-    const dto = args.object as SaveCompleteProfileDto;
-
-    // Working users cannot select "No, I'm a Fresher"
-    if (dto.currentStatus === 'Working' && dto.hasWorkExperience === false) {
-      return false;
-    }
-
-    // If learner has experience, at least one work experience is required
-    if (dto.hasWorkExperience === true) {
-      return (
-        Array.isArray(dto.workExperiences) && dto.workExperiences.length > 0
-      );
-    }
-
-    return true;
-  }
-
-  defaultMessage(args: ValidationArguments): string {
-    const dto = args.object as SaveCompleteProfileDto;
-
-    if (dto.currentStatus === 'Working' && dto.hasWorkExperience === false) {
-      return 'Working users cannot select "No, I\'m a Fresher".';
-    }
-
-    return 'Please add at least one work experience.';
-  }
-}
-
 export class ProjectDto {
   @ApiProperty({ example: 'E-commerce Platform' })
   @IsString()
@@ -866,7 +832,6 @@ export class SaveCompleteProfileDto {
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
-  @Validate(WorkExperienceStateValidator)
   hasWorkExperience?: boolean;
 
   @ApiPropertyOptional({ type: [WorkExperienceDto] })
