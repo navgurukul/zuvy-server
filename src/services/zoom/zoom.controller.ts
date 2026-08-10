@@ -24,6 +24,7 @@ import {
   UpdateZoomMeetingDto,
   ZoomAuthorizedUsersQueryDto,
   ZoomEmailDto,
+  UpdateUserWaitingRoomDto,
 } from './dto/zoom.dto';
 
 @Controller('zoom')
@@ -51,6 +52,28 @@ export class ZoomController {
   @ApiOperation({ summary: 'Fetch a Zoom user profile' })
   async getUser(@Param('email') email: string) {
     return this.zoomService.getUser(email);
+  }
+
+  @Get('user/:email/settings')
+  @Roles('admin')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Fetch Zoom settings for a user' })
+  async getUserSettings(@Param('email') email: string) {
+    return this.zoomService.getUserSettings(email);
+  }
+
+  @Patch('user/:email/waiting-room')
+  @Roles('admin')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Update Zoom waiting room settings for a user (User Level API)',
+  })
+  async updateUserWaitingRoom(
+    @Param('email') email: string,
+    @Body() body: UpdateUserWaitingRoomDto,
+  ) {
+    return this.zoomService.updateUserWaitingRoomSettings(email, body);
   }
 
   @Get('users/authorized')
@@ -114,9 +137,13 @@ export class ZoomController {
         host_video: body.settings?.host_video ?? true,
         participant_video: body.settings?.participant_video ?? true,
         join_before_host: body.settings?.join_before_host ?? false,
-        mute_upon_entry: body.settings?.mute_upon_entry ?? true,
-        waiting_room: body.settings?.waiting_room ?? false,
+        waiting_room: body.settings?.waiting_room ?? true,
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
         audio: body.settings?.audio || 'both',
+
         attendance_reporting: body.settings?.attendance_reporting ?? true,
         alternative_hosts_email_notification:
           body.settings?.alternative_hosts_email_notification ?? false,

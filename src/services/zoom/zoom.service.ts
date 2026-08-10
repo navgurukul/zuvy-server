@@ -42,7 +42,12 @@ export interface ZoomMeetingRequest {
     auto_recording?: string; // local, cloud, none
     enforce_login?: boolean;
     waiting_room?: boolean;
+    waiting_room_options?: {
+      mode?: string;
+      who_goes_to_waiting_room?: string;
+    };
     // New attendance and meeting control settings
+
     attendance_reporting?: boolean; // Enable attendance tracking
     end_on_auto_off?: boolean; // End meeting when host leaves
     alternative_hosts_email_notification?: boolean;
@@ -234,19 +239,26 @@ export class ZoomService {
   private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
     return {
       security: {
-        waiting_room: false,
+        waiting_room: true,
       },
       scheduled_meeting: {
         host_video: true,
         participants_video: true,
         audio_type: 'both',
         join_before_host: false,
-        waiting_room: false,
+        waiting_room: true,
         force_pmi_jbh_password: false,
         pstn_password_protected: false,
       },
       in_meeting: {
+        waiting_room: true,
+        waiting_room_settings: {
+          participants_to_place_in_waiting_room: 2,
+          users_who_can_admit_participants_from_waiting_room: 0,
+        },
+
         e2e_encryption: true,
+
         chat: true,
         private_chat: true,
         auto_saving_chat: false,
@@ -478,16 +490,59 @@ export class ZoomService {
       // Log request intent (helps debug wrong-host issues)
       this.logger.log(`Creating Zoom meeting for user: ${userEmailOrId}`);
 
+      // Ensure user level waiting room settings are applied to host's Zoom account
+      await this.applyLicensedUserSettings(userEmailOrId);
+
+      const finalMeetingData: ZoomMeetingRequest = {
+        ...meetingData,
+        settings: {
+          ...meetingData.settings,
+          waiting_room: true,
+          waiting_room_options: {
+            mode: 'custom',
+            who_goes_to_waiting_room: 'users_not_on_invite',
+            ...(meetingData.settings?.waiting_room_options || {}),
+          },
+        },
+      };
+
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
-        meetingData,
+        finalMeetingData,
         { headers },
       );
 
       const meeting = response.data;
 
+      // Explicitly patch meeting-level settings on the newly created meeting ID
+      if (meeting?.id) {
+        try {
+          await axios.patch(
+            `${this.baseUrl}/meetings/${meeting.id}`,
+            {
+              settings: {
+                waiting_room: true,
+                waiting_room_options: {
+                  mode: 'custom',
+                  who_goes_to_waiting_room: 'users_not_on_invite',
+                },
+              },
+            },
+            { headers },
+          );
+          this.logger.log(
+            `Explicitly enabled meeting-level waiting_room: true with users_not_on_invite for meeting ID ${meeting.id}`,
+          );
+        } catch (patchErr: any) {
+          this.logger.warn(
+            `Failed to patch meeting-level waiting_room for meeting ID ${meeting.id}: ${patchErr.message}`,
+          );
+        }
+      }
+
       // Strong logging for debugging
       this.logger.log(`Zoom meeting created successfully: ${meeting.id}`);
+
       this.logger.log(`Expected host: ${userEmailOrId}`);
       this.logger.log(`Actual host: ${meeting.host_email}`);
       this.logger.log(`Account ID: ${meeting.host_id}`);
@@ -567,6 +622,70 @@ export class ZoomService {
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  /**
+   * Get user settings from Zoom (GET /v2/users/{userId}/settings)
+   */
+  async getUserSettings(userEmailOrId: string) {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(userEmailOrId)}/settings`;
+      const res = await axios.get(url, { headers: await this.getHeaders() });
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  /**
+   * Update Zoom user waiting room settings via User Level API (PATCH /v2/users/{userId}/settings)
+   */
+  async updateUserWaitingRoomSettings(
+    userEmailOrId: string,
+    settings: {
+      waiting_room: boolean;
+      waiting_room_settings?: {
+        participants_to_place_in_waiting_room?: number;
+        users_who_can_admit_participants_from_waiting_room?: number;
+      };
+    },
+  ) {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(userEmailOrId)}/settings`;
+      const payload = {
+        in_meeting: {
+          waiting_room: settings.waiting_room,
+          participants_to_place_in_waiting_room:
+            settings.waiting_room_settings
+              ?.participants_to_place_in_waiting_room ?? 2,
+          ...(settings.waiting_room_settings && {
+            waiting_room_settings: settings.waiting_room_settings,
+          }),
+        },
+      };
+
+      await axios.patch(url, payload, {
+        headers: await this.getHeaders(),
+      });
+
+      this.logger.log(
+        `Updated Zoom waiting room settings for user ${userEmailOrId} successfully.`,
+      );
+
+      // Verify the settings update via GET /users/{userId}/settings
+      const verification = await this.getUserSettings(userEmailOrId);
+
+      return {
+        success: true,
+        data: verification.success ? verification.data : null,
+      };
+    } catch (e: any) {
+      const errorMessage = e.response?.data?.message || e.message;
+      this.logger.error(
+        `Failed to update Zoom waiting room settings for user ${userEmailOrId}: ${errorMessage}`,
+      );
+      return { success: false, error: errorMessage };
     }
   }
 

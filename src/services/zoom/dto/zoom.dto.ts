@@ -242,4 +242,40 @@ export class UpdateZoomMeetingDto {
   @Type(() => ZoomMeetingSettingsDto)
   settings?: ZoomMeetingSettingsDto;
 }
+
+export class WaitingRoomSettingsDto {
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      '0=Everyone, 1=Users not in account, 2=Users not in account and not invited, 3=No one',
+    enum: [0, 1, 2, 3],
+  })
+  @IsOptional()
+  @IsInt()
+  @IsIn([0, 1, 2, 3])
+  participants_to_place_in_waiting_room?: number;
+
+  @ApiPropertyOptional({
+    example: 0,
+    description:
+      '0=Host and co-hosts only, 1=Host, co-hosts, and anyone who bypassed waiting room',
+    enum: [0, 1],
+  })
+  @IsOptional()
+  @IsInt()
+  @IsIn([0, 1])
+  users_who_can_admit_participants_from_waiting_room?: number;
+}
+
+export class UpdateUserWaitingRoomDto {
+  @ApiProperty({ example: true, description: 'Enable or disable waiting room' })
+  @IsBoolean()
+  waiting_room: boolean;
+
+  @ApiPropertyOptional({ type: () => WaitingRoomSettingsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WaitingRoomSettingsDto)
+  waiting_room_settings?: WaitingRoomSettingsDto;
+}
 // Reuse CreateZoomUserDto for ensure-licensed and ZoomEmailDto for downgrade endpoints.
