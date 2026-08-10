@@ -414,8 +414,8 @@ class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
     }
 
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getUTCFullYear();
+    const currentMonth = now.getUTCMonth() + 1;
 
     const isPast =
       dto.graduationYear < currentYear ||
