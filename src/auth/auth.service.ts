@@ -155,6 +155,7 @@ export class AuthService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            inArray(zuvyUserRoles.name, roles),
             orgId !== null
               ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),

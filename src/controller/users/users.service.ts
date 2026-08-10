@@ -332,16 +332,7 @@ export class UsersService {
       .where(eq(zuvyUserRoles.id, roleId))
       .limit(1);
 
-    if (!roleDetails) {
-      return {
-        status: 'error',
-        code: 404,
-        message: 'Role not found',
-        data: null,
-      };
-    }
-
-    return roleDetails;
+    return roleDetails ?? null;
   }
 
   // create a function to assign defualt permissions to a role
@@ -481,7 +472,7 @@ export class UsersService {
 
       const roleCheck = await this.roleCheck(roleId);
 
-      if (!roleCheck || !('orgId' in roleCheck)) {
+      if (!roleCheck) {
         return {
           status: 'error',
           code: 404,
@@ -877,7 +868,7 @@ export class UsersService {
       createUserDto.email = normalizedEmail;
 
       const role = await this.roleCheck(createUserDto.roleId);
-      if (!role || !('orgId' in role)) {
+      if (!role) {
         throw new BadRequestException('Role not found');
       }
       if (Number(role.orgId) !== Number(createUserDto.orgId)) {
@@ -1219,7 +1210,7 @@ export class UsersService {
           }
 
           const role = await this.roleCheck(updateUserDto.roleId);
-          if (!role || !('orgId' in role)) {
+          if (!role) {
             throw new BadRequestException('Role not found');
           }
           if (Number(role.orgId) !== Number(updateUserDto.orgId)) {
