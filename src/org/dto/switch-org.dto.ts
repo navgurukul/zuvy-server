@@ -1,12 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class SwitchOrgDto {
   @ApiProperty({
     example: 1,
     description: 'The ID of the organization to switch to',
   })
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsNotEmpty()
   orgId: number;
 
