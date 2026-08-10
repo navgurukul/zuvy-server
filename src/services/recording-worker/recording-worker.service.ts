@@ -132,7 +132,12 @@ export class RecordingWorkerService implements OnModuleInit {
   }
 
   private getMergedFileName(job: any): string {
-    return `${this.getRecordingPrefix(job)}-merged.mp4`;
+    // Segment-count-aware: if a job is reopened with more segments than a
+    // prior merge (e.g. a second recording instance arrived after upload),
+    // this naturally avoids colliding with — and silently reusing — a stale
+    // merged file left over from the earlier, incomplete segment set.
+    const segmentsCount = job.segments_count || 0;
+    return `${this.getRecordingPrefix(job)}-merged-${segmentsCount}.mp4`;
   }
 
   private getTypePriority(type = ''): number {
@@ -180,8 +185,219 @@ export class RecordingWorkerService implements OnModuleInit {
         file_size: f.file_size,
         recording_start: f.recording_start,
         recording_end: f.recording_end,
-        meeting_uuid: meetingUuid || f.meeting_id,
+        meeting_uuid: f.meeting_uuid || meetingUuid || f.meeting_id,
       }));
+  }
+
+  // =====================================================
+  // INGEST recording.completed (MERGES MULTIPLE INSTANCES OF
+  // THE SAME MEETING INTO ONE ROW INSTEAD OF OVERWRITING)
+  // =====================================================
+  async ingestRecordingCompleted(params: {
+    table: 'session' | 'mentor';
+    ownerId: number;
+    meetingId: string;
+    meetingUuid: string | null;
+    recordingFiles: any[];
+    fallbackStartTime?: string | null;
+  }) {
+    const tableName =
+      params.table === 'mentor'
+        ? 'zuvy_mentor_session_recordings'
+        : 'zuvy_session_recordings';
+    const ownerColumn =
+      params.table === 'mentor' ? 'mentor_booking_id' : 'session_id';
+
+    const newManifest = this.buildSegmentManifest(
+      params.recordingFiles,
+      params.meetingUuid,
+    );
+
+    this.logger.log({
+      msg: 'ingestRecordingCompleted: instance received',
+      table: params.table,
+      ownerId: params.ownerId,
+      meetingId: params.meetingId,
+      meetingUuid: params.meetingUuid,
+      newSegmentIds: newManifest.map((s) => s.id),
+    });
+
+    // Wrapped in a transaction with a row lock (SELECT ... FOR UPDATE) so two
+    // instances of the same meeting arriving close together — or a webhook
+    // landing while the worker is mid-pipeline on this same row — can't race:
+    // without this, a plain read-then-write here can lose one side's merge
+    // (this is what happened for session 1928 / meeting 85638002558 — the
+    // second instance's segment silently replaced the first's instead of
+    // being combined with it).
+    await db.transaction(async (tx) => {
+      const existing = await tx.execute(sql`
+        SELECT * FROM ${sql.raw(tableName)}
+        WHERE ${sql.raw(ownerColumn)} = ${params.ownerId}
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `);
+
+      const row: any = existing.rows?.[0];
+
+      // No row yet for this owner — plain first-instance insert.
+      if (!row) {
+        this.logger.log({
+          msg: 'ingestRecordingCompleted: no existing row, inserting fresh',
+          table: params.table,
+          ownerId: params.ownerId,
+          meetingUuid: params.meetingUuid,
+          segmentCount: newManifest.length,
+        });
+
+        await tx.execute(sql`
+          INSERT INTO ${sql.raw(tableName)} (
+            ${sql.raw(ownerColumn)},
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            zoom_recording_id,
+            zoom_recording_manifest,
+            ingested_meeting_uuids,
+            metadata_verified,
+            status,
+            recording_start,
+            recording_end,
+            segments_count,
+            retry_count
+          ) VALUES (
+            ${params.ownerId},
+            ${params.meetingId},
+            ${params.meetingUuid},
+            ${newManifest[0]?.id ?? null},
+            ${JSON.stringify(newManifest)},
+            ${JSON.stringify(params.meetingUuid ? [params.meetingUuid] : [])},
+            TRUE,
+            'DISCOVERED',
+            ${newManifest[0]?.recording_start ?? params.fallbackStartTime ?? null},
+            ${newManifest[newManifest.length - 1]?.recording_end ?? null},
+            ${newManifest.length},
+            0
+          )
+        `);
+        return;
+      }
+
+      const ingestedUuids = this.parseJsonArray<string>(
+        row.ingested_meeting_uuids,
+      );
+
+      // Idempotent: this exact instance was already folded in (webhook redelivery).
+      if (params.meetingUuid && ingestedUuids.includes(params.meetingUuid)) {
+        this.logger.log({
+          msg: 'ingestRecordingCompleted: instance already ingested, no-op',
+          rowId: row.id,
+          meetingUuid: params.meetingUuid,
+        });
+        return;
+      }
+
+      const existingManifest = this.parseJsonArray<RecordingSegment>(
+        row.zoom_recording_manifest,
+      );
+      const segmentMap = new Map<string, RecordingSegment>();
+      for (const seg of existingManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      for (const seg of newManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      const combinedManifest = Array.from(segmentMap.values()).sort(
+        (a, b) =>
+          new Date(a.recording_start || 0).getTime() -
+          new Date(b.recording_start || 0).getTime(),
+      );
+      const updatedIngestedUuids = params.meetingUuid
+        ? Array.from(new Set([...ingestedUuids, params.meetingUuid]))
+        : ingestedUuids;
+
+      const currentStatus = String(row.status || '').toUpperCase();
+
+      this.logger.log({
+        msg: 'ingestRecordingCompleted: merging into existing row',
+        rowId: row.id,
+        currentStatus,
+        existingSegmentIds: existingManifest.map((s) => s.id),
+        newSegmentIds: newManifest.map((s) => s.id),
+        combinedSegmentCount: combinedManifest.length,
+        ingestedUuidsBefore: ingestedUuids,
+        ingestedUuidsAfter: updatedIngestedUuids,
+      });
+
+      if (currentStatus === 'COMPLETED') {
+        // New segments arrived after this session was already uploaded —
+        // reopen it, send it back through download/merge/upload with the
+        // full combined segment set, and queue the old video for deletion.
+        await tx.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_meeting_id = ${params.meetingId},
+            zoom_meeting_uuid = ${params.meetingUuid},
+            zoom_recording_id = ${combinedManifest[0]?.id ?? null},
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
+            metadata_verified = TRUE,
+            segments_count = ${combinedManifest.length},
+            recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
+            recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+            status = 'METADATA_READY',
+            merged_file_path = NULL,
+            is_final_merged = FALSE,
+            previous_drive_file_id = ${row.drive_file_id ?? row.previous_drive_file_id ?? null},
+            drive_file_id = NULL,
+            drive_link = NULL,
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+        return;
+      }
+
+      if (currentStatus === 'FAILED' || currentStatus === 'PERMANENT_FAILED') {
+        // New data arrived for a job that had given up — worth a fresh attempt.
+        await tx.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_meeting_id = ${params.meetingId},
+            zoom_meeting_uuid = ${params.meetingUuid},
+            zoom_recording_id = ${combinedManifest[0]?.id ?? null},
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
+            metadata_verified = TRUE,
+            segments_count = ${combinedManifest.length},
+            recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
+            recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+            status = 'METADATA_READY',
+            retry_count = 0,
+            last_error = NULL,
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+        return;
+      }
+
+      // Still mid-pipeline / not yet processed — just fold the new segments in.
+      // mergeRecording() re-reads the row fresh before merging, so an in-flight
+      // job naturally picks up the fuller manifest on its current or next pass.
+      await tx.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          zoom_meeting_id = ${params.meetingId},
+          zoom_meeting_uuid = ${params.meetingUuid},
+          zoom_recording_id = ${combinedManifest[0]?.id ?? null},
+          zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+          ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
+          metadata_verified = TRUE,
+          segments_count = ${combinedManifest.length},
+          recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
+          recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+          updated_at = NOW()
+        WHERE id = ${row.id}
+      `);
+    });
   }
 
   /////////////helper function for logging job details/////////////
@@ -240,6 +456,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
     // First try session recordings
+    console.log('pickJob:-Picking a recording job');
     let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
@@ -313,6 +530,9 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async processJob(job: any) {
     try {
+      console.log(
+        `processJob:-Processing recording job ${job.id} with status ${job.status}`,
+      );
       const status = String(job.status).trim().toUpperCase();
 
       this.logJob('log', job, 'Processing recording job');
@@ -373,6 +593,22 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 1 — FETCH ZOOM METADATA
   // =====================================================
   private async fetchZoomMetadata(job: any) {
+    // pickJob()'s snapshot can be stale by the time this actually runs (e.g.
+    // picked right after a bootstrap insert, before any webhook landed) — a
+    // slow in-flight call here must not blind-overwrite a manifest that
+    // ingestRecordingCompleted() has since merged from multiple instances.
+    // Re-read fresh, same discipline mergeRecording() already follows.
+    const freshTable =
+      job.table === 'mentor'
+        ? sql.raw('zuvy_mentor_session_recordings')
+        : sql.raw('zuvy_session_recordings');
+    const fresh = await db.execute(sql`
+      SELECT * FROM ${freshTable} WHERE id = ${job.id}
+    `);
+    if (fresh.rows?.[0]) {
+      job = { ...job, ...fresh.rows[0] };
+    }
+
     // ---------------------------------------------------
     // Metadata already provided by webhook
     // ---------------------------------------------------
@@ -412,26 +648,19 @@ export class RecordingWorkerService implements OnModuleInit {
     let recResp: any;
 
     try {
-      // Prefer UUID (production-grade, Zoom-safe)
-      if (job.zoom_meeting_uuid) {
-        this.logJob('debug', job, 'Fetching Zoom recordings via UUID');
-
-        recResp = await this.zoomService.getZoomRecordingFilesByUuid(
-          job.zoom_meeting_uuid,
-        );
-        recResp.source = 'uuid';
-      } else {
-        // Fallback for old sessions
-        this.logger.warn(
-          `UUID missing for job ${job.id}, falling back to meetingId`,
-        );
-
-        recResp = await this.zoomService.getZoomRecordingFilesSafe({
+      this.logJob(
+        'debug',
+        job,
+        'Fetching all Zoom meeting instances and recordings',
+        {
           meetingId: job.zoom_meeting_id,
-          meetingUuid: job.zoom_meeting_uuid,
-        });
-        recResp.source = 'meetingId';
-      }
+        },
+      );
+
+      recResp = await this.zoomService.getAllMeetingRecordings(
+        job.zoom_meeting_id,
+      );
+      recResp.source = 'allInstances';
     } catch (err: any) {
       /**
        * CRITICAL FIX
@@ -471,9 +700,26 @@ export class RecordingWorkerService implements OnModuleInit {
       throw err;
     }
 
-    const manifest = this.buildSegmentManifest(
+    const fetchedManifest = this.buildSegmentManifest(
       recResp?.recording_files || [],
       job.zoom_meeting_uuid,
+    );
+
+    const existingManifest = this.parseJsonArray<RecordingSegment>(
+      job.zoom_recording_manifest,
+    );
+    const segmentMap = new Map<string, RecordingSegment>();
+    for (const seg of existingManifest) {
+      if (seg?.id) segmentMap.set(seg.id, seg);
+    }
+    for (const seg of fetchedManifest) {
+      if (seg?.id) segmentMap.set(seg.id, seg);
+    }
+
+    const manifest = Array.from(segmentMap.values()).sort(
+      (a, b) =>
+        new Date(a.recording_start || 0).getTime() -
+        new Date(b.recording_start || 0).getTime(),
     );
 
     this.logJob('log', job, 'Available MP4 recording files', {
@@ -563,6 +809,10 @@ export class RecordingWorkerService implements OnModuleInit {
       source: recResp.source,
     });
 
+    // Guarded on metadata_verified = FALSE: the Zoom API round-trip above
+    // takes real time, and a webhook can land and merge in the meantime —
+    // this write must not clobber that. If it already flipped to verified,
+    // this becomes a no-op instead of overwriting a merged manifest.
     if (job.table === 'mentor') {
       await db.execute(sql`
         UPDATE zuvy_mentor_session_recordings
@@ -601,6 +851,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
   private async downloadRecording(job: any) {
     const tempDir = path.join(process.cwd(), 'temp-recordings');
+    console.log(`Downloading recording for job ${job}...`);
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
@@ -608,10 +859,10 @@ export class RecordingWorkerService implements OnModuleInit {
     const manifest = this.parseJsonArray<RecordingSegment>(
       job.zoom_recording_manifest,
     );
-    const segments = manifest.length
+    const segments: RecordingSegment[] = manifest.length
       ? manifest
       : job.zoom_recording_id
-        ? [{ id: job.zoom_recording_id }]
+        ? [{ id: job.zoom_recording_id, meeting_uuid: job.zoom_meeting_uuid }]
         : [];
 
     if (!segments.length) {
@@ -645,6 +896,8 @@ export class RecordingWorkerService implements OnModuleInit {
             segment.id,
             finalPath,
             job,
+            segment.meeting_uuid,
+            segment,
           );
         }
 
@@ -685,28 +938,46 @@ export class RecordingWorkerService implements OnModuleInit {
     recordingFileId: string,
     finalPath: string,
     job?: any,
+    segmentMeetingUuid?: string | null,
+    segmentObj?: RecordingSegment | null,
   ) {
     let recResp;
 
-    if (job?.zoom_meeting_uuid) {
-      recResp = await this.zoomService.getZoomRecordingFilesByUuid(
-        job.zoom_meeting_uuid,
+    this.logger.log(
+      `Downloading recording file ${recordingFileId} for job ${job?.id || 'unknown'} (UUID: ${segmentMeetingUuid || job?.zoom_meeting_uuid})...`,
+    );
+
+    const uuidToUse = segmentMeetingUuid || job?.zoom_meeting_uuid;
+
+    try {
+      if (uuidToUse) {
+        recResp = await this.zoomService.getZoomRecordingFilesByUuid(uuidToUse);
+      } else {
+        recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Zoom API recording lookup failed for UUID ${uuidToUse}: ${err.message}`,
       );
-    } else {
-      recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
     }
 
     const file = recResp?.recording_files?.find(
       (f: any) => f.id === recordingFileId,
     );
 
-    if (!file?.download_url) {
-      throw new Error('Zoom download URL not found');
+    const rawDownloadUrl = file?.download_url || segmentObj?.download_url;
+
+    if (!rawDownloadUrl) {
+      throw new Error(
+        `Zoom download URL not found (segment ${recordingFileId}, uuid ${uuidToUse || 'none'})`,
+      );
     }
 
     // Append access token to download URL for authentication
     const accessToken = await this.zoomService.getAccessToken();
-    const downloadUrl = `${file.download_url}?access_token=${accessToken}`;
+    const downloadUrl = rawDownloadUrl.includes('access_token=')
+      ? rawDownloadUrl
+      : `${rawDownloadUrl}?access_token=${accessToken}`;
 
     const tempPath = `${finalPath}.part`;
     const writer = fs.createWriteStream(tempPath);
@@ -741,13 +1012,14 @@ export class RecordingWorkerService implements OnModuleInit {
         // Validate downloaded file
         try {
           const stats = fs.statSync(tempPath);
-          const expectedSize = parseInt(file.file_size || '0');
+          const targetFile = file || segmentObj;
+          const expectedSize = Number(targetFile?.file_size || 0);
 
           this.logJob('log', job, 'Download complete - validating file', {
             downloadedSize: stats.size,
             expectedSize: expectedSize,
             filePath: finalPath,
-            recordingType: file.recording_type,
+            recordingType: targetFile?.recording_type,
           });
 
           // Check minimum file size (anything under 100KB is suspicious for a video)
@@ -801,6 +1073,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async validateVideoFile(filePath: string): Promise<void> {
     try {
+      console.log(`Validating video file ${filePath} with ffprobe...`);
       const { execSync } = require('child_process');
 
       try {
@@ -872,6 +1145,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
   private async mergeRecording(job: any) {
     this.logJob('log', job, 'Starting merge step');
+    console.log(`Merging recording for job ${job.id}...`);
 
     const table =
       job.table === 'mentor'
@@ -943,22 +1217,50 @@ export class RecordingWorkerService implements OnModuleInit {
           fs.writeFileSync(concatListPath, concatList);
 
           try {
-            execFileSync(
-              'ffmpeg',
-              [
-                '-y',
-                '-f',
-                'concat',
-                '-safe',
-                '0',
-                '-i',
-                concatListPath,
-                '-c',
-                'copy',
-                mergedPath,
-              ],
-              { stdio: 'ignore' },
-            );
+            try {
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c',
+                  'copy',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            } catch (copyErr: any) {
+              this.logger.warn(
+                `FFmpeg stream copy concat failed for job ${job.id}, falling back to re-encoding concat: ${copyErr.message}`,
+              );
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c:v',
+                  'libx264',
+                  '-preset',
+                  'fast',
+                  '-crf',
+                  '23',
+                  '-c:a',
+                  'aac',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            }
           } finally {
             try {
               fs.unlinkSync(concatListPath);
@@ -970,11 +1272,24 @@ export class RecordingWorkerService implements OnModuleInit {
       }
     }
 
+    // Validate the merged video file output before declaring MERGED status
+    try {
+      await this.validateVideoFile(mergedPath);
+    } catch (valErr: any) {
+      this.logger.error(
+        `Merged video validation failed for job ${job.id}: ${valErr.message}`,
+      );
+      throw new Error(`Merged video file is invalid: ${valErr.message}`);
+    }
+
     // Update DB
+    const relativeSegmentPaths = inputPaths.map((p) => path.basename(p));
     if (job.table === 'mentor') {
       await db.execute(sql`
       UPDATE zuvy_mentor_session_recordings
       SET
+        local_segment_paths = ${JSON.stringify(relativeSegmentPaths)},
+        segments_count = ${relativeSegmentPaths.length},
         merged_file_path = ${mergedPath},
         is_final_merged = TRUE,
         status = 'MERGED'
@@ -984,6 +1299,8 @@ export class RecordingWorkerService implements OnModuleInit {
       await db.execute(sql`
       UPDATE zuvy_session_recordings
       SET
+        local_segment_paths = ${JSON.stringify(relativeSegmentPaths)},
+        segments_count = ${relativeSegmentPaths.length},
         merged_file_path = ${mergedPath},
         is_final_merged = TRUE,
         status = 'MERGED'
@@ -991,7 +1308,7 @@ export class RecordingWorkerService implements OnModuleInit {
     `);
     }
 
-    this.logJob('log', job, 'Merge completed', {
+    this.logJob('log', job, 'Merge completed and verified', {
       mergedPath,
       segmentCount: inputPaths.length,
     });
@@ -1058,7 +1375,112 @@ export class RecordingWorkerService implements OnModuleInit {
     });
   }
 
+  /**
+   * Check 2 mandatory conditions before uploading to YouTube:
+   * 1. Session scheduled end time + 5 minutes must have passed.
+   * 2. Zoom meeting must not be live/ongoing AND no recordings are currently processing on Zoom Cloud.
+   */
+  private async checkPreUploadEligibility(
+    job: any,
+  ): Promise<{ eligible: boolean; reason?: string }> {
+    // ---------------------------------------------------
+    // Condition 1: Session scheduled End Time + 5 minutes
+    // ---------------------------------------------------
+    let sessionEndTime: Date | null = null;
+    try {
+      if (job.table === 'mentor' && job.mentor_booking_id) {
+        const mentorRow = await db.execute(sql`
+          SELECT end_time FROM zuvy_mentor_slot_booking WHERE id = ${job.mentor_booking_id}
+        `);
+        if (mentorRow.rows?.[0]?.end_time) {
+          sessionEndTime = new Date(mentorRow.rows[0].end_time as any);
+        }
+      } else if (job.session_id) {
+        const sessionRow = await db.execute(sql`
+          SELECT end_time FROM zuvy_sessions WHERE id = ${job.session_id}
+        `);
+        if (sessionRow.rows?.[0]?.end_time) {
+          sessionEndTime = new Date(sessionRow.rows[0].end_time as any);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to fetch session end time for job ${job.id}: ${err.message}`,
+      );
+    }
+
+    const now = Date.now();
+
+    if (sessionEndTime && !isNaN(sessionEndTime.getTime())) {
+      const cutoffTime = sessionEndTime.getTime() + 5 * 60 * 1000;
+      if (now < cutoffTime) {
+        const minutesRemaining = Math.ceil((cutoffTime - now) / (1000 * 60));
+        return {
+          eligible: false,
+          reason: `Session scheduled end time + 5 minutes has not passed yet (${minutesRemaining}m remaining until ${new Date(cutoffTime).toISOString()}).`,
+        };
+      }
+    } else {
+      // Fallback if DB end_time is missing: check recording_end + 5 minutes
+      const manifest = this.parseJsonArray<RecordingSegment>(
+        job.zoom_recording_manifest,
+      );
+      const lastSegment = manifest[manifest.length - 1];
+      const lastEndTimeStr = lastSegment?.recording_end || job.recording_end;
+
+      if (lastEndTimeStr) {
+        const lastEndTime = new Date(lastEndTimeStr).getTime();
+        const cutoffTime = lastEndTime + 5 * 60 * 1000;
+        if (now < cutoffTime) {
+          const minutesRemaining = Math.ceil((cutoffTime - now) / (1000 * 60));
+          return {
+            eligible: false,
+            reason: `Recording quiet window (5 minutes after last segment end) has not passed yet (${minutesRemaining}m remaining).`,
+          };
+        }
+      }
+    }
+
+    // ---------------------------------------------------
+    // Condition 2: Session Live OR Zoom Cloud Recording Processing
+    // ---------------------------------------------------
+    try {
+      const isLive = await this.zoomService.isMeetingLiveViaDashboard(
+        job.zoom_meeting_id,
+      );
+      if (isLive) {
+        return {
+          eligible: false,
+          reason: `Zoom meeting ${job.zoom_meeting_id} is currently live / ongoing on Zoom.`,
+        };
+      }
+    } catch (liveErr: any) {
+      this.logger.warn(
+        `Live meeting check error for job ${job.id}: ${liveErr.message}`,
+      );
+    }
+
+    try {
+      const isProcessing = await this.zoomService.isRecordingProcessingOnZoom(
+        job.zoom_meeting_id,
+      );
+      if (isProcessing) {
+        return {
+          eligible: false,
+          reason: `A cloud recording for Zoom meeting ${job.zoom_meeting_id} is currently processing on Zoom Cloud.`,
+        };
+      }
+    } catch (procErr: any) {
+      this.logger.warn(
+        `Zoom cloud processing check error for job ${job.id}: ${procErr.message}`,
+      );
+    }
+
+    return { eligible: true };
+  }
+
   private async uploadToYoutube(job: any) {
+    console.log(`Uploading recording for job ${job.id} to YouTube...`);
     if (!YOUTUBE_UPLOAD_ENABLED) {
       this.logJob('warn', job, 'YouTube upload disabled by env flag');
       return;
@@ -1080,6 +1502,98 @@ export class RecordingWorkerService implements OnModuleInit {
       ...job,
       ...rec.rows[0],
     };
+
+    // Strict Guard: Until recordings are merged into 1 video, upload to YouTube is blocked
+    const currentStatus = String(job.status || '').toUpperCase();
+    if (currentStatus !== 'MERGED' && currentStatus !== 'PROCESSING_UPLOAD') {
+      throw new Error(
+        `Cannot upload job ${job.id} to YouTube until recordings are merged into 1 video (current status: ${job.status})`,
+      );
+    }
+
+    if (job.is_final_merged !== true) {
+      throw new Error(
+        `Cannot upload job ${job.id} to YouTube until all recordings are merged into a single video file`,
+      );
+    }
+
+    // Mandatory Pre-Upload Eligibility Check (Condition 1: End time + 5min, Condition 2: Session active or Zoom cloud recording processing)
+    const eligibility = await this.checkPreUploadEligibility(job);
+    if (!eligibility.eligible) {
+      this.logJob(
+        'warn',
+        job,
+        `Deferring YouTube upload: ${eligibility.reason}`,
+      );
+
+      const deferTime = new Date(Date.now() + 3 * 60 * 1000);
+      const tableName = this.getTableName(job);
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          status = 'METADATA_READY',
+          next_retry_at = ${deferTime}
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
+
+    // Final Instance Sync: Re-check Zoom API to capture all past meeting instances
+    try {
+      const allRecs = await this.zoomService.getAllMeetingRecordings(
+        job.zoom_meeting_id,
+      );
+      const latestManifest = this.buildSegmentManifest(
+        allRecs?.recording_files || [],
+        job.zoom_meeting_uuid,
+      );
+      const currentManifest = this.parseJsonArray<RecordingSegment>(
+        job.zoom_recording_manifest,
+      );
+
+      const segmentMap = new Map<string, RecordingSegment>();
+      for (const seg of currentManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      for (const seg of latestManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      const combinedManifest = Array.from(segmentMap.values()).sort(
+        (a, b) =>
+          new Date(a.recording_start || 0).getTime() -
+          new Date(b.recording_start || 0).getTime(),
+      );
+
+      if (combinedManifest.length > currentManifest.length) {
+        this.logJob(
+          'log',
+          job,
+          'Discovered new recording segments during pre-upload check. Re-opening job to download and merge all segments into 1 video.',
+          {
+            oldCount: currentManifest.length,
+            newCount: combinedManifest.length,
+          },
+        );
+
+        const tableName = this.getTableName(job);
+        await db.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            segments_count = ${combinedManifest.length},
+            status = 'METADATA_READY',
+            merged_file_path = NULL,
+            is_final_merged = FALSE
+          WHERE id = ${job.id}
+        `);
+        return;
+      }
+    } catch (syncErr: any) {
+      this.logger.warn(
+        `Final instance sync warning for job ${job.id}: ${syncErr.message}`,
+      );
+    }
 
     const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
 
@@ -1170,13 +1684,40 @@ export class RecordingWorkerService implements OnModuleInit {
         videoUrl: videoUrl,
       });
 
+      // Best-effort cleanup of a superseded video — this job was reopened
+      // because a later recording instance arrived after a prior upload.
+      // Never let a cleanup failure block recording the new upload as done.
+      const previousDriveFileId = job.previous_drive_file_id as
+        | string
+        | null
+        | undefined;
+      if (previousDriveFileId) {
+        try {
+          await this.youtube.videos.delete({ id: previousDriveFileId });
+          this.logJob('log', job, 'Deleted superseded YouTube video', {
+            previousDriveFileId,
+          });
+        } catch (delErr: any) {
+          this.logJob(
+            'warn',
+            job,
+            'Failed to delete superseded YouTube video',
+            {
+              previousDriveFileId,
+              error: delErr?.message ?? String(delErr),
+            },
+          );
+        }
+      }
+
       if (job.table === 'mentor') {
         await db.execute(sql`
           UPDATE zuvy_mentor_session_recordings
           SET
             status = 'COMPLETED',
             drive_file_id = ${videoId},
-            drive_link = ${videoUrl}
+            drive_link = ${videoUrl},
+            previous_drive_file_id = NULL
           WHERE id = ${job.id}
         `);
       } else {
@@ -1185,7 +1726,8 @@ export class RecordingWorkerService implements OnModuleInit {
           SET
             status = 'COMPLETED',
             drive_file_id = ${videoId},
-            drive_link = ${videoUrl}
+            drive_link = ${videoUrl},
+            previous_drive_file_id = NULL
           WHERE id = ${job.id}
         `);
 

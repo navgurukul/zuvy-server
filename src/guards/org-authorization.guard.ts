@@ -211,7 +211,7 @@ export class OrgAuthorizationGuard implements CanActivate {
     }
     if (path.startsWith('/content/')) {
       return (
-        path.startsWith('/content/students/assessmentid=') ||
+        path.startsWith('/content/students/assessmentid/') ||
         path.startsWith('/content/startassessmentforstudent/') ||
         path.startsWith('/content/assessmentdetailsofquiz/') ||
         path.startsWith('/content/assessmentdetailsofopenended/')
@@ -220,8 +220,8 @@ export class OrgAuthorizationGuard implements CanActivate {
     if (path.startsWith('/submission/')) {
       return (
         path.startsWith('/submission/assessment/submit') ||
-        path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
-        path.startsWith('/submission/openended/assessmentsubmissionid=') ||
+        path.startsWith('/submission/quiz/assessmentsubmissionid/') ||
+        path.startsWith('/submission/openended/assessmentsubmissionid/') ||
         path.startsWith('/submission/assessment/properting')
       );
     }

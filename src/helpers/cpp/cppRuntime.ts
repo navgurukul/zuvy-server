@@ -151,6 +151,21 @@ if (onlyQuotes) {
 return v;
 }
 
+static void printJsonString(const string &s) {
+  cout << '"';
+  for (char c : s) {
+    switch (c) {
+      case '"': cout << "\\\""; break;
+      case '\\': cout << "\\\\"; break;
+      case '\n': cout << "\\n"; break;
+      case '\r': cout << "\\r"; break;
+      case '\t': cout << "\\t"; break;
+      default: cout << c;
+    }
+  }
+  cout << '"';
+}
+
 static void printVariant(const Variant &v) {
   if (v.t == Variant::NUL) {
     cout << "null";
@@ -159,13 +174,15 @@ static void printVariant(const Variant &v) {
     cout << v.i;
   }
   else if (v.t == Variant::DBL) {
-    cout << v.d;
+    std::ostringstream oss;
+    oss << std::setprecision(15) << v.d;
+    cout << oss.str();
  }
   else if (v.t == Variant::BOOL) {
     cout << (v.b ? "true" : "false");
   }
   else if (v.t == Variant::STR) {
-    cout << v.s;
+    printJsonString(v.s);
   }
   else if (v.t == Variant::ARR) {
     cout << "[";

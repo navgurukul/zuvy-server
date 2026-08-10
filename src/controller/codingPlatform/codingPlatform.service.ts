@@ -55,6 +55,7 @@ export class CodingPlatformService {
         switch (input.parameterType) {
           case 'int':
           case 'float':
+          case 'double':
           case 'str':
           case 'bool':
             return input.parameterValue.toString(); // Convert to string
@@ -75,6 +76,7 @@ export class CodingPlatformService {
         switch (testCase.expectedOutput.parameterType) {
           case 'int':
           case 'float':
+          case 'double':
           case 'str':
           case 'bool':
             return testCase.expectedOutput.parameterValue.toString();
@@ -726,6 +728,7 @@ export class CodingPlatformService {
           question[0].title,
           question[0].testCases[0].inputs,
           question[0].testCases[0].expectedOutput?.parameterType,
+          question[0].testCases,
         );
         if (errorGenerateTemplate) {
           return [errorGenerateTemplate];

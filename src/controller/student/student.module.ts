@@ -7,9 +7,16 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { ClassesModule } from '../classes/classes.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
+import { AttendanceCalculationModule } from 'src/services/attendance/attendance-calculation.module';
 
 @Module({
-  imports: [AuthModule, BatchesModule, ClassesModule, TrackinglogModule],
+  imports: [
+    AuthModule,
+    BatchesModule,
+    ClassesModule,
+    TrackinglogModule,
+    AttendanceCalculationModule,
+  ],
   controllers: [StudentController],
   providers: [StudentService, JwtService],
 })

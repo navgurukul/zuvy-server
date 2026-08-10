@@ -482,13 +482,15 @@ export class BootcampController {
     name: 'attendance',
     required: false,
     type: Number,
-    description: 'Filter by attendance number',
+    description:
+      'Filter by attendance number. Matched against a periodically-refreshed cached value, not the live percentage shown in the response for each student — the two can briefly disagree right after new attendance is recorded.',
   })
   @ApiQuery({
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by ( percentage, name, email)',
+    description:
+      'Field to order by ( percentage, name, email). "percentage" sorts by the same cached value as the `attendance` filter, not the live percentage displayed per student — see that field\'s description.',
     enum: ['percentage', 'name', 'email'],
   })
   @ApiQuery({

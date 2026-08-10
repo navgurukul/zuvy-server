@@ -268,7 +268,12 @@ export const typeMappings = {
   },
 };
 
-export async function generateTemplates(functionName, parameters, returnType) {
+export async function generateTemplates(
+  functionName,
+  parameters,
+  returnType,
+  allTestCases?,
+) {
   try {
     functionName = functionName.replace(/ /g, '_').toLowerCase();
     /**
@@ -337,6 +342,7 @@ rl.on('close', () => {
       functionName,
       parameters,
       returnType,
+      { allTestCases },
     );
     if (errorCppTemplate) {
       return [errorCppTemplate, null];

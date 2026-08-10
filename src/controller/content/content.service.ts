@@ -122,6 +122,26 @@ export class ContentService {
     });
   }
 
+  private async getChapterTrackingContext(chapterId: number, moduleId: number) {
+    const resolvedModuleId = Number(moduleId);
+    const module = await db
+      .select({
+        moduleId: zuvyCourseModules.id,
+        moduleName: zuvyCourseModules.name,
+        bootcampId: zuvyCourseModules.bootcampId,
+      })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, resolvedModuleId))
+      .limit(1);
+
+    return {
+      chapterId: Number(chapterId),
+      moduleId: resolvedModuleId,
+      moduleName: module[0]?.moduleName || '',
+      bootcampId: module[0]?.bootcampId ?? null,
+    };
+  }
+
   async uploadPdfToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
     try {
       const key = `zuvy_curriculum/${Date.now()}_${fileName}`;
@@ -280,11 +300,15 @@ export class ContentService {
         .select()
         .from(zuvyCourseProjects)
         .where(eq(zuvyCourseProjects.id, projectId));
+      // readability/type-safety: typed and/eq helpers instead of a raw sql template
       const correspondingModule = await db
         .select()
         .from(zuvyCourseModules)
         .where(
-          sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`,
+          and(
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            eq(zuvyCourseModules.projectId, projectId),
+          ),
         );
       if (project.length > 0) {
         return {
@@ -452,12 +476,17 @@ export class ContentService {
         .where(eq(zuvyBootcamps.id, bootcampId))
         .limit(1);
       const courseName = courseRes[0]?.name || '';
+      const moduleName = moduleInfo[0]?.name || '';
       return {
         status: 'success',
         message: 'Chapter created successfully for this module',
         code: 200,
         module: chapter,
         courseName,
+        moduleName,
+        moduleId,
+        bootcampId,
+        chapterId: chapter[0]?.id ?? null,
       };
     } catch (err) {
       Logger.error({ err });
@@ -617,10 +646,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name:
-            module['projectData'].length == 0
-              ? module.name
-              : module['projectData'][0]['title'],
+          name: module.name || module['projectData']?.[0]?.title || module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
@@ -780,18 +806,18 @@ export class ContentService {
     batchId?: number,
   ) {
     try {
-      const bootcampInfo = await db
-        .select()
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, bootcampId));
-      const chapterInfo = await db
-        .select()
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
-      const moduleInfo = await db
-        .select()
-        .from(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId));
+      // perf: fetch these independent lookups in parallel instead of sequential awaits
+      const [bootcampInfo, chapterInfo, moduleInfo] = await Promise.all([
+        db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId)),
+        db
+          .select()
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.id, chapterId)),
+        db
+          .select()
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, moduleId)),
+      ]);
 
       if (bootcampInfo.length == 0) {
         throw new NotFoundException('Bootcamp not found or deleted!');
@@ -924,14 +950,13 @@ export class ContentService {
           return 'No Chapter found';
         }
 
-        // Update assessment state using AssessmentStateService
-        await this.handleAssessmentUpdate(chapterDetails[0].id);
-
-        // Get the updated assessment to get the current state
+        // Update assessment state using AssessmentStateService; it now
+        // returns the up-to-date assessment row, avoiding a redundant re-fetch.
+        // fix: guard against a null return (assessment genuinely missing, or
+        // both the fetch and the state-write failed) so this read path
+        // degrades to the default state below instead of throwing.
         const updatedAssessment =
-          await db.query.zuvyOutsourseAssessments.findFirst({
-            where: eq(zuvyOutsourseAssessments.id, chapterDetails[0].id),
-          });
+          (await this.handleAssessmentUpdate(chapterDetails[0].id)) ?? {};
 
         const stateMap = {
           0: 'DRAFT',
@@ -1038,13 +1063,17 @@ export class ContentService {
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else if (chapterDetails[0].topicId == 7) {
+          // cleanup: drop the redundant sql`` wrapper, inArray() already produces a valid condition
           const formDetails =
             chapterDetails[0].formQuestions !== null
               ? await db
                   .select()
                   .from(zuvyModuleForm)
                   .where(
-                    sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                    inArray(
+                      zuvyModuleForm.id,
+                      Object.values(chapterDetails[0].formQuestions),
+                    ),
                   )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
@@ -1272,63 +1301,103 @@ export class ContentService {
         throw new NotFoundException('Module not found or deleted!');
       }
 
-      // ── Snapshot BEFORE state for diff ────────────────────────────────
-      const oldModule = moduleInfo[0];
+      let newModule = null;
 
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
 
+        // fix: don't assume `order` values are a dense, gap-free 1..N
+        // sequence per bootcamp (a range filter like `order BETWEEN x AND y`
+        // only shifts the right rows under that assumption, which nothing
+        // enforces at the DB level). Fetch the actual sorted list once and
+        // compute shifts by ARRAY POSITION — the same approach the original
+        // per-row-loop code used, so it's correct regardless of gaps or
+        // duplicate order values — then apply them all in a single bulk
+        // CASE-based UPDATE instead of one UPDATE per shifted row.
         const modules = await db
-          .select()
+          .select({ id: zuvyCourseModules.id, order: zuvyCourseModules.order })
           .from(zuvyCourseModules)
           .where(eq(zuvyCourseModules.bootcampId, bootcampId))
           .orderBy(zuvyCourseModules.order);
+        const draggedIndex = modules.findIndex((m) => m.id === moduleId);
 
-        const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
-
-        if (draggedModuleIndex + 1 > newOrder) {
-          for (let i = newOrder - 1; i <= draggedModuleIndex - 1; i++) {
-            await db
-              .update(zuvyCourseModules)
-              .set({ order: modules[i].order + 1 })
-              .where(eq(zuvyCourseModules.id, modules[i].id));
-          }
-          await db
-            .update(zuvyCourseModules)
-            .set({ order: newOrder })
-            .where(eq(zuvyCourseModules.id, moduleId));
-        } else if (draggedModuleIndex + 1 < newOrder) {
-          let counting = newOrder - (draggedModuleIndex + 1);
-          let ordering = newOrder - 1;
-          while (counting > 0) {
-            await db
-              .update(zuvyCourseModules)
-              .set({ order: modules[ordering].order - 1 })
-              .where(eq(zuvyCourseModules.id, modules[ordering].id));
-            counting = counting - 1;
-            ordering = ordering - 1;
+        if (draggedIndex !== -1) {
+          const shifts: { id: number; order: number }[] = [];
+          if (draggedIndex + 1 > newOrder) {
+            for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+              shifts.push({ id: modules[i].id, order: modules[i].order + 1 });
+            }
+          } else if (draggedIndex + 1 < newOrder) {
+            let counting = newOrder - (draggedIndex + 1);
+            let ordering = newOrder - 1;
+            while (counting > 0) {
+              shifts.push({
+                id: modules[ordering].id,
+                order: modules[ordering].order - 1,
+              });
+              counting -= 1;
+              ordering -= 1;
+            }
           }
 
-          await db
+          if (shifts.length > 0) {
+            const sqlChunks: SQL[] = [sql`(case`];
+            for (const shift of shifts) {
+              sqlChunks.push(
+                sql`when ${zuvyCourseModules.id} = ${shift.id} then ${shift.order}`,
+              );
+            }
+            sqlChunks.push(sql`else ${zuvyCourseModules.order} end)`);
+            await db
+              .update(zuvyCourseModules)
+              .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+              .where(
+                inArray(
+                  zuvyCourseModules.id,
+                  shifts.map((shift) => shift.id),
+                ),
+              );
+          }
+
+          const updated = await db
             .update(zuvyCourseModules)
             .set({ order: newOrder })
-            .where(eq(zuvyCourseModules.id, moduleId));
+            .where(eq(zuvyCourseModules.id, moduleId))
+            .returning();
+          newModule = updated[0] || null;
         }
       } else if (reorderData.reOrderDto == undefined) {
-        await db
+        const updated = await db
           .update(zuvyCourseModules)
           .set(reorderData.moduleDto)
-          .where(eq(zuvyCourseModules.id, moduleId));
+          .where(eq(zuvyCourseModules.id, moduleId))
+          .returning();
+        newModule = updated[0] || null;
+
+        const newName = reorderData.moduleDto?.name;
+        const projectIdToUse = newModule?.projectId ?? moduleInfo[0]?.projectId;
+        if (
+          typeof newName === 'string' &&
+          newName.trim() !== '' &&
+          projectIdToUse
+        ) {
+          await db
+            .update(zuvyCourseProjects)
+            .set({ title: newName })
+            .where(eq(zuvyCourseProjects.id, projectIdToUse));
+        }
       }
 
-      // Fetch updated module data
-      const updatedModule = await db
-        .select()
-        .from(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId))
-        .limit(1);
-
-      const newModule = updatedModule[0] || null;
+      // Fall back to a fresh SELECT only if none of the update branches above
+      // ran (e.g. oldOrder === newOrder), so the response shape is unchanged.
+      if (!newModule) {
+        const updatedModule = await db
+          .select()
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, moduleId))
+          .limit(1);
+        newModule = updatedModule[0] || null;
+      }
 
       const courseRes = await db
         .select({ name: zuvyBootcamps.name })
@@ -1446,36 +1515,57 @@ export class ContentService {
       if (editData.newOrder != undefined) {
         const { newOrder } = editData;
 
+        // fix: don't assume `order` values are a dense, gap-free 1..N
+        // sequence per module (a range filter like `order BETWEEN x AND y`
+        // only shifts the right rows under that assumption, which nothing
+        // enforces at the DB level). Fetch the actual sorted list once and
+        // compute shifts by ARRAY POSITION — the same approach the original
+        // per-row-loop code used, so it's correct regardless of gaps or
+        // duplicate order values — then apply them all in a single bulk
+        // CASE-based UPDATE instead of one UPDATE per shifted row.
         const chapters = await db
-          .select()
+          .select({ id: zuvyModuleChapter.id, order: zuvyModuleChapter.order })
           .from(zuvyModuleChapter)
           .where(eq(zuvyModuleChapter.moduleId, moduleId))
           .orderBy(zuvyModuleChapter.order);
+        const draggedIndex = chapters.findIndex((c) => c.id === chapterId);
 
-        const draggedModuleIndex = chapters.findIndex(
-          (m) => m.id === chapterId,
-        );
-        if (draggedModuleIndex + 1 > newOrder) {
-          for (let i = newOrder - 1; i <= draggedModuleIndex - 1; i++) {
-            await db
-              .update(zuvyModuleChapter)
-              .set({ order: chapters[i].order + 1 })
-              .where(eq(zuvyModuleChapter.id, chapters[i].id));
+        if (draggedIndex !== -1) {
+          const shifts: { id: number; order: number }[] = [];
+          if (draggedIndex + 1 > newOrder) {
+            for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+              shifts.push({ id: chapters[i].id, order: chapters[i].order + 1 });
+            }
+          } else if (draggedIndex + 1 < newOrder) {
+            let counting = newOrder - (draggedIndex + 1);
+            let ordering = newOrder - 1;
+            while (counting > 0) {
+              shifts.push({
+                id: chapters[ordering].id,
+                order: chapters[ordering].order - 1,
+              });
+              counting -= 1;
+              ordering -= 1;
+            }
           }
-          await db
-            .update(zuvyModuleChapter)
-            .set({ order: newOrder })
-            .where(eq(zuvyModuleChapter.id, chapterId));
-        } else if (draggedModuleIndex + 1 < newOrder) {
-          let counting = newOrder - (draggedModuleIndex + 1);
-          let ordering = newOrder - 1;
-          while (counting > 0) {
+
+          if (shifts.length > 0) {
+            const sqlChunks: SQL[] = [sql`(case`];
+            for (const shift of shifts) {
+              sqlChunks.push(
+                sql`when ${zuvyModuleChapter.id} = ${shift.id} then ${shift.order}`,
+              );
+            }
+            sqlChunks.push(sql`else ${zuvyModuleChapter.order} end)`);
             await db
               .update(zuvyModuleChapter)
-              .set({ order: chapters[ordering].order - 1 })
-              .where(eq(zuvyModuleChapter.id, chapters[ordering].id));
-            counting = counting - 1;
-            ordering = ordering - 1;
+              .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+              .where(
+                inArray(
+                  zuvyModuleChapter.id,
+                  shifts.map((shift) => shift.id),
+                ),
+              );
           }
 
           await db
@@ -1611,6 +1701,9 @@ export class ContentService {
         message: 'Modified successfully',
         chapter: updatedChapter,
         bootcampId: moduleInfo[0].bootcampId,
+        moduleId,
+        moduleName: moduleInfo[0]?.name || '',
+        chapterId,
         descriptionSuffix,
       };
     } catch (err) {
@@ -1667,6 +1760,7 @@ export class ContentService {
     chapterId: number,
   ) {
     try {
+      let moduleInfo: any[] = [];
       const chapterInfo = await db
         .select()
         .from(zuvyModuleChapter)
@@ -1674,7 +1768,7 @@ export class ContentService {
       if (chapterInfo.length == 0) {
         throw new NotFoundException('Assessment not found or deleted!');
       } else {
-        const moduleInfo = await db
+        moduleInfo = await db
           .select()
           .from(zuvyCourseModules)
           .where(eq(zuvyCourseModules.id, chapterInfo[0].moduleId));
@@ -1953,17 +2047,21 @@ export class ContentService {
             endDatetime: new Date(assessmentBody.endDatetime).toISOString(),
           }),
         };
-        let updatedOutsourseAssessment = await db
-          .update(zuvyOutsourseAssessments)
-          .set(updatedOutsourse)
-          .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
-          .returning();
-
-        let updatedAssessment = await db
-          .update(zuvyModuleAssessment)
-          .set(assessmentData)
-          .where(eq(zuvyModuleAssessment.id, assessment_id))
-          .returning();
+        // These two updates target independent tables and don't depend on
+        // each other's result, so they can run concurrently.
+        const [updatedOutsourseAssessment, updatedAssessment] =
+          await Promise.all([
+            db
+              .update(zuvyOutsourseAssessments)
+              .set(updatedOutsourse)
+              .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+              .returning(),
+            db
+              .update(zuvyModuleAssessment)
+              .set(assessmentData)
+              .where(eq(zuvyModuleAssessment.id, assessment_id))
+              .returning(),
+          ]);
         // Insert new data
 
         // Update chapter title when assessment title changes
@@ -2003,59 +2101,72 @@ export class ContentService {
           assessmentOutsourseId,
         }));
 
-        if (mcqArray.length > 0) {
-          let createZOMQ = await db
-            .insert(zuvyOutsourseQuizzes)
-            .values(mcqArray)
-            .returning();
-          if (createZOMQ.length > 0) {
-            const toUpdateIds = createZOMQ
-              .filter((c) => c.quiz_id)
-              .map((c) => c.quiz_id);
-            await db
-              .update(zuvyModuleQuiz)
-              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` } as any)
-              .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
-          }
-        }
-
-        if (openEndedQuestionsArray.length > 0) {
-          let createZOOQ = await db
-            .insert(zuvyOutsourseOpenEndedQuestions)
-            .values(openEndedQuestionsArray)
-            .returning();
-          if (createZOOQ.length > 0) {
-            const toUpdateIds = createZOOQ
-              .filter((c) => c.openEndedQuestionId)
-              .map((c) => c.openEndedQuestionId);
-            let updateOpendEndedQuestions: any = {
-              usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1`,
-            };
-            await db
-              .update(zuvyOpenEndedQuestions)
-              .set(updateOpendEndedQuestions)
-              .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
-          }
-        }
-
-        if (codingProblemsArray.length > 0) {
-          let createZOCQ = await db
-            .insert(zuvyOutsourseCodingQuestions)
-            .values(codingProblemsArray)
-            .returning();
-          if (createZOCQ.length > 0) {
-            const toUpdateIds = createZOCQ
-              .filter((c) => c.codingQuestionId)
-              .map((c) => c.codingQuestionId);
-            let updateCodingQuestions: any = {
-              usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
-            };
-            await db
-              .update(zuvyCodingQuestions)
-              .set(updateCodingQuestions)
-              .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
-          }
-        }
+        // Each of these three blocks touches its own insert table + its own
+        // usage counter table, is self-contained (no shared mutable state,
+        // no cross-block references), so they can run concurrently.
+        await Promise.all([
+          (async () => {
+            if (mcqArray.length > 0) {
+              let createZOMQ = await db
+                .insert(zuvyOutsourseQuizzes)
+                .values(mcqArray)
+                .returning();
+              if (createZOMQ.length > 0) {
+                const toUpdateIds = createZOMQ
+                  .filter((c) => c.quiz_id)
+                  .map((c) => c.quiz_id);
+                await db
+                  .update(zuvyModuleQuiz)
+                  .set({
+                    usage: sql`${zuvyModuleQuiz.usage}::numeric + 1`,
+                  } as any)
+                  .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+              }
+            }
+          })(),
+          (async () => {
+            if (openEndedQuestionsArray.length > 0) {
+              let createZOOQ = await db
+                .insert(zuvyOutsourseOpenEndedQuestions)
+                .values(openEndedQuestionsArray)
+                .returning();
+              if (createZOOQ.length > 0) {
+                const toUpdateIds = createZOOQ
+                  .filter((c) => c.openEndedQuestionId)
+                  .map((c) => c.openEndedQuestionId);
+                let updateOpendEndedQuestions: any = {
+                  usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1`,
+                };
+                await db
+                  .update(zuvyOpenEndedQuestions)
+                  .set(updateOpendEndedQuestions)
+                  .where(
+                    sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`,
+                  );
+              }
+            }
+          })(),
+          (async () => {
+            if (codingProblemsArray.length > 0) {
+              let createZOCQ = await db
+                .insert(zuvyOutsourseCodingQuestions)
+                .values(codingProblemsArray)
+                .returning();
+              if (createZOCQ.length > 0) {
+                const toUpdateIds = createZOCQ
+                  .filter((c) => c.codingQuestionId)
+                  .map((c) => c.codingQuestionId);
+                let updateCodingQuestions: any = {
+                  usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
+                };
+                await db
+                  .update(zuvyCodingQuestions)
+                  .set(updateCodingQuestions)
+                  .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+              }
+            }
+          })(),
+        ]);
       }
       return {
         status: 'success',
@@ -2063,6 +2174,10 @@ export class ContentService {
         message: 'Updated successfully',
         before: { title: chapterInfo[0]?.title },
         data: { title: assessmentBody.title || chapterInfo[0]?.title },
+        chapterId,
+        moduleId: chapterInfo[0]?.moduleId,
+        moduleName: moduleInfo[0]?.name || '',
+        bootcampId: moduleInfo[0]?.bootcampId || null,
       };
     } catch (err) {
       throw err;
@@ -2442,6 +2557,10 @@ export class ContentService {
       message: 'Chapter and all related data deleted successfully',
       code: 200,
       chapter: chapterRecord,
+      chapterId,
+      moduleId,
+      moduleName: moduleInfo[0]?.name || '',
+      bootcampId,
       courseName,
     };
   }
@@ -2485,7 +2604,9 @@ export class ContentService {
               and(
                 eq(zuvyModuleQuizVariants.variantNumber, 1),
                 eq(zuvyModuleQuiz.orgId, orgId),
-                sql`LOWER(${zuvyModuleQuizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+                // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+                // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
+                sql`LOWER(${zuvyModuleQuizVariants.question}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
               ),
             )
             .execute()
@@ -2497,10 +2618,13 @@ export class ContentService {
         where.push(inArray(zuvyModuleQuiz.id, matchingQuizIds));
       }
 
-      // Get total count
-      const totalCount = await db.query.zuvyModuleQuiz.findMany({
-        where: and(...where),
-      });
+      // perf: count(*) aggregate instead of fetching every matching row just to count them
+      const totalCountResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyModuleQuiz)
+        .where(and(...where))
+        .execute();
+      const totalCount = Number(totalCountResult[0].count);
 
       // Get paginated results
       const result = await db.query.zuvyModuleQuiz.findMany({
@@ -2510,10 +2634,12 @@ export class ContentService {
             orderBy: (quizVariants, { sql }) => {
               if (searchTerm) {
                 return [
-                  sql`CASE 
-                                  WHEN LOWER(${quizVariants.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-                                  WHEN LOWER(${quizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                                      POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${quizVariants.question})) - 1
+                  // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+                  // (unescaped) — now bound as query parameters, closing a SQL-injection hole
+                  sql`CASE
+                                  WHEN LOWER(${quizVariants.question}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 0
+                                  WHEN LOWER(${quizVariants.question}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+                                      POSITION(${searchTerm.toLowerCase()} IN LOWER(${quizVariants.question})) - 1
                                   ELSE 9999
                               END`,
                 ];
@@ -2557,10 +2683,8 @@ export class ContentService {
       // Return the results with permissions
       return {
         data: result,
-        totalRows: totalCount.length,
-        totalPages: !Number.isNaN(limit)
-          ? Math.ceil(totalCount.length / limit)
-          : 1,
+        totalRows: totalCount,
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount / limit) : 1,
         ...userPermissions,
       };
     } catch (err) {
@@ -2599,8 +2723,10 @@ export class ContentService {
       }
 
       if (searchTerm) {
+        // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+        // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
         conditions.push(
-          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
         );
       }
 
@@ -2644,11 +2770,13 @@ export class ContentService {
         orderBy: (zuvyCodingQuestions, { sql }) => {
           if (searchTerm) {
             return [
+              // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+              // (unescaped) — now bound as query parameters, closing a SQL-injection hole
               sql`
-                CASE 
-                  WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-                  WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                    POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
+                CASE
+                  WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 1
+                  WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+                    POSITION(${searchTerm.toLowerCase()} IN LOWER(${zuvyCodingQuestions.title})) + 1
                   ELSE 9999
                 END
               `,
@@ -2759,7 +2887,7 @@ export class ContentService {
 
       // Update specific quiz variants only if variantMCQs is provided
       if (quizUpdates.variantMCQs) {
-        // Use forEach to ensure sequential execution
+        // Runs all variant updates concurrently (they are independent of each other)
         await Promise.all(
           quizUpdates.variantMCQs.map(async (variant) => {
             const variantData: EditQuizVariantDto = {
@@ -2863,8 +2991,9 @@ export class ContentService {
 
   async deleteQuiz(id: deleteQuestionDto, orgId: number) {
     try {
+      // perf: only the id column is needed for this existence check, not the full row
       const usedQuiz = await db
-        .select()
+        .select({ id: zuvyModuleQuiz.id })
         .from(zuvyModuleQuiz)
         .where(
           and(
@@ -2934,8 +3063,9 @@ export class ContentService {
 
   async deleteCodingProblem(id: deleteQuestionDto, orgId: number) {
     try {
+      // perf: only the id column is needed for this existence check, not the full row
       const usedCodingQuestions = await db
-        .select()
+        .select({ id: zuvyCodingQuestions.id })
         .from(zuvyCodingQuestions)
         .where(
           and(
@@ -3021,8 +3151,9 @@ export class ContentService {
         )
         .limit(1);
       const questionText = firstQ[0]?.question || '';
+      // perf: only the id column is needed for this existence check, not the full row
       const usedOpenEndedQuestions = await db
-        .select()
+        .select({ id: zuvyOpenEndedQuestions.id })
         .from(zuvyOpenEndedQuestions)
         .where(
           and(
@@ -3276,8 +3407,10 @@ export class ContentService {
         );
       }
       if (searchTerm) {
+        // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+        // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
         conditions.push(
-          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
         );
       }
 
@@ -3293,11 +3426,13 @@ export class ContentService {
         .where(and(...conditions))
         .orderBy(
           searchTerm
-            ? sql`
-            CASE 
-              WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-              WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+            ? // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+              // (unescaped) — now bound as query parameters, closing a SQL-injection hole
+              sql`
+            CASE
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 1
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+                POSITION(${searchTerm.toLowerCase()} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
               ELSE 9999 -- Push non-matching to end
             END
           `
@@ -3352,9 +3487,15 @@ export class ContentService {
   ) {
     try {
       let { id } = req.user[0];
+      // readability/type-safety: typed and/eq helpers instead of a raw sql template
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          sql`${zuvyOutsourseAssessments.assessmentId} = ${assessmentId} AND ${zuvyOutsourseAssessments.bootcampId} = ${bootcampId} AND ${zuvyOutsourseAssessments.chapterId} = ${chapterId} AND ${zuvyOutsourseAssessments.moduleId} = ${moduleId}`,
+        where: (zuvyOutsourseAssessments, { eq, and }) =>
+          and(
+            eq(zuvyOutsourseAssessments.assessmentId, assessmentId),
+            eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+            eq(zuvyOutsourseAssessments.chapterId, chapterId),
+            eq(zuvyOutsourseAssessments.moduleId, moduleId),
+          ),
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) =>
@@ -3363,73 +3504,63 @@ export class ContentService {
             limit: 1,
           },
           ModuleAssessment: true,
-          Quizzes: {
-            columns: {
-              assessmentOutsourseId: true,
-              bootcampId: true,
-            },
-            with: {
-              Quiz: {
-                with: {
-                  quizVariants: true,
-                },
-              },
-            },
-          },
-          OpenEndedQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true,
-            },
-            with: {
-              OpenEndedQuestion: true,
-            },
-          },
-          CodingQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true,
-            },
-            with: {
-              CodingQuestion: true,
-            },
-          },
         },
       });
 
       if (!assessment || assessment.length === 0) {
-        throw {
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        };
+        throw new NotFoundException('Assessment not found');
       }
 
-      // Update assessment state using AssessmentStateService
-      await this.handleAssessmentUpdate(assessment[0].id);
-
-      // Get the updated assessment to get the current state
-      const updatedAssessment =
-        await db.query.zuvyOutsourseAssessments.findFirst({
-          where: eq(zuvyOutsourseAssessments.id, assessment[0].id),
-        });
-      if (updatedAssessment.currentState === null) {
-        updatedAssessment.currentState = 2;
+      // Update assessment state using AssessmentStateService; it now returns
+      // the up-to-date assessment row, avoiding a redundant re-fetch. Run it
+      // alongside the (independent) question counts below, without fetching
+      // the full nested question trees just to count them.
+      const [
+        updatedAssessment,
+        quizzesCountRes,
+        openEndedCountRes,
+        codingCountRes,
+      ] = await Promise.all([
+        this.handleAssessmentUpdate(assessment[0].id),
+        db
+          .select({ count: count() })
+          .from(zuvyOutsourseQuizzes)
+          .where(
+            eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessment[0].id),
+          ),
+        db
+          .select({ count: count() })
+          .from(zuvyOutsourseOpenEndedQuestions)
+          .where(
+            eq(
+              zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId,
+              assessment[0].id,
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(zuvyOutsourseCodingQuestions)
+          .where(
+            eq(
+              zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+              assessment[0].id,
+            ),
+          ),
+      ]);
+      // fix: guard against a null return (assessment genuinely missing, or
+      // both the fetch and the state-write failed) so this falls back to the
+      // default ACTIVE state below instead of throwing on a null dereference.
+      const safeUpdatedAssessment = updatedAssessment ?? { currentState: null };
+      if (safeUpdatedAssessment.currentState === null) {
+        safeUpdatedAssessment.currentState = 2;
       }
 
-      assessment[0]['totalQuizzes'] = assessment[0]?.Quizzes.length || 0;
+      assessment[0]['totalQuizzes'] = quizzesCountRes[0]?.count || 0;
       assessment[0]['totalOpenEndedQuestions'] =
-        assessment[0]?.OpenEndedQuestions.length || 0;
-      assessment[0]['totalCodingQuestions'] =
-        assessment[0]?.CodingQuestions.length || 0;
-
-      delete assessment[0].Quizzes;
-      delete assessment[0].OpenEndedQuestions;
-      delete assessment[0].CodingQuestions;
+        openEndedCountRes[0]?.count || 0;
+      assessment[0]['totalCodingQuestions'] = codingCountRes[0]?.count || 0;
       // Check currentState and enforce rules
-      if (updatedAssessment.currentState === 0) {
+      if (safeUpdatedAssessment.currentState === 0) {
         // DRAFT
         return {
           status: 'success',
@@ -3438,7 +3569,7 @@ export class ContentService {
           message: 'Assessment is not available yet.',
         };
       }
-      if (updatedAssessment.currentState === 1) {
+      if (safeUpdatedAssessment.currentState === 1) {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
@@ -3459,7 +3590,7 @@ export class ContentService {
           ...assessment[0],
         };
       }
-      if (updatedAssessment.currentState === 2) {
+      if (safeUpdatedAssessment.currentState === 2) {
         // ACTIVE
         return {
           status: 'success',
@@ -3470,7 +3601,7 @@ export class ContentService {
           ...assessment[0],
         };
       }
-      if (updatedAssessment.currentState === 3) {
+      if (safeUpdatedAssessment.currentState === 3) {
         // CLOSED
         return {
           status: 'success',
@@ -3493,26 +3624,43 @@ export class ContentService {
   }
 
   async handleAssessmentUpdate(assessmentId: number) {
+    let assessment;
     try {
-      const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
+      assessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: eq(zuvyOutsourseAssessments.id, assessmentId),
       });
-
-      if (!assessment) {
-        this.logger.warn(`Assessment ${assessmentId} not found`);
-        return;
-      }
-
-      await this.updateAssessmentState(assessment);
     } catch (error) {
       this.logger.error(
-        `Error handling assessment update for ${assessmentId}:`,
+        `Error fetching assessment ${assessmentId} for state update:`,
         error,
       );
+      return null;
+    }
+
+    if (!assessment) {
+      this.logger.warn(`Assessment ${assessmentId} not found`);
+      return null;
+    }
+
+    try {
+      return await this.updateAssessmentState(assessment);
+    } catch (error) {
+      // fix: a failed state-write used to be invisible to callers because
+      // they re-fetched the (unmodified) row themselves afterwards. Now that
+      // callers use this return value directly, fall back to the
+      // already-fetched row instead of null so a transient write failure on
+      // this side-effect doesn't crash an otherwise-successful read request.
+      this.logger.error(
+        `Error updating assessment state for ${assessmentId}:`,
+        error,
+      );
+      return assessment;
     }
   }
 
-  // Helper method to update assessment state
+  // Helper method to update assessment state. Returns the up-to-date
+  // assessment (with currentState/updatedAt reflecting any change just
+  // applied) so callers don't need a separate re-fetch afterwards.
   async updateAssessmentState(assessment: any) {
     const now = new Date();
     const oldState = assessment.currentState;
@@ -3547,14 +3695,17 @@ export class ContentService {
 
     // If state has changed, update it
     if (newState !== oldState) {
+      const updatedAt = now.toISOString();
       await db
         .update(zuvyOutsourseAssessments)
         .set({
           currentState: newState,
-          updatedAt: now.toISOString(),
+          updatedAt,
         } as any)
         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
+      return { ...assessment, currentState: newState, updatedAt };
     }
+    return assessment;
   }
 
   async getCodingQuestionsByDifficulty(
@@ -3751,11 +3902,19 @@ export class ContentService {
             .values(insertAssessmentSubmission)
             .returning();
         } else {
+          // readability/type-safety: typed and/eq helpers instead of a raw sql template
           submission = await db
             .select()
             .from(zuvyAssessmentSubmission)
             .where(
-              sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`,
+              and(
+                eq(zuvyAssessmentSubmission.active, true),
+                eq(
+                  zuvyAssessmentSubmission.assessmentOutsourseId,
+                  assessmentOutsourseId,
+                ),
+                eq(zuvyAssessmentSubmission.userId, id),
+              ),
             )
             .orderBy(desc(zuvyAssessmentSubmission.id))
             .limit(1);
@@ -3967,9 +4126,9 @@ export class ContentService {
             eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
           with: {
             ModuleAssessment: true,
+            // readability/type-safety: typed eq helper instead of a raw sql template
             submitedOutsourseAssessments: {
-              where: (submissions, { sql }) =>
-                sql`${submissions.userId} = ${userId}`,
+              where: (submissions, { eq }) => eq(submissions.userId, userId),
               columns: { id: true },
               orderBy: (submissions, { desc }) => [desc(submissions.id)],
               limit: 1,
@@ -4051,11 +4210,18 @@ export class ContentService {
     userId,
   ) {
     try {
+      // readability/type-safety: typed and/eq helpers instead of a raw sql template
       const assessmentSubmissionlatest = await db
         .select()
         .from(zuvyAssessmentSubmission)
         .where(
-          sql`${zuvyAssessmentSubmission.userId} = ${userId} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessment_outsourse_id}`,
+          and(
+            eq(zuvyAssessmentSubmission.userId, userId),
+            eq(
+              zuvyAssessmentSubmission.assessmentOutsourseId,
+              assessment_outsourse_id,
+            ),
+          ),
         )
         .orderBy(desc(zuvyAssessmentSubmission.id))
         .limit(1);
@@ -4205,11 +4371,16 @@ export class ContentService {
         .returning();
 
       if (result.length > 0 || updatedChapter.length > 0) {
+        const trackingContext = await this.getChapterTrackingContext(
+          chapterId,
+          updatedChapter[0].moduleId,
+        );
         return {
           status: 'success',
           code: 200,
           result,
           updatedChapter,
+          ...trackingContext,
         };
       } else {
         return {
@@ -4230,9 +4401,10 @@ export class ContentService {
     searchTerm: string = '',
   ) {
     try {
+      // readability/type-safety: typed eq helpers instead of raw sql templates
       let queryString;
       if (!Number.isNaN(typeId) && questionType == undefined) {
-        queryString = sql`${zuvyModuleForm.typeId} = ${typeId}`;
+        queryString = eq(zuvyModuleForm.typeId, typeId);
       }
       const result = await db
         .select()
@@ -4240,7 +4412,7 @@ export class ContentService {
         .where(
           and(
             queryString,
-            sql`${zuvyModuleForm.chapterId} = ${chapterId}`,
+            eq(zuvyModuleForm.chapterId, chapterId),
             sql`((LOWER(${zuvyModuleForm.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
           ),
         );
@@ -4301,10 +4473,12 @@ export class ContentService {
 
       for (const formQuestion of editFormQuestions) {
         if (formQuestion.id) {
-          const existingRecord = await db
-            .select()
-            .from(zuvyModuleForm)
-            .where(eq(zuvyModuleForm.id, formQuestion.id));
+          // Looked up from the already-fetched existingFormRecords instead of
+          // a redundant per-row SELECT. Kept as a (possibly empty) array,
+          // matching the previous .select() result shape/truthiness exactly.
+          const existingRecord = existingFormRecords.filter(
+            (record) => record.id === formQuestion.id,
+          );
 
           if (existingRecord) {
             let updateModuleForm: any = {
@@ -4346,6 +4520,11 @@ export class ContentService {
         .where(eq(zuvyModuleChapter.id, chapterId))
         .returning();
 
+      const trackingContext = await this.getChapterTrackingContext(
+        chapterId,
+        updatedChapter[0].moduleId,
+      );
+
       return {
         status: 'success',
         code: 200,
@@ -4354,6 +4533,7 @@ export class ContentService {
         updatedChapter,
         before: { formQuestions: existingFormIds },
         data: updatedChapter[0],
+        ...trackingContext,
       };
     } catch (error) {
       throw error;
@@ -4493,23 +4673,25 @@ export class ContentService {
         }
       }
 
-      // Update chapter with final form IDs
-      await db
+      // Update chapter with final form IDs, using .returning() instead of a
+      // separate re-select for the row we just wrote.
+      const res2 = await db
         .update(zuvyModuleChapter)
         .set({
           formQuestions: finalFormIds,
         })
-        .where(eq(zuvyModuleChapter.id, chapterId));
+        .where(eq(zuvyModuleChapter.id, chapterId))
+        .returning();
 
       const res1 = await db
         .select()
         .from(zuvyModuleForm)
         .where(eq(zuvyModuleForm.chapterId, chapterId));
 
-      const res2 = await db
-        .select()
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
+      const trackingContext = await this.getChapterTrackingContext(
+        chapterId,
+        res2[0].moduleId,
+      );
 
       return {
         status: 'success',
@@ -4519,6 +4701,7 @@ export class ContentService {
         res2,
         before: { formQuestions: existingFormIds },
         data: res2[0],
+        ...trackingContext,
       };
     } catch (err) {
       throw err;
@@ -4730,6 +4913,35 @@ export class ContentService {
       const firstVariantId = deleteDto.questionIds.find(
         (q) => q.type === 'variant',
       )?.id;
+
+      // Resolve every requested variant id's parent quiz id in a single
+      // batched query instead of one SELECT per variant id.
+      const requestedVariantIds = deleteDto.questionIds
+        .filter((q) => q.type === 'variant')
+        .map((q) => q.id);
+      const variantQuizIdMap = new Map<number, number>();
+      if (requestedVariantIds.length > 0) {
+        const variantQuizRows = await db
+          .select({
+            id: zuvyModuleQuizVariants.id,
+            quizId: zuvyModuleQuizVariants.quizId,
+          })
+          .from(zuvyModuleQuizVariants)
+          .innerJoin(
+            zuvyModuleQuiz,
+            eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+          )
+          .where(
+            and(
+              inArray(zuvyModuleQuizVariants.id, requestedVariantIds),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
+          );
+        for (const row of variantQuizRows) {
+          variantQuizIdMap.set(row.id, row.quizId);
+        }
+      }
+
       if (firstMainId) {
         const titleRes = await db
           .select({ title: zuvyModuleQuiz.title })
@@ -4744,27 +4956,14 @@ export class ContentService {
         const mainQuizTitle = titleRes[0]?.title || '';
         if (mainQuizTitle) deletedQuizTitles.add(mainQuizTitle);
       } else if (firstVariantId) {
-        const variantRes = await db
-          .select({ quizId: zuvyModuleQuizVariants.quizId })
-          .from(zuvyModuleQuizVariants)
-          .innerJoin(
-            zuvyModuleQuiz,
-            eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
-          )
-          .where(
-            and(
-              eq(zuvyModuleQuizVariants.id, firstVariantId),
-              eq(zuvyModuleQuiz.orgId, orgId),
-            ),
-          )
-          .limit(1);
-        if (variantRes[0]?.quizId) {
+        const firstVariantQuizId = variantQuizIdMap.get(firstVariantId);
+        if (firstVariantQuizId) {
           const titleRes = await db
             .select({ title: zuvyModuleQuiz.title })
             .from(zuvyModuleQuiz)
             .where(
               and(
-                eq(zuvyModuleQuiz.id, variantRes[0].quizId),
+                eq(zuvyModuleQuiz.id, firstVariantQuizId),
                 eq(zuvyModuleQuiz.orgId, orgId),
               ),
             )
@@ -4779,23 +4978,9 @@ export class ContentService {
         if (item.type === 'main') {
           mainQuizIds.push(item.id);
         } else if (item.type === 'variant') {
-          const variant = await db
-            .select({ quizId: zuvyModuleQuizVariants.quizId })
-            .from(zuvyModuleQuizVariants)
-            .innerJoin(
-              zuvyModuleQuiz,
-              eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
-            )
-            .where(
-              and(
-                eq(zuvyModuleQuizVariants.id, item.id),
-                eq(zuvyModuleQuiz.orgId, orgId),
-              ),
-            )
-            .limit(1);
-
-          if (variant.length) {
-            variantDeletions.push({ id: item.id, quizId: variant[0].quizId });
+          const quizId = variantQuizIdMap.get(item.id);
+          if (quizId !== undefined) {
+            variantDeletions.push({ id: item.id, quizId });
           }
         }
       }
@@ -4838,6 +5023,34 @@ export class ContentService {
           });
 
           if (authorizedIds.length > 0) {
+            const variants = await db
+              .select({
+                quizId: zuvyModuleQuizVariants.quizId,
+                question: zuvyModuleQuizVariants.question,
+              })
+              .from(zuvyModuleQuizVariants)
+              .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds))
+              .orderBy(
+                asc(zuvyModuleQuizVariants.quizId),
+                asc(zuvyModuleQuizVariants.variantNumber),
+              );
+
+            const firstVariantQuestionByQuiz = new Map<number, string>();
+            for (const variant of variants) {
+              if (
+                variant.question &&
+                !firstVariantQuestionByQuiz.has(variant.quizId)
+              ) {
+                firstVariantQuestionByQuiz.set(
+                  variant.quizId,
+                  variant.question,
+                );
+              }
+            }
+            firstVariantQuestionByQuiz.forEach((question) =>
+              deletedVariantTitles.add(question),
+            );
+
             await db
               .delete(zuvyModuleQuizVariants)
               .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds));
@@ -4866,99 +5079,140 @@ export class ContentService {
       }
 
       // Deletion logic for quiz variants
-      for (const { id: variantId, quizId } of variantDeletions) {
-        const variantCount = await db
-          .select()
-          .from(zuvyModuleQuizVariants)
-          .where(eq(zuvyModuleQuizVariants.quizId, quizId));
+      if (variantDeletions.length > 0) {
+        const distinctVariantQuizIds = Array.from(
+          new Set(variantDeletions.map((v) => v.quizId)),
+        );
 
-        if (variantCount.length <= 1) {
-          return [
-            {
-              message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
-              statusCode: STATUS_CODES.BAD_REQUEST,
-            },
-            null,
-          ];
-        }
-
-        // Check if the main quiz of this variant has `usage` > 0
-        const mainQuizUsage = await db
-          .select({ usage: (zuvyModuleQuiz as any).usage })
-          .from(zuvyModuleQuiz)
-          .where(
-            and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
-          )
-          .limit(1);
-
-        if (mainQuizUsage.length && (mainQuizUsage[0] as any).usage > 0) {
-          return [
-            {
-              message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
-              statusCode: STATUS_CODES.BAD_REQUEST,
-            },
-            null,
-          ];
-        }
-
-        const variantToDelete = await db
+        // Batch: current variant count per quiz (used for the "last
+        // remaining variant" check below). Tracked & decremented in-memory
+        // as variants are deleted, exactly mirroring what a fresh per-item
+        // re-query would have observed within this same request.
+        const variantCountRows = await db
           .select({
-            variantNumber: zuvyModuleQuizVariants.variantNumber,
-            variantQuestion: zuvyModuleQuizVariants.question,
-            quizTitle: zuvyModuleQuiz.title,
+            quizId: zuvyModuleQuizVariants.quizId,
+            cnt: count(),
           })
           .from(zuvyModuleQuizVariants)
-          .innerJoin(
-            zuvyModuleQuiz,
-            eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
-          )
+          .where(inArray(zuvyModuleQuizVariants.quizId, distinctVariantQuizIds))
+          .groupBy(zuvyModuleQuizVariants.quizId);
+        const remainingVariantCount = new Map<number, number>();
+        for (const row of variantCountRows) {
+          remainingVariantCount.set(row.quizId, row.cnt);
+        }
+
+        // Batch: main quiz usage per quiz. Nothing in this loop modifies
+        // zuvyModuleQuiz.usage, so a single upfront read is equivalent to
+        // re-querying it per item.
+        const mainQuizUsageRows = await db
+          .select({
+            id: zuvyModuleQuiz.id,
+            usage: (zuvyModuleQuiz as any).usage,
+          })
+          .from(zuvyModuleQuiz)
           .where(
             and(
-              eq(zuvyModuleQuizVariants.id, variantId),
+              inArray(zuvyModuleQuiz.id, distinctVariantQuizIds),
               eq(zuvyModuleQuiz.orgId, orgId),
             ),
           );
-
-        if (!variantToDelete.length) {
-          return [
-            {
-              message: `Variant with ID ${variantId} not found or unauthorized.`,
-              statusCode: STATUS_CODES.NOT_FOUND,
-            },
-            null,
-          ];
+        const mainQuizUsageMap = new Map<number, number>();
+        for (const row of mainQuizUsageRows) {
+          mainQuizUsageMap.set(row.id, (row as any).usage);
         }
 
-        const {
-          variantNumber,
-          variantQuestion,
-          quizTitle: variantParentTitle,
-        } = variantToDelete[0];
+        for (const { id: variantId, quizId } of variantDeletions) {
+          const currentVariantCount = remainingVariantCount.get(quizId) ?? 0;
 
-        if (variantParentTitle) {
-          deletedQuizTitles.add(variantParentTitle);
+          if (currentVariantCount <= 1) {
+            return [
+              {
+                message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
+                statusCode: STATUS_CODES.BAD_REQUEST,
+              },
+              null,
+            ];
+          }
+
+          // Check if the main quiz of this variant has `usage` > 0
+          const mainQuizUsage = mainQuizUsageMap.get(quizId);
+
+          if (mainQuizUsage !== undefined && mainQuizUsage > 0) {
+            return [
+              {
+                message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
+                statusCode: STATUS_CODES.BAD_REQUEST,
+              },
+              null,
+            ];
+          }
+
+          // Variant numbers can shift mid-batch when multiple variants of
+          // the same quiz are deleted in this same request, so this lookup
+          // (unlike the two above) still needs a fresh per-item read.
+          const variantToDelete = await db
+            .select({
+              variantNumber: zuvyModuleQuizVariants.variantNumber,
+              variantQuestion: zuvyModuleQuizVariants.question,
+              quizTitle: zuvyModuleQuiz.title,
+            })
+            .from(zuvyModuleQuizVariants)
+            .innerJoin(
+              zuvyModuleQuiz,
+              eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+            )
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.id, variantId),
+                eq(zuvyModuleQuiz.orgId, orgId),
+              ),
+            );
+
+          if (!variantToDelete.length) {
+            return [
+              {
+                message: `Variant with ID ${variantId} not found or unauthorized.`,
+                statusCode: STATUS_CODES.NOT_FOUND,
+              },
+              null,
+            ];
+          }
+
+          const {
+            variantNumber,
+            variantQuestion,
+            quizTitle: variantParentTitle,
+          } = variantToDelete[0];
+
+          if (variantParentTitle) {
+            deletedQuizTitles.add(variantParentTitle);
+          }
+
+          if (variantQuestion) {
+            deletedVariantTitles.add(variantQuestion);
+          }
+
+          await db
+            .delete(zuvyModuleQuizVariants)
+            .where(eq(zuvyModuleQuizVariants.id, variantId))
+            .returning();
+          deletedVariantIds.push(variantId);
+
+          // Update the variant numbers for remaining variants
+          await db
+            .update(zuvyModuleQuizVariants)
+            .set({
+              variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1`,
+            })
+            .where(
+              sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`,
+            )
+            .returning();
+
+          // Reflect this deletion in the running count so a later iteration
+          // targeting the same quiz sees the updated remaining count.
+          remainingVariantCount.set(quizId, currentVariantCount - 1);
         }
-
-        if (variantQuestion) {
-          deletedVariantTitles.add(variantQuestion);
-        }
-
-        await db
-          .delete(zuvyModuleQuizVariants)
-          .where(eq(zuvyModuleQuizVariants.id, variantId))
-          .returning();
-        deletedVariantIds.push(variantId);
-
-        // Update the variant numbers for remaining variants
-        await db
-          .update(zuvyModuleQuizVariants)
-          .set({
-            variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1`,
-          })
-          .where(
-            sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`,
-          )
-          .returning();
       }
 
       return [

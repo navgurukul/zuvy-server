@@ -1,17 +1,72 @@
 import { CPP_RUNTIME } from './cppRuntime';
 import { CppInputMode } from './cppInputModes';
 
+/* Recursively pull every number out of a (possibly nested) test-case value */
+function flattenNumbers(value: unknown): number[] {
+  if (Array.isArray(value)) return value.flatMap(flattenNumbers);
+  return typeof value === 'number' ? [value] : [];
+}
+
+/*
+ * Decide whether a numeric array parameter/return should be emitted as an
+ * integer (long long) or floating point (double) vector in C++.
+ *
+ * Every other generated language treats a bare numeric array as an int
+ * array (Java: int[], Python: List[int]), so `long long` is the safe
+ * default whenever we have no sample values to inspect. When real sample
+ * values ARE available, any non-integral number present in them forces
+ * `double` so genuinely fractional data still round-trips correctly.
+ */
+function inferNumericElemType(samples: unknown[]): 'long long' | 'double' {
+  const nums = samples.flatMap(flattenNumbers);
+  if (nums.length === 0) return 'long long';
+  return nums.every((n) => Number.isInteger(n)) ? 'long long' : 'double';
+}
+
 export async function generateCppTemplate(
   functionName: string,
-  parameters: Array<{ parameterName: string; parameterType: string }>,
+  parameters: Array<{
+    parameterName: string;
+    parameterType: string;
+    parameterValue?: unknown;
+  }>,
   returnType = 'void',
   options?: {
     inputMode?: CppInputMode;
     multipleTests?: boolean;
     interactive?: boolean;
+    // Every test case's raw inputs/expectedOutput, used only to infer
+    // int-vs-double for numeric array parameters/return values.
+    allTestCases?: Array<{
+      inputs?: Array<{ parameterName: string; parameterValue?: unknown }>;
+      expectedOutput?: { parameterValue?: unknown };
+    }>;
   },
 ) {
   try {
+    const paramNumericElemType = (p: {
+      parameterName: string;
+      parameterValue?: unknown;
+    }): 'long long' | 'double' => {
+      const samples: unknown[] = [];
+      for (const tc of options?.allTestCases ?? []) {
+        const match = tc?.inputs?.find(
+          (i) => i?.parameterName === p.parameterName,
+        );
+        if (match) samples.push(match.parameterValue);
+      }
+      if (samples.length === 0 && 'parameterValue' in p) {
+        samples.push(p.parameterValue);
+      }
+      return inferNumericElemType(samples);
+    };
+
+    const returnNumericElemType = (): 'long long' | 'double' => {
+      const samples = (options?.allTestCases ?? []).map(
+        (tc) => tc?.expectedOutput?.parameterValue,
+      );
+      return inferNumericElemType(samples);
+    };
     const inputMode: CppInputMode =
       options?.inputMode ||
       (parameters.some((p) =>
@@ -42,12 +97,18 @@ export async function generateCppTemplate(
     const needsRuntime =
       inputMode === 'HYBRID' ||
       returnType === 'jsonType' ||
+      returnType === 'object' ||
       parameters.some((p) =>
         ['jsonType', 'object', 'map', 'arrayOfObj'].includes(p.parameterType),
       );
 
     /* ---------- type mapping ---------- */
-    const cppType = (t: string) => {
+    // elemType only matters for arrayOfnum / arrayOfarrayOfnum; other
+    // callers can omit it.
+    const cppType = (
+      t: string,
+      elemType: 'long long' | 'double' = 'long long',
+    ) => {
       switch (t) {
         case 'int':
           return 'long long';
@@ -61,11 +122,11 @@ export async function generateCppTemplate(
         case 'str':
           return 'string';
         case 'arrayOfnum':
-          return 'vector<double>';
+          return `vector<${elemType}>`;
         case 'arrayOfStr':
           return 'vector<string>';
         case 'arrayOfarrayOfnum':
-          return 'vector<vector<double>>';
+          return `vector<vector<${elemType}>>`;
         case 'arrayOfarrayOfStr':
           return 'vector<vector<string>>';
         case 'linkedList':
@@ -81,6 +142,7 @@ export async function generateCppTemplate(
         case 'weightedGraph':
           return 'vector<vector<pair<int,int>>>';
         case 'jsonType':
+        case 'object':
           return 'Variant';
         default:
           return 'string';
@@ -88,10 +150,16 @@ export async function generateCppTemplate(
     };
 
     const paramList = parameters
-      .map((p) => `const ${cppType(p.parameterType)}& ${p.parameterName}`)
+      .map(
+        (p) =>
+          `const ${cppType(p.parameterType, paramNumericElemType(p))}& ${p.parameterName}`,
+      )
       .join(', ');
 
-    const returnCppType = returnType === 'void' ? 'void' : cppType(returnType);
+    const returnCppType =
+      returnType === 'void'
+        ? 'void'
+        : cppType(returnType, returnNumericElemType());
 
     /* ---------- SIMPLE input ---------- */
     const simpleInput = parameters
@@ -146,7 +214,7 @@ ${needsIgnore ? "cin.ignore(numeric_limits<streamsize>::max(), '\\n');" : ''}
           return `
   int ${p.parameterName}_n;
   cin >> ${p.parameterName}_n;
-  vector<double> ${p.parameterName}(${p.parameterName}_n);
+  vector<${paramNumericElemType(p)}> ${p.parameterName}(${p.parameterName}_n);
   for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
 `;
         }
@@ -206,6 +274,23 @@ ${parameters
     ${name} = v_${name}.i;
 `;
 
+          case 'float':
+          case 'double':
+            return `
+  double ${name} = 0;
+  if (v_${name}.t == Variant::INT)
+    ${name} = (double)v_${name}.i;
+  else if (v_${name}.t == Variant::DBL)
+    ${name} = v_${name}.d;
+`;
+
+          case 'char':
+            return `
+  char ${name} = '\\0';
+  if (v_${name}.t == Variant::STR && !v_${name}.s.empty())
+    ${name} = v_${name}.s[0];
+`;
+
           case 'bool':
             return `
   bool ${name} = false;
@@ -220,15 +305,16 @@ ${parameters
     ${name} = v_${name}.s;
 `;
 
-          case 'arrayOfnum':
+          case 'arrayOfnum': {
+            const elemType = paramNumericElemType(p);
             return `
-  vector<double> ${name};
+  vector<${elemType}> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &el : v_${name}.a) {
       if (el.t == Variant::INT) {
-        ${name}.push_back((double)el.i);
+        ${name}.push_back((${elemType})el.i);
       } else if (el.t == Variant::DBL) {
-        ${name}.push_back(el.d);
+        ${name}.push_back((${elemType})el.d);
       } else {
         cerr << "Type error: expected numeric value in array '${name}'" << endl;
         return 0;
@@ -236,6 +322,7 @@ ${parameters
     }
   }
 `;
+          }
 
           case 'arrayOfStr':
             return `
@@ -251,21 +338,22 @@ ${parameters
   }
 `;
 
-          case 'arrayOfarrayOfnum':
+          case 'arrayOfarrayOfnum': {
+            const elemType = paramNumericElemType(p);
             return `
-  vector<vector<double>> ${name};
+  vector<vector<${elemType}>> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &row : v_${name}.a) {
       if (row.t != Variant::ARR) {
         cerr << "Type error: expected array in '${name}'" << endl;
         return 0;
       }
-      vector<double> temp;
+      vector<${elemType}> temp;
       for (auto &el : row.a) {
         if (el.t == Variant::INT) {
-          temp.push_back((double)el.i);
+          temp.push_back((${elemType})el.i);
         } else if (el.t == Variant::DBL) {
-          temp.push_back(el.d);
+          temp.push_back((${elemType})el.d);
         } else {
           cerr << "Type error: expected numeric value in nested array '${name}'" << endl;
           return 0;
@@ -275,6 +363,7 @@ ${parameters
     }
   }
 `;
+          }
 
           case 'arrayOfarrayOfStr':
             return `
@@ -329,6 +418,7 @@ ${parameters
 `;
 
           case 'jsonType':
+          case 'object':
             return `
   Variant ${name} = v_${name};
 `;
@@ -374,7 +464,21 @@ cout << out;
         return `printVector(result);`;
       }
 
-      if (returnType === 'jsonType') {
+      if (
+        returnType === 'arrayOfarrayOfnum' ||
+        returnType === 'arrayOfarrayOfStr'
+      ) {
+        return `
+  cout << "[";
+  for (size_t i = 0; i < result.size(); i++) {
+    if (i) cout << ",";
+    printVector(result[i]);
+  }
+  cout << "]";
+`;
+      }
+
+      if (returnType === 'jsonType' || returnType === 'object') {
         return `printVariant(result);`;
       }
       return `cout << result;`;
@@ -432,28 +536,18 @@ void printVector(const vector<T>& v) {
 }
 
 // ===== Float vector printer (DO NOT REMOVE) =====
+// Elements print with their natural minimal representation (5 stays "5",
+// 2.5 stays "2.5") to match plain JSON serialization of a numeric array,
+// which never pads whole numbers with a trailing ".0" the way a scalar
+// float/double return value does.
 template <>
 void printVector<double>(const vector<double>& v) {
   cout << "[";
   for (size_t i = 0; i < v.size(); i++) {
     if (i) cout << ",";
-
     std::ostringstream oss;
-    if (std::floor(v[i]) == v[i]) {
-    oss << std::fixed << std::setprecision(1) << v[i];
-    } else {
     oss << std::setprecision(15) << v[i];
-    }
-
-    string out = oss.str();
-
-    if (out.find('.') != string::npos) {
-    while (!out.empty() && out.back() == '0') out.pop_back();
-    if (!out.empty() && out.back() == '.') out.push_back('0');
-    }
-
-    cout << out;
-
+    cout << oss.str();
   }
   cout << "]";
 }

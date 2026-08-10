@@ -863,3 +863,35 @@ CREATE TABLE "zuvy_user_feature_flags" (
 
 CREATE INDEX "zuvy_user_feature_flags_user_id_idx"
 ON "zuvy_user_feature_flags" ("user_id");
+
+
+
+
+
+
+
+SELECT id, name
+FROM zuvy_course_modules
+WHERE id = 964;
+
+
+SELECT id, title
+FROM zuvy_course_projects
+WHERE id = 153;
+
+
+SELECT id, name, project_id
+FROM zuvy_course_modules
+WHERE id = 950;
+
+
+
+SELECT id, title
+FROM zuvy_course_projects
+WHERE id = 153;
+
+
+
+SELECT project_id
+FROM zuvy_course_modules
+WHERE id = 96;

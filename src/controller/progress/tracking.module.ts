@@ -9,14 +9,23 @@ import { AuthModule } from 'src/auth/auth.module';
 import { ContentModule } from '../content/content.module';
 import { ClassesModule } from '../classes/classes.module';
 import { ZoomModule } from 'src/services/zoom/zoom.module';
+import { AttendanceCalculationModule } from 'src/services/attendance/attendance-calculation.module';
+import { AttendanceReconciliationJob } from 'src/services/attendance/attendance-reconciliation.job';
 @Module({
-    imports: [BatchesModule, AuthModule, ContentModule, ClassesModule,ZoomModule],
-    controllers: [TrackingController],
-    providers: [TrackingService, JwtService],
-    exports: [TrackingService]
+  imports: [
+    BatchesModule,
+    AuthModule,
+    ContentModule,
+    ClassesModule,
+    ZoomModule,
+    AttendanceCalculationModule,
+  ],
+  controllers: [TrackingController],
+  providers: [TrackingService, JwtService, AttendanceReconciliationJob],
+  exports: [TrackingService],
 })
 export class TrackingModule implements NestModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
-    }
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+  }
 }

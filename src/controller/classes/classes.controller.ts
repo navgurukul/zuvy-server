@@ -13,6 +13,9 @@ import {
   Req,
   Query,
   BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  InternalServerErrorException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -53,6 +56,7 @@ import {
   zuvyBootcamps,
 } from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
+import { Role } from 'src/rbac/utility';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
@@ -218,6 +222,44 @@ export class ClassesController {
       throw new BadRequestException(err);
     }
     return values;
+  }
+
+  @Get('/attendance/:sessionId')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      "Attendance status for a single class, decoupled from recording upload. Reports readiness from the attendance pipeline itself (Zoom job queue, or presence of attendance data for legacy Google Meet sessions) so the frontend can show attendance as soon as it's genuinely ready — independent of whether the recording has uploaded, is delayed, or fails.",
+  })
+  async getSessionAttendanceStatus(
+    @Req() req,
+    @Param('sessionId') sessionId: number,
+  ) {
+    // Returns every enrolled student's individual attendance for the
+    // session — restrict to admins/instructors/ops, same elevated-role set
+    // used for cross-student attendance access elsewhere in the app.
+    const roles: string[] = req.user[0]?.roles || [];
+    const elevatedRoles: string[] = [
+      Role.ADMIN,
+      Role.INSTRUCTOR,
+      Role.OPS,
+      Role.SUPER_ADMIN,
+    ];
+    if (!roles.some((role) => elevatedRoles.includes(role))) {
+      throw new ForbiddenException(
+        "You are not allowed to view this class's attendance",
+      );
+    }
+
+    const [err, result] = (await this.classesService.getSessionAttendanceStatus(
+      Number(sessionId),
+    )) as any;
+    if (err) {
+      if (err.statusCode === 404) throw new NotFoundException(err.message);
+      if (err.statusCode === 500)
+        throw new InternalServerErrorException(err.message);
+      throw new BadRequestException(err.message || err);
+    }
+    return result;
   }
 
   @Get('/getClassesByBatchId/:batchId')
