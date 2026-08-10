@@ -32,7 +32,10 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "lint-staged": "lint-staged",
-    "seed:licenses": "ts-node ./src/services/zoom/seed-zuvy-user-licenses.ts"
+    "seed:licenses": "ts-node ./src/services/zoom/seed-zuvy-user-licenses.ts",
+    "loadtest:generate": "ts-node scripts/load-test/generate-students.ts",
+    "loadtest:login": "ts-node scripts/load-test/login-students.ts",
+    "loadtest:cleanup": "ts-node scripts/load-test/cleanup-students.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.812.0",
