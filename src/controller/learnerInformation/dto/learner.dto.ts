@@ -391,12 +391,6 @@ class EndDateAfterStartDate implements ValidatorConstraintInterface {
   }
 }
 
-const MAX_GRADUATION_YEARS_AHEAD: Record<string, number> = {
-  '1st': 4,
-  '2nd': 3,
-  '3rd': 2,
-  '4th': 1,
-};
 @ValidatorConstraint({
   name: 'GraduationDateBasedOnYearOfStudy',
   async: false,
@@ -414,42 +408,30 @@ class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
     }
 
     const now = new Date();
-    const currentYear = now.getUTCFullYear();
-    const currentMonth = now.getUTCMonth() + 1;
-
-    const isPast =
-      dto.graduationYear < currentYear ||
-      (dto.graduationYear === currentYear &&
-        dto.graduationMonth < currentMonth);
-
-    const isFuture =
-      dto.graduationYear > currentYear ||
-      (dto.graduationYear === currentYear &&
-        dto.graduationMonth > currentMonth);
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
 
     if (dto.yearOfStudy === 'passed_out') {
-      return !isFuture;
+      return (
+        dto.graduationYear < currentYear ||
+        (dto.graduationYear === currentYear &&
+          dto.graduationMonth <= currentMonth)
+      );
     }
 
-    if (isPast) {
-      return false;
-    }
-
-    // Prevent unrealistic graduation years
-    const maxAllowedYear =
-      currentYear + (MAX_GRADUATION_YEARS_AHEAD[dto.yearOfStudy] ?? 2);
-
-    return dto.graduationYear <= maxAllowedYear;
+    return (
+      dto.graduationYear === currentYear && dto.graduationMonth <= currentMonth
+    );
   }
 
   defaultMessage(args: ValidationArguments) {
     const dto = args.object as SaveCompleteProfileDto;
 
     if (dto.yearOfStudy === 'passed_out') {
-      return 'Graduation date cannot be in the future.';
+      return 'Pass out date cannot be in the future.';
     }
 
-    return 'Graduation date is not valid for the selected year of study.';
+    return 'Please select a valid graduation date for the current year of study.';
   }
 }
 
