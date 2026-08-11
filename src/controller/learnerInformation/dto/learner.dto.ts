@@ -386,9 +386,52 @@ class EndDateAfterStartDate implements ValidatorConstraintInterface {
     if (!endDate || !dto.startDate) return true;
     return new Date(endDate) >= new Date(dto.startDate);
   }
-
   defaultMessage() {
     return 'endDate must not be before startDate';
+  }
+}
+
+@ValidatorConstraint({
+  name: 'GraduationDateBasedOnYearOfStudy',
+  async: false,
+})
+class GraduationDateBasedOnYearOfStudy implements ValidatorConstraintInterface {
+  validate(_: unknown, args: ValidationArguments) {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    if (
+      !dto.yearOfStudy ||
+      dto.graduationMonth == null ||
+      dto.graduationYear == null
+    ) {
+      return true;
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    if (dto.yearOfStudy === 'passed_out') {
+      return (
+        dto.graduationYear < currentYear ||
+        (dto.graduationYear === currentYear &&
+          dto.graduationMonth <= currentMonth)
+      );
+    }
+
+    return (
+      dto.graduationYear === currentYear && dto.graduationMonth <= currentMonth
+    );
+  }
+
+  defaultMessage(args: ValidationArguments) {
+    const dto = args.object as SaveCompleteProfileDto;
+
+    if (dto.yearOfStudy === 'passed_out') {
+      return 'Pass out date cannot be in the future.';
+    }
+
+    return 'Please select a valid graduation date for the current year of study.';
   }
 }
 
@@ -676,6 +719,7 @@ export class SaveCompleteProfileDto {
   @IsInt({ message: 'Please select graduation year' })
   @Min(2000)
   @Max(2050)
+  @Validate(GraduationDateBasedOnYearOfStudy)
   graduationYear?: number;
 
   @ApiPropertyOptional({
