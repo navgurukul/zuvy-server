@@ -309,6 +309,16 @@ export class StudentService {
         },
       });
 
+      // Deduplicate by bootcamp.id to handle any pre-existing duplicate entries safely
+      const seenBootcamps = new Set<number>();
+      enrolled = enrolled.filter((e: any) => {
+        if (!e.bootcamp || !e.bootcamp.id) return false;
+        const bId = Number(e.bootcamp.id);
+        if (seenBootcamps.has(bId)) return false;
+        seenBootcamps.add(bId);
+        return true;
+      });
+
       // Extract unique orgIds and bootcampIds
       const orgIds = Array.from(
         new Set(

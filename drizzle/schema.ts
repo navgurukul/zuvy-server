@@ -2594,6 +2594,7 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
   userIdIdx: index('zuvy_batch_enrollments_user_id_idx').on(table.userId),
   bootcampIdIdx: index('zuvy_batch_enrollments_bootcamp_id_idx').on(table.bootcampId),
   batchIdIdx: index('zuvy_batch_enrollments_batch_id_idx').on(table.batchId),
+  userIdBootcampIdUnique: unique('zuvy_batch_enrollments_user_id_bootcamp_id_uniq').on(table.userId, table.bootcampId),
 }));
 
 export const classesInTheBatch = relations(
