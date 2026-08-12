@@ -716,6 +716,184 @@ export class LeaderboardService {
     }
   }
 
+  private async calculateVideoPoints(): Promise<
+    Map<
+      string,
+      {
+        videoPoints: number;
+        lastActivityAt: string;
+      }
+    >
+  > {
+    const videoMap = new Map<
+      string,
+      {
+        videoPoints: number;
+        lastActivityAt: string;
+      }
+    >();
+
+    try {
+      const videoCompletions = await db
+        .select({
+          userId: zuvyChapterTracking.userId,
+          chapterId: zuvyChapterTracking.chapterId,
+          bootcampId: zuvyCourseModules.bootcampId,
+          completedAt: zuvyChapterTracking.completedAt,
+        })
+        .from(zuvyChapterTracking)
+        .leftJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .leftJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyModuleChapter.topicId, 1),
+            sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+          ),
+        );
+
+      const completionsByLearnerBootcamp = new Map<string, Set<number>>();
+
+      for (const completion of videoCompletions) {
+        if (
+          !completion.userId ||
+          !completion.bootcampId ||
+          !completion.chapterId
+        ) {
+          continue;
+        }
+
+        const key = `${completion.userId}-${completion.bootcampId}`;
+
+        if (!completionsByLearnerBootcamp.has(key)) {
+          completionsByLearnerBootcamp.set(key, new Set());
+        }
+
+        completionsByLearnerBootcamp.get(key)!.add(completion.chapterId);
+
+        videoMap.set(key, {
+          videoPoints: 0,
+          lastActivityAt: completion.completedAt || new Date().toISOString(),
+        });
+      }
+
+      for (const [key, chapterSet] of completionsByLearnerBootcamp) {
+        const pointsPerVideo = 10;
+
+        const entry = videoMap.get(key);
+
+        if (entry) {
+          entry.videoPoints = chapterSet.size * pointsPerVideo;
+        }
+      }
+
+      return videoMap;
+    } catch (error) {
+      this.logger.error(
+        `Error calculating video points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
+
+      return videoMap;
+    }
+  }
+
+  private async calculateArticlePoints(): Promise<
+    Map<
+      string,
+      {
+        articlePoints: number;
+        lastActivityAt: string;
+      }
+    >
+  > {
+    const articleMap = new Map<
+      string,
+      {
+        articlePoints: number;
+        lastActivityAt: string;
+      }
+    >();
+
+    try {
+      const articleCompletions = await db
+        .select({
+          userId: zuvyChapterTracking.userId,
+          chapterId: zuvyChapterTracking.chapterId,
+          bootcampId: zuvyCourseModules.bootcampId,
+          completedAt: zuvyChapterTracking.completedAt,
+        })
+        .from(zuvyChapterTracking)
+        .leftJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .leftJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyModuleChapter.topicId, 2),
+            sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+          ),
+        );
+
+      const completionsByLearnerBootcamp = new Map<string, Set<number>>();
+
+      for (const completion of articleCompletions) {
+        if (
+          !completion.userId ||
+          !completion.bootcampId ||
+          !completion.chapterId
+        ) {
+          continue;
+        }
+
+        const key = `${completion.userId}-${completion.bootcampId}`;
+
+        if (!completionsByLearnerBootcamp.has(key)) {
+          completionsByLearnerBootcamp.set(key, new Set());
+        }
+
+        completionsByLearnerBootcamp.get(key)!.add(completion.chapterId);
+
+        articleMap.set(key, {
+          articlePoints: 0,
+          lastActivityAt: completion.completedAt || new Date().toISOString(),
+        });
+      }
+
+      for (const [key, chapterSet] of completionsByLearnerBootcamp) {
+        const pointsPerArticle = 5;
+
+        const entry = articleMap.get(key);
+
+        if (entry) {
+          entry.articlePoints = chapterSet.size * pointsPerArticle;
+        }
+      }
+
+      return articleMap;
+    } catch (error) {
+      this.logger.error(
+        `Error calculating article points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
+
+      return articleMap;
+    }
+  }
+
   async updateLeaderboard(): Promise<{
     success: boolean;
     message: string;
@@ -732,6 +910,8 @@ export class LeaderboardService {
         attendanceMap,
         recordingMap,
         assignmentMap,
+        videoMap,
+        articleMap,
       ] = await Promise.all([
         this.calculateAssessmentPoints(),
         this.calculateCodingPoints(),
@@ -739,6 +919,8 @@ export class LeaderboardService {
         this.calculateAttendancePoints(),
         this.calculateRecordingPoints(),
         this.calculateAssignmentPoints(),
+        this.calculateVideoPoints(),
+        this.calculateArticlePoints(),
       ]);
 
       const leaderboardMap = new Map<
@@ -752,6 +934,8 @@ export class LeaderboardService {
           attendancePoints: number;
           recordingPoints: number;
           assignmentPoints: number;
+          videoPoints: number;
+          articlePoints: number;
           totalPoints: number;
           lastActivityAt: string;
         }
@@ -764,6 +948,8 @@ export class LeaderboardService {
       attendanceMap.forEach((_, key) => allKeys.add(key));
       recordingMap.forEach((_, key) => allKeys.add(key));
       assignmentMap.forEach((_, key) => allKeys.add(key));
+      videoMap.forEach((_, key) => allKeys.add(key));
+      articleMap.forEach((_, key) => allKeys.add(key));
 
       for (const key of allKeys) {
         const [learnerId, bootcampId] = key.split('-').map(Number);
@@ -774,6 +960,8 @@ export class LeaderboardService {
         const attendanceEntry = attendanceMap.get(key);
         const recordingEntry = recordingMap.get(key);
         const assignmentEntry = assignmentMap.get(key);
+        const videoEntry = videoMap.get(key);
+        const articleEntry = articleMap.get(key);
 
         const assessmentPoints = assessmentEntry?.assessmentPoints || 0;
         const codingPoints = codingEntry?.codingPoints || 0;
@@ -781,6 +969,8 @@ export class LeaderboardService {
         const attendancePoints = attendanceEntry?.attendancePoints || 0;
         const recordingPoints = recordingEntry?.recordingPoints || 0;
         const assignmentPoints = assignmentEntry?.assignmentPoints || 0;
+        const videoPoints = videoEntry?.videoPoints || 0;
+        const articlePoints = articleEntry?.articlePoints || 0;
 
         const totalPoints =
           assessmentPoints +
@@ -788,7 +978,9 @@ export class LeaderboardService {
           quizPoints +
           attendancePoints +
           recordingPoints +
-          assignmentPoints;
+          assignmentPoints +
+          videoPoints +
+          articlePoints;
 
         const lastActivityAt =
           assessmentEntry?.lastActivityAt ||
@@ -797,6 +989,8 @@ export class LeaderboardService {
           attendanceEntry?.lastActivityAt ||
           recordingEntry?.lastActivityAt ||
           assignmentEntry?.lastActivityAt ||
+          videoEntry?.lastActivityAt ||
+          articleEntry?.lastActivityAt ||
           new Date().toISOString();
 
         leaderboardMap.set(key, {
@@ -808,6 +1002,8 @@ export class LeaderboardService {
           attendancePoints,
           recordingPoints,
           assignmentPoints,
+          videoPoints,
+          articlePoints,
           totalPoints,
           lastActivityAt,
         });
@@ -861,6 +1057,12 @@ export class LeaderboardService {
             const assignmentEntry = assignmentMap.get(
               `${entry.learnerId}-${entry.bootcampId}`,
             );
+            const videoEntry = videoMap.get(
+              `${entry.learnerId}-${entry.bootcampId}`,
+            );
+            const articleEntry = articleMap.get(
+              `${entry.learnerId}-${entry.bootcampId}`,
+            );
 
             const updateData: any = {
               lastActivityAt: entry.lastActivityAt,
@@ -877,6 +1079,9 @@ export class LeaderboardService {
               updateData.recordingPoints = recordingEntry.recordingPoints;
             if (assignmentEntry)
               updateData.assignmentPoints = assignmentEntry.assignmentPoints;
+            if (videoEntry) updateData.videoPoints = videoEntry.videoPoints;
+            if (articleEntry)
+              updateData.articlePoints = articleEntry.articlePoints;
 
             const newAssessmentPoints =
               assessmentEntry?.assessmentPoints ?? existing.assessmentPoints;
@@ -889,6 +1094,10 @@ export class LeaderboardService {
               recordingEntry?.recordingPoints ?? existing.recordingPoints;
             const newAssignmentPoints =
               assignmentEntry?.assignmentPoints ?? existing.assignmentPoints;
+            const newVideoPoints =
+              videoEntry?.videoPoints ?? existing.videoPoints;
+            const newArticlePoints =
+              articleEntry?.articlePoints ?? existing.articlePoints;
 
             updateData.totalPoints =
               newAssessmentPoints +
@@ -896,7 +1105,9 @@ export class LeaderboardService {
               newQuizPoints +
               newAttendancePoints +
               newRecordingPoints +
-              newAssignmentPoints;
+              newAssignmentPoints +
+              newVideoPoints +
+              newArticlePoints;
 
             await db
               .update(zuvyLearnerLeaderboard)
@@ -916,6 +1127,9 @@ export class LeaderboardService {
               attendancePoints: entry.attendancePoints,
               recordingPoints: entry.recordingPoints,
               assignmentPoints: entry.assignmentPoints,
+              videoPoints: entry.videoPoints,
+              articlePoints: entry.articlePoints,
+
               totalPoints: entry.totalPoints,
               lastActivityAt: entry.lastActivityAt,
               createdAt: new Date().toISOString(),

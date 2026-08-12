@@ -5163,6 +5163,8 @@ export const zuvyLearnerLeaderboard = main.table(
     attendancePoints: integer('attendance_points').default(0),
     recordingPoints: integer('recording_points').default(0),
     assignmentPoints: integer('assignment_points').default(0),
+    articlePoints: integer('article_points').default(0),
+    videoPoints: integer('video_points').default(0),
     totalPoints: integer('total_points').default(0),
     lastActivityAt: timestamp('last_activity_at', {
       withTimezone: true,

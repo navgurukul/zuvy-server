@@ -866,32 +866,6 @@ ON "zuvy_user_feature_flags" ("user_id");
 
 
 
-
-
-
-
-SELECT id, name
-FROM zuvy_course_modules
-WHERE id = 964;
-
-
-SELECT id, title
-FROM zuvy_course_projects
-WHERE id = 153;
-
-
-SELECT id, name, project_id
-FROM zuvy_course_modules
-WHERE id = 950;
-
-
-
-SELECT id, title
-FROM zuvy_course_projects
-WHERE id = 153;
-
-
-
-SELECT project_id
-FROM zuvy_course_modules
-WHERE id = 96;
+ALTER TABLE zuvy_learner_leaderboard
+ADD COLUMN article_points INTEGER DEFAULT 0,
+ADD COLUMN video_points INTEGER DEFAULT 0;
