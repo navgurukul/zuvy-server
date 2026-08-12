@@ -115,7 +115,11 @@ export class ZoomController {
         participant_video: body.settings?.participant_video ?? true,
         join_before_host: body.settings?.join_before_host ?? false,
         mute_upon_entry: body.settings?.mute_upon_entry ?? true,
-        waiting_room: body.settings?.waiting_room ?? false,
+        waiting_room: body.settings?.waiting_room ?? true,
+        waiting_room_options: (body.settings as any)?.waiting_room_options || {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
         audio: body.settings?.audio || 'both',
         attendance_reporting: body.settings?.attendance_reporting ?? true,
         alternative_hosts_email_notification:

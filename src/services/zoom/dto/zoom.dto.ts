@@ -148,6 +148,17 @@ class ZoomMeetingSettingsDto {
   @IsOptional()
   mute_upon_entry?: boolean;
   @ApiPropertyOptional({ example: true }) @IsOptional() waiting_room?: boolean;
+  @ApiPropertyOptional({
+    example: {
+      mode: 'custom',
+      who_goes_to_waiting_room: 'users_not_on_invite',
+    },
+  })
+  @IsOptional()
+  waiting_room_options?: {
+    mode?: string;
+    who_goes_to_waiting_room?: string;
+  };
   @ApiPropertyOptional({ example: 'both' })
   @IsOptional()
   @IsString()

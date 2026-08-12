@@ -297,6 +297,12 @@ export class ClassesService {
     }
 
     const now = Date.now();
+    const currentTime = new Date().toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+    });
+
+    console.log('Here startTime in shouldActivateZoomSessionNow', startTime);
+    console.log('Here now in shouldActivateZoomSessionNow', currentTime);
     return startTime.getTime() <= now && endTime.getTime() > now;
   }
 
@@ -304,6 +310,11 @@ export class ClassesService {
     const session = await db.query.zuvySessions.findFirst({
       where: eq(zuvySessions.id, sessionId),
     });
+    const currentTime = new Date().toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+    });
+
+    console.log('Here AAA', currentTime);
 
     if (!session) {
       throw new Error(`Zoom session ${sessionId} not found.`);
@@ -315,6 +326,7 @@ export class ClassesService {
 
     // Already being activated by another process — skip
     if (session.meetingId?.startsWith('activating-')) {
+      console.log('Here BBB', currentTime);
       this.logger.warn(
         `Session ${sessionId} is already being activated, skipping`,
       );
@@ -337,6 +349,7 @@ export class ClassesService {
       )
       .returning();
 
+    console.log('Here CCC', currentTime);
     if (!claimed.length) {
       this.logger.warn(
         `Session ${sessionId} already claimed by another process, skipping`,
@@ -412,7 +425,11 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: false,
+        waiting_room: true,
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
@@ -442,6 +459,9 @@ export class ClassesService {
       },
     };
 
+    console.log('Here DDD', currentTime);
+    console.log('Here zoomMeetingData', currentTime, zoomMeetingData);
+
     this.logger.log(
       `Creating Zoom meeting with settings: ${JSON.stringify(zoomMeetingData.settings)}`,
     );
@@ -462,6 +482,7 @@ export class ClassesService {
       zoomResponse.error &&
       /alternative host/i.test(zoomResponse.error)
     ) {
+      console.log('Here EEE', currentTime);
       this.logger.warn(
         `Retrying deferred Zoom meeting creation for session ${sessionId} without alternative hosts.`,
       );
@@ -471,10 +492,12 @@ export class ClassesService {
       };
       delete (cloneNoAlt.settings as any).alternative_hosts;
       delete (cloneNoAlt.settings as any).alternative_hosts_email_notification;
+      console.log('Here FFF', currentTime);
       zoomResponse = await this.zoomService.createMeetingForUser(
         hostEmail,
         cloneNoAlt as any,
       );
+      console.log('Here GGG', currentTime);
     }
 
     if (!zoomResponse.success) {
@@ -524,6 +547,10 @@ export class ClassesService {
   }
 
   async activateScheduledZoomSessions() {
+    const currentTime = new Date().toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+    });
+    console.log('Here 111', currentTime);
     const nowIso = new Date().toISOString();
 
     const dueSessions = await db
@@ -538,15 +565,22 @@ export class ClassesService {
           ilike(zuvySessions.meetingId, 'pending-zoom-session-%'),
         ),
       );
+    console.log('Here 222', currentTime);
+
+    console.log('dueSessions', dueSessions);
 
     for (const session of dueSessions) {
+      console.log('Here 333', currentTime);
       if (!this.isPendingZoomMeetingId(session.meetingId)) {
         continue;
       }
 
+      console.log('Here 444', currentTime);
       try {
+        console.log('Here 555', currentTime);
         await this.activateZoomSession(session.id);
       } catch (error: any) {
+        console.log('Here 666', currentTime);
         this.logger.error(
           `Failed to activate scheduled Zoom session ${session.id}: ${error.message}`,
         );
@@ -870,6 +904,12 @@ export class ClassesService {
     try {
       // Guard again in case this method is called directly
 
+      const currentTime = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+      });
+
+      console.log('Here CreateZoomSesion 1', currentTime);
+
       const sessionsToCreate = [];
       const startDate = new Date(eventDetails.startDateTime);
       const endDate = new Date(eventDetails.endDateTime);
@@ -910,10 +950,12 @@ export class ClassesService {
         throw new Error('Instructor email not found');
       }
 
+      console.log('Here CreateZoomSesion 2', currentTime);
       // Pre-flight: verify instructor Zoom account is active before reserving a license
       const instructorZoomCheck =
         await this.zoomService.getUser(instructorEmail);
       if (instructorZoomCheck.success) {
+        console.log('Here CreateZoomSesion 3', currentTime);
         const { type, status } = instructorZoomCheck.data;
         if (status !== 'active') {
           const typeLabel =
@@ -927,6 +969,7 @@ export class ClassesService {
         // upgrade now to detect whether Zoom's license pool is full before
         // reserving a DB license slot.
         else if (type !== 2) {
+          console.log('Here CreateZoomSesion 4', currentTime);
           // await this.zoomService.setUserLicense(instructorEmail, 2);
           // const afterUpgrade = await this.zoomService.getUser(instructorEmail);
           // console.log('afterUpgrade', afterUpgrade);
@@ -938,6 +981,7 @@ export class ClassesService {
           //   };
           // }
           try {
+            console.log('Here CreateZoomSesion 5', currentTime);
             await this.ensureInstructorHasZoomLicenseForSession(
               instructorEmail,
               startDate,
@@ -945,6 +989,7 @@ export class ClassesService {
             );
             // Success — revert back to basic since actual upgrade happens at class start
             await this.zoomService.downgradeUser(instructorEmail);
+            console.log('Here CreateZoomSesion 6', currentTime);
           } catch (e: any) {
             // License acquisition failed — block session creation with the real reason
             return {
@@ -965,6 +1010,7 @@ export class ClassesService {
       // 1. Assign Zoom License (6 concurrent limit)
       let assignedLicenseId: number | null = null;
       try {
+        console.log('Here CreateZoomSesion 7', currentTime);
         assignedLicenseId = await db.transaction(async (trx) => {
           return await this.zoomLicenseService.assignLicense(trx, {
             instructorId: Number(instructorId),
@@ -973,6 +1019,7 @@ export class ClassesService {
           });
         });
         // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
+        console.log('Here CreateZoomSesion 8', currentTime);
         await this.zoomLicenseService.logLicenseStatus(
           `After assigning license for ${instructorEmail}`,
         );
@@ -980,6 +1027,7 @@ export class ClassesService {
         this.logger.error(`License assignment failed: ${e.message}`);
 
         // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
+        console.log('Here CreateZoomSesion 9', currentTime);
         await this.zoomLicenseService.logLicenseStatus(
           `After failed license assignment for ${instructorEmail}`,
         );
@@ -1021,7 +1069,7 @@ export class ClassesService {
 
       // zoomEndDate.setHours(zoomEndDate.getHours() - 5);
       // zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
-
+      console.log('Here CreateZoomSesion 10', currentTime);
       const pendingMeetingId = this.createPendingZoomMeetingId();
       const session = {
         meetingId: pendingMeetingId,
@@ -1045,6 +1093,7 @@ export class ClassesService {
         invitedStudents: invitedStudents,
       };
 
+      console.log('Here CreateZoomSesion 11', currentTime);
       // Push session without chapterId first
       session['licenseId'] = assignedLicenseId;
       sessionsToCreate.push(session);
@@ -1055,6 +1104,7 @@ export class ClassesService {
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
       }
+      console.log('Here CreateZoomSesion 12', currentTime);
 
       // Validate and create chapter ← CHAPTER ONLY CREATED IF SAVE SUCCEEDED
       const chapterResult = await this.validateAndCreateChapter({
@@ -1066,6 +1116,7 @@ export class ClassesService {
         throw new Error(chapterResult.message);
       }
 
+      console.log('Here CreateZoomSesion 13', currentTime);
       // Update the saved session with chapter info
       await db
         .update(zuvySessions)
@@ -1081,15 +1132,22 @@ export class ClassesService {
       saveResult.data[0].bootcampId = chapterResult.bootcampId;
       saveResult.data[0].moduleId = chapterResult.chapter.moduleId;
 
+      console.log('Here CreateZoomSesion 14', currentTime);
       let responseSessions = saveResult.data;
       const startsNow =
         saveResult.data?.[0] &&
         this.shouldActivateZoomSessionNow(saveResult.data[0]);
+      console.log('Here CreateZoomSesion 15', currentTime);
+      console.log('Here startsNow', startsNow, currentTime);
       if (startsNow && saveResult.data?.[0]?.id) {
+        console.log('Here CreateZoomSesion 16', currentTime);
         const activatedSession = await this.activateZoomSession(
           saveResult.data[0].id,
         );
+        console.log('Here CreateZoomSesion 17', currentTime);
         responseSessions = [activatedSession];
+        console.log('Here CreateZoomSesion 18', currentTime);
+        console.log('Here responseSessions', currentTime, responseSessions);
       }
 
       const courseRes = await db
@@ -2116,7 +2174,11 @@ export class ClassesService {
     chapterId?: number,
   ) {
     try {
+      const timeNow = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+      });
       let currentTime = new Date();
+      console.log('Here updatingStatusOfClass 01', timeNow);
 
       // Fetch classes based on bootcamp_id and batch_id
       let classesQuery = db
@@ -2136,6 +2198,8 @@ export class ClassesService {
           ),
         );
 
+      console.log('Here updatingStatusOfClass 02', timeNow);
+
       let classes = await classesQuery;
       console.log('Executing classes query:', classes);
       // Partition classes by platform
@@ -2145,6 +2209,7 @@ export class ClassesService {
       // Fetch admin user & calendar ONLY if there are Google Meet sessions to sync
       let calendar: any = null;
       if (meetClasses.length > 0) {
+        console.log('Here updatingStatusOfClass 03', timeNow);
         const user = await db
           .select()
           .from(users)
@@ -2156,9 +2221,11 @@ export class ClassesService {
       // Arrays to hold updates & deletions
       let classesToUpdate: { id: number; updatedClass: any }[] = [];
       let deleteClassIds: any[] = [];
+      console.log('Here updatingStatusOfClass 04', timeNow);
 
       // Process Google Meet classes via Calendar API
       for (let classObj of meetClasses) {
+        console.log('Here updatingStatusOfClass 05', timeNow);
         try {
           const event = await calendar.events.get({
             calendarId: 'primary',
@@ -2174,15 +2241,23 @@ export class ClassesService {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);
           let newStatus;
-          if (currentTime > endTime) newStatus = 'completed';
-          else if (currentTime >= startTime && currentTime <= endTime)
+          if (currentTime > endTime) {
+            newStatus = 'completed';
+            console.log('Here updatingStatusOfClass 06', timeNow);
+          } else if (currentTime >= startTime && currentTime <= endTime) {
             newStatus = 'ongoing';
-          else newStatus = 'upcoming';
+            console.log('Here updatingStatusOfClass 07', timeNow);
+          } else {
+            newStatus = 'upcoming';
+            console.log('Here updatingStatusOfClass 08', timeNow);
+          }
+
           if (
             apiStartTime !== classObj.startTime ||
             apiEndTime !== classObj.endTime ||
             newStatus !== classObj.status
           ) {
+            console.log('Here updatingStatusOfClass 09', timeNow);
             classesToUpdate.push({
               id: classObj.id,
               updatedClass: {
@@ -2193,6 +2268,7 @@ export class ClassesService {
             });
           }
         } catch (error: any) {
+          console.log('Here updatingStatusOfClass 010', timeNow);
           if (error.code === 404 || error.code === 410) {
             deleteClassIds.push(classObj.meetingId);
             Logger.log(
@@ -2209,7 +2285,12 @@ export class ClassesService {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
         let newStatus;
+        console.log('Here updatingStatusOfClass 011', timeNow);
+        console.log('classObj', classObj);
         if (currentTime > endTime && classObj.status == 'ongoing') {
+          console.log('classObj.id', classObj.id);
+          this.activateZoomSession(classObj.id);
+          console.log('Here updatingStatusOfClass 012', timeNow);
           const live = await this.zoomService.isMeetingLiveViaDashboard(
             classObj.meetingId,
           );
@@ -2218,22 +2299,31 @@ export class ClassesService {
           } else {
             newStatus = 'completed';
           }
-        } else if (currentTime >= startTime && currentTime <= endTime)
+        } else if (currentTime >= startTime && currentTime <= endTime) {
+          console.log('Here updatingStatusOfClass 013', timeNow);
           newStatus = 'ongoing';
-        else newStatus = 'upcoming';
+        } else {
+          newStatus = 'upcoming';
+          console.log('Here updatingStatusOfClass 014', timeNow);
+        }
         if (
           newStatus === 'ongoing' &&
           this.isPendingZoomMeetingId(classObj.meetingId)
         ) {
+          console.log('Here updatingStatusOfClass 015', timeNow);
           try {
+            console.log('Here updatingStatusOfClass 016');
             const activatedSession = await this.activateZoomSession(
               classObj.id,
             );
+            console.log('Here updatingStatusOfClass 017', timeNow);
+            console.log('Here activatedSession', timeNow, activatedSession);
             // activateZoomSession returns the session — check if it actually got a real meetingId
             if (
               activatedSession &&
               !this.isPendingZoomMeetingId(activatedSession.meetingId)
             ) {
+              console.log('Here updatingStatusOfClass 018', timeNow);
               classObj = activatedSession;
             } else {
               this.logger.warn(
@@ -2247,6 +2337,7 @@ export class ClassesService {
             continue;
           }
         }
+        console.log('Here updatingStatusOfClass 019', timeNow);
         if (newStatus !== classObj.status) {
           classesToUpdate.push({
             id: classObj.id,
