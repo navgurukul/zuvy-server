@@ -1008,7 +1008,11 @@ export class MentorSlotService {
             approval_type: 0,
             audio: 'both',
             auto_recording: 'cloud',
-            waiting_room: false,
+            waiting_room: true,
+            waiting_room_options: {
+              mode: 'custom',
+              who_goes_to_waiting_room: 'users_not_on_invite',
+            },
             alternative_hosts: mentorEmail,
           },
         };

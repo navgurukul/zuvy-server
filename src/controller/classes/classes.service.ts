@@ -412,7 +412,11 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: false,
+        waiting_room: true,
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
@@ -1082,10 +1086,7 @@ export class ClassesService {
       saveResult.data[0].moduleId = chapterResult.chapter.moduleId;
 
       let responseSessions = saveResult.data;
-      const startsNow =
-        saveResult.data?.[0] &&
-        this.shouldActivateZoomSessionNow(saveResult.data[0]);
-      if (startsNow && saveResult.data?.[0]?.id) {
+      if (saveResult.data?.[0]?.id) {
         const activatedSession = await this.activateZoomSession(
           saveResult.data[0].id,
         );
@@ -1104,9 +1105,7 @@ export class ClassesService {
 
       return {
         status: 'success',
-        message: startsNow
-          ? 'Zoom session created and activated successfully'
-          : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
+        message: 'Zoom session created and activated successfully',
         data: responseSessions,
         descriptionSuffix,
       };

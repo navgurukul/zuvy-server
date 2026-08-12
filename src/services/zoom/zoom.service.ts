@@ -234,18 +234,20 @@ export class ZoomService {
   private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
     return {
       security: {
-        waiting_room: false,
+        waiting_room: true,
       },
       scheduled_meeting: {
         host_video: true,
         participants_video: true,
         audio_type: 'both',
         join_before_host: false,
-        waiting_room: false,
+        waiting_room: true,
         force_pmi_jbh_password: false,
         pstn_password_protected: false,
       },
       in_meeting: {
+        waiting_room: true,
+        participants_to_place_in_waiting_room: 3,
         e2e_encryption: true,
         chat: true,
         private_chat: true,
@@ -443,6 +445,7 @@ export class ZoomService {
   async createMeeting(
     meetingData: ZoomMeetingRequest,
   ): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
+    console.log('Here calling Patch 1');
     try {
       const url = `${this.baseUrl}/users/me/meetings`;
 
@@ -453,6 +456,34 @@ export class ZoomService {
       );
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
+      console.log('Here 1');
+
+      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      try {
+        console.log('Here 2');
+        const patchUrl = `${this.baseUrl}/meetings/${response.data.id}`;
+        await axios.patch(
+          patchUrl,
+          {
+            settings: {
+              waiting_room: true,
+              waiting_room_options: {
+                mode: 'custom',
+                who_goes_to_waiting_room: 'users_not_on_invite',
+              },
+            },
+          },
+          { headers: await this.getHeaders() },
+        );
+        this.logger.log(
+          `Patched meeting-level Waiting Room for Zoom meeting: ${response.data.id}`,
+        );
+      } catch (patchErr: any) {
+        this.logger.warn(
+          `Failed to patch waiting room setting for meeting ${response.data.id}: ${patchErr.message}`,
+        );
+      }
+
       return { success: true, data: response.data };
     } catch (error: any) {
       this.logger.error(
@@ -470,6 +501,7 @@ export class ZoomService {
     userEmailOrId: string,
     meetingData: ZoomMeetingRequest,
   ): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
+    console.log('Here calling Patch 2');
     try {
       const url = `${this.baseUrl}/users/${encodeURIComponent(userEmailOrId)}/meetings`;
 
@@ -485,6 +517,8 @@ export class ZoomService {
       );
 
       const meeting = response.data;
+      console.log('Here A');
+      console.log('Here meeting', meeting);
 
       // Strong logging for debugging
       this.logger.log(`Zoom meeting created successfully: ${meeting.id}`);
@@ -500,6 +534,7 @@ export class ZoomService {
         this.logger.error(
           `HOST MISMATCH: Expected ${userEmailOrId}, got ${meeting.host_email}`,
         );
+        console.log('Here B');
 
         // Fail fast — don't allow incorrect meeting to propagate
         return {
@@ -518,6 +553,34 @@ export class ZoomService {
           success: false,
           error: 'Invalid Zoom meeting response: missing URLs',
         };
+      }
+      console.log('Here C');
+
+      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      try {
+        console.log('Here D');
+        const patchUrl = `${this.baseUrl}/meetings/${meeting.id}`;
+        await axios.patch(
+          patchUrl,
+          {
+            settings: {
+              waiting_room: true,
+              waiting_room_options: {
+                mode: 'custom',
+                who_goes_to_waiting_room: 'users_not_on_invite',
+              },
+            },
+          },
+          { headers },
+        );
+        console.log('Here D');
+        this.logger.log(
+          `Patched meeting-level Waiting Room for Zoom meeting: ${meeting.id}`,
+        );
+      } catch (patchErr: any) {
+        this.logger.warn(
+          `Failed to patch waiting room setting for meeting ${meeting.id}: ${patchErr.message}`,
+        );
       }
 
       return { success: true, data: meeting };
