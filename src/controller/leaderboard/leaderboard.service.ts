@@ -26,8 +26,9 @@ import {
   zuvyCourseModules,
   zuvyBootcamps,
   zuvyBatchEnrollments,
+  zuvyAssignmentSubmission,
 } from '../../../drizzle/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray, isNotNull } from 'drizzle-orm';
 
 @Injectable()
 export class LeaderboardService {
@@ -105,6 +106,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         assessmentPoints: number;
         lastActivityAt: string;
       }
@@ -113,6 +115,7 @@ export class LeaderboardService {
     const assessmentMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         assessmentPoints: number;
         lastActivityAt: string;
       }
@@ -160,6 +163,7 @@ export class LeaderboardService {
         );
 
         const entry = assessmentMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
           assessmentPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
@@ -186,6 +190,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         codingPoints: number;
         lastActivityAt: string;
       }
@@ -194,6 +199,7 @@ export class LeaderboardService {
     const codingMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         codingPoints: number;
         lastActivityAt: string;
       }
@@ -204,6 +210,7 @@ export class LeaderboardService {
         .select({
           userId: zuvyPracticeCode.userId,
           bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
+          chapterId: zuvyOutsourseCodingQuestions.chapterId,
           submittedAt: zuvyPracticeCode.createdAt,
           deadline: zuvyOutsourseAssessments.deadline,
           practiceCodeId: zuvyPracticeCode.id,
@@ -263,11 +270,22 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
         const entry = codingMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
           codingPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
 
         entry.codingPoints += pointsBreakdown.totalCodingPoints;
+
+        if (submission.chapterId) {
+          const currentChapterPoints =
+            entry.chapterPoints.get(submission.chapterId) ?? 0;
+
+          entry.chapterPoints.set(
+            submission.chapterId,
+            currentChapterPoints + pointsBreakdown.totalCodingPoints,
+          );
+        }
         entry.lastActivityAt =
           submission.submittedAt || new Date().toISOString();
 
@@ -289,6 +307,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         quizPoints: number;
         lastActivityAt: string;
       }
@@ -339,6 +358,7 @@ export class LeaderboardService {
       const quizMap = new Map<
         string,
         {
+          chapterPoints: Map<number, number>;
           quizPoints: number;
           lastActivityAt: string;
         }
@@ -371,6 +391,7 @@ export class LeaderboardService {
         const totalQuizPoints = attemptPoints + bonusPoints + scorePoints;
 
         const entry = quizMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
           quizPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
@@ -518,6 +539,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         recordingPoints: number;
         lastActivityAt: string;
       }
@@ -526,6 +548,7 @@ export class LeaderboardService {
     const recordingMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         recordingPoints: number;
         lastActivityAt: string;
       }
@@ -587,6 +610,7 @@ export class LeaderboardService {
 
         if (!recordingMap.has(key)) {
           recordingMap.set(key, {
+            chapterPoints: new Map<number, number>(),
             recordingPoints: 0,
             lastActivityAt: completion.completedAt || new Date().toISOString(),
           });
@@ -624,6 +648,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         assignmentPoints: number;
         lastActivityAt: string;
       }
@@ -632,6 +657,7 @@ export class LeaderboardService {
     const assignmentMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         assignmentPoints: number;
         lastActivityAt: string;
       }
@@ -688,6 +714,7 @@ export class LeaderboardService {
           attemptPoints + submissionBonus + scorePoints;
 
         const entry = assignmentMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
           assignmentPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
@@ -720,6 +747,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         videoPoints: number;
         lastActivityAt: string;
       }
@@ -728,6 +756,7 @@ export class LeaderboardService {
     const videoMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         videoPoints: number;
         lastActivityAt: string;
       }
@@ -777,6 +806,7 @@ export class LeaderboardService {
         completionsByLearnerBootcamp.get(key)!.add(completion.chapterId);
 
         videoMap.set(key, {
+          chapterPoints: new Map<number, number>(),
           videoPoints: 0,
           lastActivityAt: completion.completedAt || new Date().toISOString(),
         });
@@ -788,6 +818,10 @@ export class LeaderboardService {
         const entry = videoMap.get(key);
 
         if (entry) {
+          for (const chapterId of chapterSet) {
+            entry.chapterPoints.set(chapterId, pointsPerVideo);
+          }
+
           entry.videoPoints = chapterSet.size * pointsPerVideo;
         }
       }
@@ -809,6 +843,7 @@ export class LeaderboardService {
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         articlePoints: number;
         lastActivityAt: string;
       }
@@ -817,6 +852,7 @@ export class LeaderboardService {
     const articleMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         articlePoints: number;
         lastActivityAt: string;
       }
@@ -866,17 +902,22 @@ export class LeaderboardService {
         completionsByLearnerBootcamp.get(key)!.add(completion.chapterId);
 
         articleMap.set(key, {
+          chapterPoints: new Map<number, number>(),
           articlePoints: 0,
           lastActivityAt: completion.completedAt || new Date().toISOString(),
         });
       }
 
       for (const [key, chapterSet] of completionsByLearnerBootcamp) {
-        const pointsPerArticle = 5;
+        const pointsPerArticle = 10;
 
         const entry = articleMap.get(key);
 
         if (entry) {
+          for (const chapterId of chapterSet) {
+            entry.chapterPoints.set(chapterId, pointsPerArticle);
+          }
+
           entry.articlePoints = chapterSet.size * pointsPerArticle;
         }
       }
@@ -892,6 +933,375 @@ export class LeaderboardService {
 
       return articleMap;
     }
+  }
+
+  async getChapterWisePoints(
+    userId: number,
+    bootcampId: number,
+    chapterIds: number[],
+  ): Promise<Map<number, number>> {
+    const chapterPointsMap = new Map<number, number>();
+
+    if (!chapterIds.length) {
+      return chapterPointsMap;
+    }
+
+    // 1. Current module ke chapters
+    const chapters = await db
+      .select({
+        chapterId: zuvyModuleChapter.id,
+        topicId: zuvyModuleChapter.topicId,
+      })
+      .from(zuvyModuleChapter)
+      .where(inArray(zuvyModuleChapter.id, chapterIds));
+
+    // 2. Sab chapters ko initially 0
+    for (const chapter of chapters) {
+      if (chapter.chapterId != null) {
+        chapterPointsMap.set(chapter.chapterId, 0);
+      }
+    }
+
+    // Topic 1: Video (working; don't break)
+    const videoChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 1 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (videoChapterIds.length > 0) {
+      const videoCompletions = await db
+        .select({
+          chapterId: zuvyChapterTracking.chapterId,
+        })
+        .from(zuvyChapterTracking)
+        .innerJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            eq(zuvyModuleChapter.topicId, 1),
+            inArray(zuvyChapterTracking.chapterId, videoChapterIds),
+          ),
+        );
+
+      for (const video of videoCompletions) {
+        if (video.chapterId != null) {
+          chapterPointsMap.set(video.chapterId, 10);
+        }
+      }
+    }
+
+    // Topic 2: Article (working; don't break)
+    const articleChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 2 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (articleChapterIds.length > 0) {
+      const articleCompletions = await db
+        .select({
+          chapterId: zuvyChapterTracking.chapterId,
+        })
+        .from(zuvyChapterTracking)
+        .innerJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            eq(zuvyModuleChapter.topicId, 2),
+            inArray(zuvyChapterTracking.chapterId, articleChapterIds),
+          ),
+        );
+
+      for (const article of articleCompletions) {
+        if (article.chapterId != null) {
+          chapterPointsMap.set(article.chapterId, 5);
+        }
+      }
+    }
+
+    // Topic 3: Coding
+    const codingChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 3 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (codingChapterIds.length > 0) {
+      const codingSubmissions = await db
+        .select({
+          chapterId: zuvyOutsourseCodingQuestions.chapterId,
+          submittedAt: zuvyPracticeCode.createdAt,
+          deadline: zuvyOutsourseAssessments.deadline,
+          practiceCodeId: zuvyPracticeCode.id,
+        })
+        .from(zuvyPracticeCode)
+        .leftJoin(
+          zuvyOutsourseCodingQuestions,
+          eq(
+            zuvyPracticeCode.codingOutsourseId,
+            zuvyOutsourseCodingQuestions.id,
+          ),
+        )
+        .leftJoin(
+          zuvyOutsourseAssessments,
+          eq(
+            zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .where(
+          and(
+            eq(zuvyPracticeCode.userId, BigInt(userId)),
+            eq(zuvyOutsourseCodingQuestions.bootcampId, bootcampId),
+            inArray(zuvyOutsourseCodingQuestions.chapterId, codingChapterIds),
+          ),
+        );
+
+      if (codingSubmissions.length > 0) {
+        const practiceCodeIds = codingSubmissions.map((s) => s.practiceCodeId);
+
+        const failedTestCases = await db
+          .select({
+            submissionId: zuvyTestCasesSubmission.submissionId,
+          })
+          .from(zuvyTestCasesSubmission)
+          .where(
+            and(
+              inArray(zuvyTestCasesSubmission.submissionId, practiceCodeIds),
+              sql`${zuvyTestCasesSubmission.status} != 'Accepted'`,
+            ),
+          );
+
+        const failedSubmissionIdsSet = new Set(
+          failedTestCases.map((tc) => tc.submissionId),
+        );
+
+        for (const submission of codingSubmissions) {
+          if (submission.chapterId == null) {
+            continue;
+          }
+          const allTestCasesPassed = !failedSubmissionIdsSet.has(
+            submission.practiceCodeId,
+          );
+
+          const pointsBreakdown = this.calculateTotalCodingPoints(
+            submission.submittedAt,
+            submission.deadline,
+            allTestCasesPassed,
+          );
+
+          const existingPoints =
+            chapterPointsMap.get(submission.chapterId) ?? 0;
+          chapterPointsMap.set(
+            submission.chapterId,
+            existingPoints + pointsBreakdown.totalCodingPoints,
+          );
+        }
+      }
+    }
+
+    // Topic 4: Quiz
+    const quizChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 4 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (quizChapterIds.length > 0) {
+      const quizSubmissions = await db
+        .select({
+          chapterId: zuvyOutsourseQuizzes.chapterId,
+          mcqScore: zuvyAssessmentSubmission.mcqScore,
+          requiredMCQScore: zuvyAssessmentSubmission.requiredMCQScore,
+          submittedAt: zuvyAssessmentSubmission.submitedAt,
+          deadline: zuvyOutsourseAssessments.deadline,
+          createdAt: zuvyQuizTracking.createdAt,
+        })
+        .from(zuvyQuizTracking)
+        .leftJoin(
+          zuvyAssessmentSubmission,
+          eq(
+            zuvyQuizTracking.assessmentSubmissionId,
+            zuvyAssessmentSubmission.id,
+          ),
+        )
+        .leftJoin(
+          zuvyOutsourseQuizzes,
+          eq(zuvyQuizTracking.questionId, zuvyOutsourseQuizzes.id),
+        )
+        .leftJoin(
+          zuvyOutsourseAssessments,
+          eq(
+            zuvyOutsourseQuizzes.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .where(
+          and(
+            eq(zuvyQuizTracking.userId, userId),
+            eq(zuvyOutsourseQuizzes.bootcampId, bootcampId),
+            inArray(zuvyOutsourseQuizzes.chapterId, quizChapterIds),
+          ),
+        );
+
+      for (const submission of quizSubmissions) {
+        if (submission.chapterId == null) {
+          continue;
+        }
+
+        let quizPercentage = 0;
+
+        if (
+          submission.mcqScore !== null &&
+          submission.requiredMCQScore &&
+          submission.requiredMCQScore > 0
+        ) {
+          quizPercentage =
+            (submission.mcqScore / submission.requiredMCQScore) * 100;
+        }
+
+        const attemptPoints = 5;
+
+        const bonusPoints = this.calculateQuizOnTimeBonusPoints(
+          submission.submittedAt,
+          submission.deadline,
+        );
+
+        const scorePoints = this.calculateQuizScorePoints(quizPercentage);
+
+        const totalQuizPoints = attemptPoints + bonusPoints + scorePoints;
+
+        const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
+        chapterPointsMap.set(
+          submission.chapterId,
+          existingPoints + totalQuizPoints,
+        );
+      }
+    }
+
+    // Topic 5: Assignment
+    const assignmentChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 5 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (assignmentChapterIds.length > 0) {
+      const assignmentSubmissions = await db
+        .select({
+          chapterId: zuvyAssignmentSubmission.chapterId,
+          createdAt: zuvyAssignmentSubmission.createdAt,
+          timeLimit: zuvyAssignmentSubmission.timeLimit,
+        })
+        .from(zuvyAssignmentSubmission)
+        .where(
+          and(
+            eq(zuvyAssignmentSubmission.userId, userId),
+            eq(zuvyAssignmentSubmission.bootcampId, bootcampId),
+            inArray(zuvyAssignmentSubmission.chapterId, assignmentChapterIds),
+          ),
+        );
+
+      for (const submission of assignmentSubmissions) {
+        if (submission.chapterId == null) {
+          continue;
+        }
+        const attemptPoints = 5;
+        const bonusPoints = this.calculateOnTimeBonusPoints(
+          submission.createdAt,
+          submission.timeLimit,
+        );
+        const totalPoints = attemptPoints + bonusPoints;
+
+        const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
+        chapterPointsMap.set(
+          submission.chapterId,
+          existingPoints + totalPoints,
+        );
+      }
+    }
+
+    // Topic 6: Assessment
+    const assessmentChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 6 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (assessmentChapterIds.length > 0) {
+      const assessmentSubmissions = await db
+        .select({
+          chapterId: zuvyOutsourseAssessments.chapterId,
+          percentage: zuvyAssessmentSubmission.percentage,
+          submittedAt: zuvyAssessmentSubmission.submitedAt,
+          deadline: zuvyOutsourseAssessments.deadline,
+        })
+        .from(zuvyAssessmentSubmission)
+        .leftJoin(
+          zuvyOutsourseAssessments,
+          eq(
+            zuvyAssessmentSubmission.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .where(
+          and(
+            eq(zuvyAssessmentSubmission.userId, userId),
+            eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+            inArray(zuvyOutsourseAssessments.chapterId, assessmentChapterIds),
+          ),
+        );
+
+      for (const submission of assessmentSubmissions) {
+        if (submission.chapterId == null) {
+          continue;
+        }
+        const pointsBreakdown = this.calculateTotalAssessmentPoints(
+          submission.percentage || 0,
+          submission.submittedAt,
+          submission.deadline,
+        );
+
+        const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
+        chapterPointsMap.set(
+          submission.chapterId,
+          existingPoints + pointsBreakdown.totalPoints,
+        );
+      }
+    }
+
+    // Topic 8: Recording
+    const recordingChapterIds = chapters
+      .filter((chapter) => chapter.topicId === 8 && chapter.chapterId != null)
+      .map((chapter) => chapter.chapterId as number);
+
+    if (recordingChapterIds.length > 0) {
+      const recordingCompletions = await db
+        .select({
+          chapterId: zuvyChapterTracking.chapterId,
+        })
+        .from(zuvyChapterTracking)
+        .where(
+          and(
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            inArray(zuvyChapterTracking.chapterId, recordingChapterIds),
+            isNotNull(zuvyChapterTracking.completedAt),
+          ),
+        );
+
+      for (const recording of recordingCompletions) {
+        if (recording.chapterId != null) {
+          chapterPointsMap.set(recording.chapterId, 5);
+        }
+      }
+    }
+
+    return chapterPointsMap;
   }
 
   async updateLeaderboard(): Promise<{
@@ -1222,7 +1632,10 @@ export class LeaderboardService {
           .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
           .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`)
           .limit(limit);
-        return leaderboard;
+        return leaderboard.map((row) => ({
+          ...row,
+          learnerId: Number(row.learnerId),
+        }));
       } else {
         const leaderboard = await db
           .select({
@@ -1300,7 +1713,7 @@ export class LeaderboardService {
         )
         .where(
           and(
-            eq(zuvyBatchEnrollments.userId, learnerId),
+            eq(zuvyBatchEnrollments.userId, BigInt(learnerId)),
             eq(zuvyBatchEnrollments.bootcampId, bootcampId),
           ),
         )
@@ -1338,7 +1751,7 @@ export class LeaderboardService {
   }
 
   private calculateCodingAttemptPoints(): number {
-    return 5;
+    return 10;
   }
 
   private calculateCodingOnTimeBonusPoints(
@@ -1430,7 +1843,7 @@ export class LeaderboardService {
         .from(zuvyBatchEnrollments)
         .where(
           and(
-            eq(zuvyBatchEnrollments.userId, normalizedLearnerId),
+            eq(zuvyBatchEnrollments.userId, BigInt(normalizedLearnerId)),
             eq(zuvyBatchEnrollments.bootcampId, bootcampId),
           ),
         )

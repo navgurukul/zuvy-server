@@ -54,6 +54,7 @@ import {
   resolveZoomAttendanceReadiness,
   resolveGoogleMeetAttendanceReadiness,
 } from 'src/services/attendance/attendance-readiness';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -66,6 +67,7 @@ export class TrackingService {
     private classesService: ClassesService,
     private readonly zoomService: ZoomService,
     private readonly attendanceCalc: AttendanceCalculationService,
+    private readonly leaderboardService: LeaderboardService,
   ) {}
 
   /**
@@ -541,6 +543,19 @@ export class TrackingService {
             chapter['chapterTrackingDetails'].length > 0
               ? 'Completed'
               : 'Pending';
+        });
+
+        const chapterIds = trackingData.map((chapter) => chapter.id);
+
+        const chapterPointsMap =
+          await this.leaderboardService.getChapterWisePoints(
+            userId,
+            moduleDetails[0].bootcampId,
+            chapterIds,
+          );
+
+        trackingData.forEach((chapter) => {
+          chapter['sparks'] = chapterPointsMap.get(chapter.id) ?? 0;
         });
 
         return {
