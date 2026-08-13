@@ -392,7 +392,19 @@ export class StudentService {
           db
             .select({ moduleId: zuvyModuleChapter.moduleId })
             .from(zuvyModuleChapter)
-            .where(inArray(zuvyModuleChapter.moduleId, moduleIds))
+            .leftJoin(
+              zuvyOutsourseAssessments,
+              eq(zuvyModuleChapter.id, zuvyOutsourseAssessments.chapterId),
+            )
+            .where(
+              and(
+                inArray(zuvyModuleChapter.moduleId, moduleIds),
+                or(
+                  isNull(zuvyOutsourseAssessments.currentState),
+                  inArray(zuvyOutsourseAssessments.currentState, [1, 2, 3]),
+                ),
+              ),
+            )
             .then((res) => {
               allChapters = res;
             }),
@@ -2191,15 +2203,7 @@ Team Zuvy`;
                   currentState: zuvyOutsourseAssessments.currentState,
                 })
                 .from(zuvyOutsourseAssessments)
-                .where(
-                  and(
-                    inArray(zuvyOutsourseAssessments.chapterId, chapterIds),
-                    inArray(
-                      zuvyOutsourseAssessments.currentState,
-                      allowedStates,
-                    ),
-                  ),
-                )
+                .where(inArray(zuvyOutsourseAssessments.chapterId, chapterIds))
             : Promise.resolve([]),
           chapterIds.length > 0
             ? db
@@ -2217,11 +2221,27 @@ Team Zuvy`;
         topicTypes.map((topic) => [topic.id, topic.name]),
       );
 
+      const assessmentStateMap = new Map<number, number>();
+      chapterAssessments.forEach((assessment) => {
+        if (
+          assessment.chapterId !== null &&
+          assessment.chapterId !== undefined
+        ) {
+          assessmentStateMap.set(assessment.chapterId, assessment.currentState);
+        }
+      });
+
       const chapterDurationMap = new Map(
-        chapterAssessments.map((assessment) => [
-          assessment.chapterId,
-          assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null,
-        ]),
+        chapterAssessments
+          .filter(
+            (assessment) =>
+              assessment.currentState !== null &&
+              allowedStates.includes(assessment.currentState),
+          )
+          .map((assessment) => [
+            assessment.chapterId,
+            assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null,
+          ]),
       );
 
       chapterSessions.forEach((session) => {
@@ -2254,8 +2274,12 @@ Team Zuvy`;
           moduleDuration: module.timeAlloted
             ? `${Math.round(module.timeAlloted / 60)} min`
             : 'Not specified',
-          chapters: ((module as any).moduleChapterData || []).map(
-            (chapter: any) => {
+          chapters: ((module as any).moduleChapterData || [])
+            .filter((chapter: any) => {
+              const state = assessmentStateMap.get(chapter.id);
+              return state === undefined || allowedStates.includes(state);
+            })
+            .map((chapter: any) => {
               const duration = chapterDurationMap.get(chapter.id);
               let chapterDuration = 'Self-paced';
 
@@ -2275,8 +2299,7 @@ Team Zuvy`;
                 chapterDuration,
                 chapterOrder: chapter.order,
               };
-            },
-          ),
+            }),
         };
       });
 
