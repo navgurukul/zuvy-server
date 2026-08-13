@@ -895,3 +895,11 @@ WHERE id = 153;
 SELECT project_id
 FROM zuvy_course_modules
 WHERE id = 96;
+
+DELETE FROM "main"."zuvy_batch_enrollments" a
+USING "main"."zuvy_batch_enrollments" b
+WHERE a.id < b.id
+  AND a.user_id = b.user_id
+  AND a.bootcamp_id = b.bootcamp_id;
+
+ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_user_id_bootcamp_id_uniq" UNIQUE ("user_id", "bootcamp_id");
