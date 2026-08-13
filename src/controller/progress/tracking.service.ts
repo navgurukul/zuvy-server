@@ -10,6 +10,8 @@ import {
   desc,
   lt,
   isNotNull,
+  or,
+  isNull,
 } from 'drizzle-orm';
 import { error, log } from 'console';
 import {
@@ -363,9 +365,23 @@ export class TrackingService {
               )
               .then((rows) => rows[0].count),
             db
-              .select({ count: sql<number>`count(*)::int` })
+              .select({
+                count: sql<number>`count(${zuvyModuleChapter.id})::int`,
+              })
               .from(zuvyModuleChapter)
-              .where(inArray(zuvyModuleChapter.moduleId, moduleIds))
+              .leftJoin(
+                zuvyOutsourseAssessments,
+                eq(zuvyModuleChapter.id, zuvyOutsourseAssessments.chapterId),
+              )
+              .where(
+                and(
+                  inArray(zuvyModuleChapter.moduleId, moduleIds),
+                  or(
+                    isNull(zuvyOutsourseAssessments.currentState),
+                    inArray(zuvyOutsourseAssessments.currentState, [1, 2, 3]),
+                  ),
+                ),
+              )
               .then((rows) => rows[0].count),
           ]);
 
