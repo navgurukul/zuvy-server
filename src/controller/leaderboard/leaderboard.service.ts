@@ -223,6 +223,12 @@ export class LeaderboardService {
             zuvyOutsourseCodingQuestions.id,
           ),
         )
+
+        .innerJoin(
+          zuvyBootcamps,
+          eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
+        )
+
         .leftJoin(
           zuvyOutsourseAssessments,
           eq(
@@ -753,54 +759,52 @@ export class LeaderboardService {
     >();
 
     try {
-      const projectSubmissions = await db
+      const assignmentSubmissions = await db
         .select({
-          userId: zuvyProjectTracking.userId,
-          bootcampId: zuvyProjectTracking.bootcampId,
-          grades: zuvyProjectTracking.grades,
-          isChecked: zuvyProjectTracking.isChecked,
-          createdAt: zuvyProjectTracking.createdAt,
-          updatedAt: zuvyProjectTracking.updatedAt,
+          userId: zuvyAssignmentSubmission.userId,
+          bootcampId: zuvyAssignmentSubmission.bootcampId,
+          chapterId: zuvyAssignmentSubmission.chapterId,
+          createdAt: zuvyAssignmentSubmission.createdAt,
+          timeLimit: zuvyAssignmentSubmission.timeLimit,
         })
-        .from(zuvyProjectTracking)
-        .where(sql`${zuvyProjectTracking.bootcampId} IS NOT NULL`);
+        .from(zuvyAssignmentSubmission)
+        .innerJoin(
+          zuvyBootcamps,
+          eq(zuvyAssignmentSubmission.bootcampId, zuvyBootcamps.id),
+        )
+        .where(sql`${zuvyAssignmentSubmission.bootcampId} IS NOT NULL`);
 
-      if (projectSubmissions.length === 0) {
-        this.logger.log('No project submissions found');
+      if (assignmentSubmissions.length === 0) {
+        this.logger.log('No assignment submissions found');
         return assignmentMap;
       }
 
-      this.logger.log(`Found ${projectSubmissions.length} project submissions`);
+      this.logger.log(
+        `Found ${assignmentSubmissions.length} assignment submissions`,
+      );
 
-      for (const submission of projectSubmissions) {
-        if (!submission.userId || !submission.bootcampId) {
+      for (const submission of assignmentSubmissions) {
+        if (
+          !submission.userId ||
+          !submission.bootcampId ||
+          !submission.chapterId
+        ) {
           continue;
         }
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        const attemptPoints = 5;
+        const attemptPoints = 10;
 
-        const submissionBonus = submission.isChecked ? 3 : 0;
+        const bonusPoints =
+          submission.createdAt &&
+          submission.timeLimit &&
+          new Date(submission.createdAt).getTime() <=
+            new Date(submission.timeLimit).getTime()
+            ? 5
+            : 0;
 
-        let scorePoints = 0;
-        if (submission.grades !== null && submission.grades !== undefined) {
-          const gradePercentage = submission.grades;
-          if (gradePercentage >= 90) {
-            scorePoints = 12;
-          } else if (gradePercentage >= 75) {
-            scorePoints = 9;
-          } else if (gradePercentage >= 50) {
-            scorePoints = 6;
-          } else if (gradePercentage > 0) {
-            scorePoints = 3;
-          } else {
-            scorePoints = 0;
-          }
-        }
-
-        const totalAssignmentPoints =
-          attemptPoints + submissionBonus + scorePoints;
+        const totalAssignmentPoints = attemptPoints + bonusPoints;
 
         const entry = assignmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
@@ -808,11 +812,25 @@ export class LeaderboardService {
           lastActivityAt: new Date().toISOString(),
         };
 
+        this.logger.log(
+          `ASSIGNMENT LEADERBOARD DEBUG: learner=${submission.userId}, bootcamp=${submission.bootcampId}, chapter=${submission.chapterId}, attempt=${attemptPoints}, bonus=${bonusPoints}, total=${totalAssignmentPoints}`,
+        );
+
         entry.assignmentPoints += totalAssignmentPoints;
-        entry.lastActivityAt =
-          submission.updatedAt ||
-          submission.createdAt ||
-          new Date().toISOString();
+
+        this.logger.log(
+          `ASSIGNMENT MAP TOTAL: learner=${submission.userId}, bootcamp=${submission.bootcampId}, assignmentPoints=${entry.assignmentPoints}`,
+        );
+
+        const currentChapterPoints =
+          entry.chapterPoints.get(submission.chapterId) ?? 0;
+
+        entry.chapterPoints.set(
+          submission.chapterId,
+          currentChapterPoints + totalAssignmentPoints,
+        );
+
+        entry.lastActivityAt = submission.createdAt || new Date().toISOString();
 
         assignmentMap.set(key, entry);
       }
@@ -1203,6 +1221,10 @@ export class LeaderboardService {
               timeLimit: zuvyAssignmentSubmission.timeLimit,
             })
             .from(zuvyAssignmentSubmission)
+            .innerJoin(
+              zuvyBootcamps,
+              eq(zuvyAssignmentSubmission.bootcampId, zuvyBootcamps.id),
+            )
             .where(
               and(
                 eq(zuvyAssignmentSubmission.userId, userId),
@@ -1627,6 +1649,11 @@ export class LeaderboardService {
         const assignmentEntry = assignmentMap.get(
           `${entry.learnerId}-${entry.bootcampId}`,
         );
+
+        this.logger.log(
+          `ASSIGNMENT UPDATE DEBUG: learner=${entry.learnerId}, bootcamp=${entry.bootcampId}, assignmentPoints=${assignmentEntry?.assignmentPoints}`,
+        );
+
         const videoEntry = videoMap.get(
           `${entry.learnerId}-${entry.bootcampId}`,
         );

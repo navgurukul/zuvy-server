@@ -879,3 +879,8 @@ WHERE a.id < b.id
   AND a.bootcamp_id = b.bootcamp_id;
 
 ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_user_id_bootcamp_id_uniq" UNIQUE ("user_id", "bootcamp_id");
+
+
+
+
+
