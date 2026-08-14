@@ -42,6 +42,10 @@ export interface ZoomMeetingRequest {
     auto_recording?: string; // local, cloud, none
     enforce_login?: boolean;
     waiting_room?: boolean;
+    waiting_room_options?: {
+      mode?: string;
+      who_goes_to_waiting_room?: string;
+    };
     // New attendance and meeting control settings
     attendance_reporting?: boolean; // Enable attendance tracking
     end_on_auto_off?: boolean; // End meeting when host leaves
@@ -109,6 +113,10 @@ export interface ZoomMeetingResponse {
     duration: number;
     status: string;
   }>;
+  meeting_invitees?: any[];
+  settings?: {
+    meeting_invitees?: any[];
+  };
 }
 
 export interface ZoomAttendanceResponse {
@@ -445,9 +453,27 @@ export class ZoomService {
   async createMeeting(
     meetingData: ZoomMeetingRequest,
   ): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
-    console.log('Here calling Patch 1');
     try {
       const url = `${this.baseUrl}/users/me/meetings`;
+
+      // Step 1: Apply User-Level Account Default Settings
+      try {
+        await this.applyLicensedUserSettings('me');
+      } catch (userSettingErr: any) {
+        this.logger.warn(
+          `User setting patch skipped or failed: ${userSettingErr.message}`,
+        );
+      }
+
+      // Step 2: Enforce Meeting-Level Waiting Room directly in initial POST payload
+      meetingData.settings = {
+        ...(meetingData.settings || {}),
+        waiting_room: true,
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
+      };
 
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
@@ -456,11 +482,9 @@ export class ZoomService {
       );
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
-      console.log('Here 1');
 
       // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
       try {
-        console.log('Here 2');
         const patchUrl = `${this.baseUrl}/meetings/${response.data.id}`;
         await axios.patch(
           patchUrl,
@@ -510,6 +534,16 @@ export class ZoomService {
       // Log request intent (helps debug wrong-host issues)
       this.logger.log(`Creating Zoom meeting for user: ${userEmailOrId}`);
 
+      // Step 2: Enforce Meeting-Level Waiting Room directly in initial POST payload
+      meetingData.settings = {
+        ...(meetingData.settings || {}),
+        waiting_room: true,
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
+      };
+
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
@@ -517,7 +551,36 @@ export class ZoomService {
       );
 
       const meeting = response.data;
+
+      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      try {
+        console.log('Here D');
+        const patchUrl = `${this.baseUrl}/meetings/${meeting.id}`;
+        await axios.patch(
+          patchUrl,
+          {
+            settings: {
+              waiting_room: true,
+              waiting_room_options: {
+                mode: 'custom',
+                who_goes_to_waiting_room: 'users_not_on_invite',
+              },
+            },
+          },
+          { headers },
+        );
+        this.logger.log(
+          `Patched meeting-level Waiting Room for Zoom meeting: ${meeting.id}`,
+        );
+      } catch (patchErr: any) {
+        this.logger.warn(
+          `Failed to patch waiting room setting for meeting ${meeting.id}: ${patchErr.message}`,
+        );
+      }
+
       console.log('Here A');
+      console.log('Here meeting_invitees', meeting.meeting_invitees);
+      console.log('Here settings', meeting.settings.meeting_invitees);
       console.log('Here meeting', meeting);
 
       // Strong logging for debugging
@@ -556,32 +619,35 @@ export class ZoomService {
       }
       console.log('Here C');
 
-      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
-      try {
-        console.log('Here D');
-        const patchUrl = `${this.baseUrl}/meetings/${meeting.id}`;
-        await axios.patch(
-          patchUrl,
-          {
-            settings: {
-              waiting_room: true,
-              waiting_room_options: {
-                mode: 'custom',
-                who_goes_to_waiting_room: 'users_not_on_invite',
-              },
-            },
-          },
-          { headers },
-        );
-        console.log('Here D');
-        this.logger.log(
-          `Patched meeting-level Waiting Room for Zoom meeting: ${meeting.id}`,
-        );
-      } catch (patchErr: any) {
-        this.logger.warn(
-          `Failed to patch waiting room setting for meeting ${meeting.id}: ${patchErr.message}`,
-        );
-      }
+      // // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      // try {
+      //   console.log('Here D');
+      //   const patchUrl = `${this.baseUrl}/meetings/${meeting.id}`;
+      //   await axios.patch(
+      //     patchUrl,
+      //     {
+      //       settings: {
+      //         waiting_room: true,
+      //         waiting_room_options: {
+      //           mode: 'custom',
+      //           who_goes_to_waiting_room: 'users_not_on_invite',
+      //         },
+      //       },
+      //     },
+      //     { headers },
+      //   );
+      //   this.logger.log(
+      //     `Patched meeting-level Waiting Room for Zoom meeting: ${meeting.id}`,
+      //   );
+      // } catch (patchErr: any) {
+      //   this.logger.warn(
+      //     `Failed to patch waiting room setting for meeting ${meeting.id}: ${patchErr.message}`,
+      //   );
+      // }
+
+      console.log('Here E');
+      console.log('Here settings', meeting.settings?.meeting_invitees);
+      console.log('Here meeting', meeting);
 
       return { success: true, data: meeting };
     } catch (error: any) {

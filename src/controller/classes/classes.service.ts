@@ -1086,7 +1086,12 @@ export class ClassesService {
       saveResult.data[0].moduleId = chapterResult.chapter.moduleId;
 
       let responseSessions = saveResult.data;
-      if (saveResult.data?.[0]?.id) {
+      const startsNow =
+        saveResult.data?.[0] &&
+        this.shouldActivateZoomSessionNow(saveResult.data[0]);
+
+      if (startsNow && saveResult.data?.[0]?.id) {
+        // if (saveResult.data?.[0]?.id) {
         const activatedSession = await this.activateZoomSession(
           saveResult.data[0].id,
         );
@@ -1106,6 +1111,9 @@ export class ClassesService {
       return {
         status: 'success',
         message: 'Zoom session created and activated successfully',
+        // message: startsNow
+        //   ? 'Zoom session created and activated successfully'
+        //   : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
         data: responseSessions,
         descriptionSuffix,
       };
