@@ -348,12 +348,28 @@ export class LeaderboardService {
         )
         .where(sql`${zuvyOutsourseQuizzes.bootcampId} IS NOT NULL`);
 
-      if (quizSubmissions.length === 0) {
-        this.logger.log('No quiz submissions found');
-        return new Map();
-      }
-
-      this.logger.log(`Found ${quizSubmissions.length} quiz submissions`);
+      const standaloneQuizCompletions = await db
+        .select({
+          userId: zuvyChapterTracking.userId,
+          chapterId: zuvyChapterTracking.chapterId,
+          bootcampId: zuvyCourseModules.bootcampId,
+          completedAt: zuvyChapterTracking.completedAt,
+        })
+        .from(zuvyChapterTracking)
+        .leftJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .leftJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyModuleChapter.topicId, 4),
+            sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+          ),
+        );
 
       const quizMap = new Map<
         string,
@@ -363,6 +379,18 @@ export class LeaderboardService {
           lastActivityAt: string;
         }
       >();
+
+      if (
+        quizSubmissions.length === 0 &&
+        standaloneQuizCompletions.length === 0
+      ) {
+        this.logger.log('No quiz submissions or completions found');
+        return quizMap;
+      }
+
+      this.logger.log(
+        `Found ${quizSubmissions.length} quiz submissions and ${standaloneQuizCompletions.length} standalone completions`,
+      );
 
       for (const submission of quizSubmissions) {
         if (!submission.userId || !submission.bootcampId) {
@@ -405,8 +433,54 @@ export class LeaderboardService {
         quizMap.set(key, entry);
       }
 
+      const completionsByLearnerBootcamp = new Map<string, Set<number>>();
+
+      for (const completion of standaloneQuizCompletions) {
+        if (
+          !completion.userId ||
+          !completion.bootcampId ||
+          !completion.chapterId
+        ) {
+          continue;
+        }
+
+        const key = `${completion.userId}-${completion.bootcampId}`;
+
+        if (!completionsByLearnerBootcamp.has(key)) {
+          completionsByLearnerBootcamp.set(key, new Set());
+        }
+
+        completionsByLearnerBootcamp.get(key)!.add(completion.chapterId);
+
+        const entry = quizMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
+          quizPoints: 0,
+          lastActivityAt: completion.completedAt || new Date().toISOString(),
+        };
+
+        if (completion.completedAt) {
+          const compTime = new Date(completion.completedAt).getTime();
+          const entryTime = new Date(entry.lastActivityAt).getTime();
+          if (compTime > entryTime) {
+            entry.lastActivityAt = completion.completedAt;
+          }
+        }
+
+        quizMap.set(key, entry);
+      }
+
+      for (const [key, chapterSet] of completionsByLearnerBootcamp.entries()) {
+        const entry = quizMap.get(key);
+        if (entry) {
+          for (const chapterId of chapterSet) {
+            entry.chapterPoints.set(chapterId, 5);
+          }
+          entry.quizPoints += chapterSet.size * 5;
+        }
+      }
+
       this.logger.log(
-        `Processed quiz submissions for ${quizMap.size} learner-bootcamp combinations`,
+        `Processed quiz points for ${quizMap.size} learner-bootcamp combinations`,
       );
       return quizMap;
     } catch (error) {
@@ -1048,7 +1122,7 @@ export class LeaderboardService {
 
       for (const article of articleCompletions) {
         if (article.chapterId != null) {
-          chapterPointsMap.set(article.chapterId, 5);
+          chapterPointsMap.set(article.chapterId, 10);
         }
       }
     }
@@ -1138,74 +1212,32 @@ export class LeaderboardService {
       .map((chapter) => chapter.chapterId as number);
 
     if (quizChapterIds.length > 0) {
-      const quizSubmissions = await db
+      const quizCompletions = await db
         .select({
-          chapterId: zuvyOutsourseQuizzes.chapterId,
-          mcqScore: zuvyAssessmentSubmission.mcqScore,
-          requiredMCQScore: zuvyAssessmentSubmission.requiredMCQScore,
-          submittedAt: zuvyAssessmentSubmission.submitedAt,
-          deadline: zuvyOutsourseAssessments.deadline,
-          createdAt: zuvyQuizTracking.createdAt,
+          chapterId: zuvyChapterTracking.chapterId,
         })
-        .from(zuvyQuizTracking)
-        .leftJoin(
-          zuvyAssessmentSubmission,
-          eq(
-            zuvyQuizTracking.assessmentSubmissionId,
-            zuvyAssessmentSubmission.id,
-          ),
+        .from(zuvyChapterTracking)
+        .innerJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
         )
-        .leftJoin(
-          zuvyOutsourseQuizzes,
-          eq(zuvyQuizTracking.questionId, zuvyOutsourseQuizzes.id),
-        )
-        .leftJoin(
-          zuvyOutsourseAssessments,
-          eq(
-            zuvyOutsourseQuizzes.assessmentOutsourseId,
-            zuvyOutsourseAssessments.id,
-          ),
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
         )
         .where(
           and(
-            eq(zuvyQuizTracking.userId, userId),
-            eq(zuvyOutsourseQuizzes.bootcampId, bootcampId),
-            inArray(zuvyOutsourseQuizzes.chapterId, quizChapterIds),
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            eq(zuvyModuleChapter.topicId, 4),
+            inArray(zuvyChapterTracking.chapterId, quizChapterIds),
           ),
         );
 
-      for (const submission of quizSubmissions) {
-        if (submission.chapterId == null) {
-          continue;
+      for (const quiz of quizCompletions) {
+        if (quiz.chapterId != null) {
+          chapterPointsMap.set(quiz.chapterId, 5);
         }
-
-        let quizPercentage = 0;
-
-        if (
-          submission.mcqScore !== null &&
-          submission.requiredMCQScore &&
-          submission.requiredMCQScore > 0
-        ) {
-          quizPercentage =
-            (submission.mcqScore / submission.requiredMCQScore) * 100;
-        }
-
-        const attemptPoints = 5;
-
-        const bonusPoints = this.calculateQuizOnTimeBonusPoints(
-          submission.submittedAt,
-          submission.deadline,
-        );
-
-        const scorePoints = this.calculateQuizScorePoints(quizPercentage);
-
-        const totalQuizPoints = attemptPoints + bonusPoints + scorePoints;
-
-        const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
-        chapterPointsMap.set(
-          submission.chapterId,
-          existingPoints + totalQuizPoints,
-        );
       }
     }
 
