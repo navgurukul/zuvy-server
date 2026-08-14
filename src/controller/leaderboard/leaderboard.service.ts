@@ -1135,12 +1135,20 @@ export class LeaderboardService {
     if (codingChapterIds.length > 0) {
       const codingSubmissions = await db
         .select({
-          chapterId: zuvyOutsourseCodingQuestions.chapterId,
+          chapterId: zuvyPracticeCode.chapterId,
           submittedAt: zuvyPracticeCode.createdAt,
           deadline: zuvyOutsourseAssessments.deadline,
           practiceCodeId: zuvyPracticeCode.id,
         })
         .from(zuvyPracticeCode)
+        .innerJoin(
+          zuvyModuleChapter,
+          eq(zuvyPracticeCode.chapterId, zuvyModuleChapter.id),
+        )
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
         .leftJoin(
           zuvyOutsourseCodingQuestions,
           eq(
@@ -1158,8 +1166,8 @@ export class LeaderboardService {
         .where(
           and(
             eq(zuvyPracticeCode.userId, BigInt(userId)),
-            eq(zuvyOutsourseCodingQuestions.bootcampId, bootcampId),
-            inArray(zuvyOutsourseCodingQuestions.chapterId, codingChapterIds),
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            inArray(zuvyPracticeCode.chapterId, codingChapterIds),
           ),
         );
 
@@ -1182,6 +1190,8 @@ export class LeaderboardService {
           failedTestCases.map((tc) => tc.submissionId),
         );
 
+        const chapterMaxPoints = new Map<number, number>();
+
         for (const submission of codingSubmissions) {
           if (submission.chapterId == null) {
             continue;
@@ -1196,12 +1206,49 @@ export class LeaderboardService {
             allTestCasesPassed,
           );
 
-          const existingPoints =
-            chapterPointsMap.get(submission.chapterId) ?? 0;
-          chapterPointsMap.set(
-            submission.chapterId,
-            existingPoints + pointsBreakdown.totalCodingPoints,
-          );
+          const existingMax = chapterMaxPoints.get(submission.chapterId) ?? 0;
+          if (pointsBreakdown.totalCodingPoints > existingMax) {
+            chapterMaxPoints.set(
+              submission.chapterId,
+              pointsBreakdown.totalCodingPoints,
+            );
+          }
+        }
+
+        for (const [chapterId, points] of chapterMaxPoints.entries()) {
+          const existingPoints = chapterPointsMap.get(chapterId) ?? 0;
+          chapterPointsMap.set(chapterId, existingPoints + points);
+        }
+      }
+
+      const codingCompletions = await db
+        .select({
+          chapterId: zuvyChapterTracking.chapterId,
+        })
+        .from(zuvyChapterTracking)
+        .innerJoin(
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+        )
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            eq(zuvyCourseModules.bootcampId, bootcampId),
+            eq(zuvyModuleChapter.topicId, 3),
+            inArray(zuvyChapterTracking.chapterId, codingChapterIds),
+          ),
+        );
+
+      for (const completion of codingCompletions) {
+        if (completion.chapterId != null) {
+          const currentPoints = chapterPointsMap.get(completion.chapterId) ?? 0;
+          if (currentPoints < 5) {
+            chapterPointsMap.set(completion.chapterId, 5);
+          }
         }
       }
     }
@@ -1236,7 +1283,7 @@ export class LeaderboardService {
 
       for (const quiz of quizCompletions) {
         if (quiz.chapterId != null) {
-          chapterPointsMap.set(quiz.chapterId, 10);
+          chapterPointsMap.set(quiz.chapterId, 5);
         }
       }
     }
