@@ -563,7 +563,7 @@ export class TrackingService {
 
         const chapterIds = trackingData.map((chapter) => chapter.id);
 
-        const chapterPointsMap =
+        const { chapterPointsMap, assignmentBreakdownMap } =
           await this.leaderboardService.getChapterWisePoints(
             userId,
             moduleDetails[0].bootcampId,
@@ -572,6 +572,12 @@ export class TrackingService {
 
         trackingData.forEach((chapter) => {
           chapter['sparks'] = chapterPointsMap.get(chapter.id) ?? 0;
+
+          const breakdown = assignmentBreakdownMap.get(chapter.id);
+
+          if (chapter.topicId === 5 && breakdown) {
+            chapter['breakdown'] = breakdown;
+          }
         });
 
         return {

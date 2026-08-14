@@ -939,11 +939,32 @@ export class LeaderboardService {
     userId: number,
     bootcampId: number,
     chapterIds: number[],
-  ): Promise<Map<number, number>> {
+  ): Promise<{
+    chapterPointsMap: Map<number, number>;
+    assignmentBreakdownMap: Map<
+      number,
+      {
+        assignment: number;
+        bonus: number;
+        performance: number;
+      }
+    >;
+  }> {
     const chapterPointsMap = new Map<number, number>();
+    const assignmentBreakdownMap = new Map<
+      number,
+      {
+        assignment: number;
+        bonus: number;
+        performance: number;
+      }
+    >();
 
     if (!chapterIds.length) {
-      return chapterPointsMap;
+      return {
+        chapterPointsMap,
+        assignmentBreakdownMap,
+      };
     }
 
     // 1. Current module ke chapters
@@ -1213,18 +1234,38 @@ export class LeaderboardService {
         if (submission.chapterId == null) {
           continue;
         }
+
         const attemptPoints = 5;
-        const bonusPoints = this.calculateOnTimeBonusPoints(
-          submission.createdAt,
-          submission.timeLimit,
-        );
+
+        const submittedSecond = submission.createdAt
+          ? Math.floor(new Date(submission.createdAt).getTime() / 1000)
+          : null;
+
+        const deadlineSecond = submission.timeLimit
+          ? Math.floor(new Date(submission.timeLimit).getTime() / 1000)
+          : null;
+
+        const bonusPoints =
+          submittedSecond !== null &&
+          deadlineSecond !== null &&
+          submittedSecond <= deadlineSecond
+            ? 5
+            : 0;
+
         const totalPoints = attemptPoints + bonusPoints;
 
         const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
+
         chapterPointsMap.set(
           submission.chapterId,
           existingPoints + totalPoints,
         );
+
+        assignmentBreakdownMap.set(submission.chapterId, {
+          assignment: attemptPoints,
+          bonus: bonusPoints,
+          performance: 0,
+        });
       }
     }
 
@@ -1301,7 +1342,10 @@ export class LeaderboardService {
       }
     }
 
-    return chapterPointsMap;
+    return {
+      chapterPointsMap,
+      assignmentBreakdownMap,
+    };
   }
 
   async updateLeaderboard(): Promise<{
@@ -1432,23 +1476,60 @@ export class LeaderboardService {
         `Processing ${leaderboardMap.size} unique learner-bootcamp combinations`,
       );
 
+      const learnerIds = Array.from(
+        new Set(Array.from(allKeys, (key) => Number(key.split('-')[0]))),
+      );
+      const bootcampIds = Array.from(
+        new Set(Array.from(allKeys, (key) => Number(key.split('-')[1]))),
+      );
+
+      const existingEntries =
+        learnerIds.length > 0 && bootcampIds.length > 0
+          ? await db
+              .select({
+                id: zuvyLearnerLeaderboard.id,
+                learnerId: zuvyLearnerLeaderboard.learnerId,
+                bootcampId: zuvyLearnerLeaderboard.bootcampId,
+                assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+                codingPoints: zuvyLearnerLeaderboard.codingPoints,
+                quizPoints: zuvyLearnerLeaderboard.quizPoints,
+                attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+                recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+                assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+                videoPoints: zuvyLearnerLeaderboard.videoPoints,
+                articlePoints: zuvyLearnerLeaderboard.articlePoints,
+                totalPoints: zuvyLearnerLeaderboard.totalPoints,
+                lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+              })
+              .from(zuvyLearnerLeaderboard)
+              .where(
+                and(
+                  inArray(zuvyLearnerLeaderboard.learnerId, learnerIds),
+                  inArray(zuvyLearnerLeaderboard.bootcampId, bootcampIds),
+                ),
+              )
+          : [];
+
+      const existingEntryMap = new Map<
+        string,
+        (typeof existingEntries)[number]
+      >();
+      for (const existingEntry of existingEntries) {
+        existingEntryMap.set(
+          `${existingEntry.learnerId}-${existingEntry.bootcampId}`,
+          existingEntry,
+        );
+      }
+
       let updatedCount = 0;
 
       for (const entry of leaderboardMap.values()) {
         try {
-          const existingEntry = await db
-            .select()
-            .from(zuvyLearnerLeaderboard)
-            .where(
-              and(
-                eq(zuvyLearnerLeaderboard.learnerId, entry.learnerId),
-                eq(zuvyLearnerLeaderboard.bootcampId, entry.bootcampId),
-              ),
-            );
+          const existing = existingEntryMap.get(
+            `${entry.learnerId}-${entry.bootcampId}`,
+          );
 
-          if (existingEntry.length > 0) {
-            const existing = existingEntry[0];
-
+          if (existing) {
             const assessmentEntry = assessmentMap.get(
               `${entry.learnerId}-${entry.bootcampId}`,
             );
