@@ -812,15 +812,7 @@ export class LeaderboardService {
           lastActivityAt: new Date().toISOString(),
         };
 
-        this.logger.log(
-          `ASSIGNMENT LEADERBOARD DEBUG: learner=${submission.userId}, bootcamp=${submission.bootcampId}, chapter=${submission.chapterId}, attempt=${attemptPoints}, bonus=${bonusPoints}, total=${totalAssignmentPoints}`,
-        );
-
         entry.assignmentPoints += totalAssignmentPoints;
-
-        this.logger.log(
-          `ASSIGNMENT MAP TOTAL: learner=${submission.userId}, bootcamp=${submission.bootcampId}, assignmentPoints=${entry.assignmentPoints}`,
-        );
 
         const currentChapterPoints =
           entry.chapterPoints.get(submission.chapterId) ?? 0;
