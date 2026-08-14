@@ -1236,7 +1236,7 @@ export class LeaderboardService {
 
       for (const quiz of quizCompletions) {
         if (quiz.chapterId != null) {
-          chapterPointsMap.set(quiz.chapterId, 5);
+          chapterPointsMap.set(quiz.chapterId, 10);
         }
       }
     }
