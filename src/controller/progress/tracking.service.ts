@@ -465,6 +465,12 @@ export class TrackingService {
             message: 'Your progress has been updated successfully',
           };
         } else {
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+          );
           return [
             {
               status: 'error',
