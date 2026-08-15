@@ -882,5 +882,7 @@ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollmen
 
 
 
-
-
+SELECT learner_id, bootcamp_id, chapter_id, points, COUNT(*)
+FROM zuvy_learner_leaderboard_chapter_points
+GROUP BY learner_id, bootcamp_id, chapter_id, points
+ORDER BY learner_id, chapter_id;

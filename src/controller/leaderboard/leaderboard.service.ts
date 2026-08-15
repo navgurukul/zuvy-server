@@ -17,9 +17,6 @@ import {
   zuvyQuizTracking,
   zuvyOutsourseQuizzes,
   zuvyStudentAttendanceRecords,
-  zuvySessionRecordViews,
-  zuvySessions,
-  zuvyProjectTracking,
   AttendanceStatus,
   zuvyChapterTracking,
   zuvyModuleChapter,
@@ -27,8 +24,33 @@ import {
   zuvyBootcamps,
   zuvyBatchEnrollments,
   zuvyAssignmentSubmission,
+  zuvyLearnerLeaderboardChapterPoints,
 } from '../../../drizzle/schema';
-import { eq, and, sql, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
+
+type ChapterPointRow = {
+  learnerId: number;
+  bootcampId: number;
+  chapterId: number;
+  topicId: number | null;
+  points: number;
+};
+
+type CalculationScope = {
+  userId: number;
+  bootcampId: number;
+  moduleId: number;
+  chapterId: number;
+};
+
+type LeaderboardPointColumn =
+  | 'assessmentPoints'
+  | 'codingPoints'
+  | 'quizPoints'
+  | 'recordingPoints'
+  | 'assignmentPoints'
+  | 'articlePoints'
+  | 'videoPoints';
 
 @Injectable()
 export class LeaderboardService {
@@ -102,7 +124,7 @@ export class LeaderboardService {
     };
   }
 
-  private async calculateAssessmentPoints(): Promise<
+  private async calculateAssessmentPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -127,6 +149,7 @@ export class LeaderboardService {
           userId: zuvyAssessmentSubmission.userId,
           percentage: zuvyAssessmentSubmission.percentage,
           bootcampId: zuvyOutsourseAssessments.bootcampId,
+          chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
           deadline: zuvyOutsourseAssessments.deadline,
         })
@@ -142,6 +165,15 @@ export class LeaderboardService {
           and(
             sql`${zuvyAssessmentSubmission.percentage} IS NOT NULL`,
             sql`${zuvyOutsourseAssessments.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyAssessmentSubmission.userId, scope.userId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseAssessments.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseAssessments.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
 
@@ -169,6 +201,17 @@ export class LeaderboardService {
         };
 
         entry.assessmentPoints += pointsBreakdown.totalPoints;
+
+        if (submission.chapterId) {
+          const currentChapterPoints =
+            entry.chapterPoints.get(submission.chapterId) ?? 0;
+
+          entry.chapterPoints.set(
+            submission.chapterId,
+            currentChapterPoints + pointsBreakdown.totalPoints,
+          );
+        }
+
         entry.lastActivityAt =
           submission.submittedAt || new Date().toISOString();
 
@@ -186,7 +229,7 @@ export class LeaderboardService {
     return assessmentMap;
   }
 
-  private async calculateCodingPoints(): Promise<
+  private async calculateCodingPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -211,6 +254,7 @@ export class LeaderboardService {
           userId: zuvyPracticeCode.userId,
           bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
           chapterId: zuvyOutsourseCodingQuestions.chapterId,
+          topicId: zuvyModuleChapter.topicId,
           submittedAt: zuvyPracticeCode.createdAt,
           deadline: zuvyOutsourseAssessments.deadline,
           practiceCodeId: zuvyPracticeCode.id,
@@ -236,8 +280,23 @@ export class LeaderboardService {
             zuvyOutsourseAssessments.id,
           ),
         )
+        .leftJoin(
+          zuvyModuleChapter,
+          eq(zuvyOutsourseCodingQuestions.chapterId, zuvyModuleChapter.id),
+        )
         .where(
-          and(sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`),
+          and(
+            sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
+              : sql`TRUE`,
+          ),
         );
 
       if (codingSubmissions.length === 0) {
@@ -298,7 +357,7 @@ export class LeaderboardService {
 
         entry.codingPoints += pointsBreakdown.totalCodingPoints;
 
-        if (submission.chapterId) {
+        if (submission.chapterId && submission.topicId === 3) {
           const currentChapterPoints =
             entry.chapterPoints.get(submission.chapterId) ?? 0;
 
@@ -324,7 +383,7 @@ export class LeaderboardService {
     return codingMap;
   }
 
-  private async calculateQuizPoints(): Promise<
+  private async calculateQuizPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -367,7 +426,15 @@ export class LeaderboardService {
             zuvyOutsourseAssessments.id,
           ),
         )
-        .where(sql`${zuvyOutsourseQuizzes.bootcampId} IS NOT NULL`);
+        .where(
+          and(
+            sql`${zuvyOutsourseQuizzes.bootcampId} IS NOT NULL`,
+            scope ? eq(zuvyQuizTracking.userId, scope.userId) : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseQuizzes.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+          ),
+        );
 
       const standaloneQuizCompletions = await db
         .select({
@@ -389,6 +456,15 @@ export class LeaderboardService {
           and(
             eq(zuvyModuleChapter.topicId, 4),
             sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
 
@@ -630,7 +706,7 @@ export class LeaderboardService {
     }
   }
 
-  private async calculateRecordingPoints(): Promise<
+  private async calculateRecordingPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -671,6 +747,15 @@ export class LeaderboardService {
             sql`${zuvyModuleChapter.topicId} = 8`, // Filter for recording chapters (topic_id = 8)
             sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
             sql`${zuvyChapterTracking.completedAt} IS NOT NULL`, // Only completed chapters
+            scope
+              ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
 
@@ -722,6 +807,10 @@ export class LeaderboardService {
 
         const entry = recordingMap.get(key);
         entry.recordingPoints = totalRecordingPoints;
+
+        for (const chapterId of chapterSet) {
+          entry.chapterPoints.set(chapterId, pointsPerRecording);
+        }
       }
 
       this.logger.log(
@@ -739,7 +828,7 @@ export class LeaderboardService {
     }
   }
 
-  private async calculateAssignmentPoints(): Promise<
+  private async calculateAssignmentPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -772,7 +861,20 @@ export class LeaderboardService {
           zuvyBootcamps,
           eq(zuvyAssignmentSubmission.bootcampId, zuvyBootcamps.id),
         )
-        .where(sql`${zuvyAssignmentSubmission.bootcampId} IS NOT NULL`);
+        .where(
+          and(
+            sql`${zuvyAssignmentSubmission.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyAssignmentSubmission.userId, scope.userId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyAssignmentSubmission.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyAssignmentSubmission.chapterId, scope.chapterId)
+              : sql`TRUE`,
+          ),
+        );
 
       if (assignmentSubmissions.length === 0) {
         this.logger.log('No assignment submissions found');
@@ -794,7 +896,7 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        const attemptPoints = 10;
+        const attemptPoints = 5;
 
         const bonusPoints =
           submission.createdAt &&
@@ -842,7 +944,7 @@ export class LeaderboardService {
     }
   }
 
-  private async calculateVideoPoints(): Promise<
+  private async calculateVideoPoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -882,6 +984,15 @@ export class LeaderboardService {
           and(
             eq(zuvyModuleChapter.topicId, 1),
             sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
 
@@ -938,7 +1049,7 @@ export class LeaderboardService {
     }
   }
 
-  private async calculateArticlePoints(): Promise<
+  private async calculateArticlePoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
@@ -978,6 +1089,15 @@ export class LeaderboardService {
           and(
             eq(zuvyModuleChapter.topicId, 2),
             sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+            scope
+              ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
 
@@ -1066,381 +1186,396 @@ export class LeaderboardService {
       };
     }
 
-    // 1. Current module ke chapters
-    const chapters = await db
+    for (const chapterId of chapterIds) {
+      chapterPointsMap.set(chapterId, 0);
+    }
+
+    const persistedChapterPoints = await db
       .select({
-        chapterId: zuvyModuleChapter.id,
-        topicId: zuvyModuleChapter.topicId,
+        chapterId: zuvyLearnerLeaderboardChapterPoints.chapterId,
+        points: zuvyLearnerLeaderboardChapterPoints.points,
       })
-      .from(zuvyModuleChapter)
-      .where(inArray(zuvyModuleChapter.id, chapterIds));
-
-    // 2. Sab chapters ko initially 0
-    for (const chapter of chapters) {
-      if (chapter.chapterId != null) {
-        chapterPointsMap.set(chapter.chapterId, 0);
-      }
-    }
-
-    // Filter chapter IDs by topic
-    const videoChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 1 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const articleChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 2 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const codingChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 3 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const quizChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 4 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const assignmentChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 5 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const assessmentChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 6 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    const recordingChapterIds = chapters
-      .filter((chapter) => chapter.topicId === 8 && chapter.chapterId != null)
-      .map((chapter) => chapter.chapterId as number);
-
-    // 3. Define parallel database queries
-    const videoPromise =
-      videoChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyChapterTracking.chapterId,
-            })
-            .from(zuvyChapterTracking)
-            .where(
-              and(
-                eq(zuvyChapterTracking.userId, BigInt(userId)),
-                inArray(zuvyChapterTracking.chapterId, videoChapterIds),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const articlePromise =
-      articleChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyChapterTracking.chapterId,
-            })
-            .from(zuvyChapterTracking)
-            .where(
-              and(
-                eq(zuvyChapterTracking.userId, BigInt(userId)),
-                inArray(zuvyChapterTracking.chapterId, articleChapterIds),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const codingPromise =
-      codingChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyPracticeCode.chapterId,
-              submittedAt: zuvyPracticeCode.createdAt,
-              deadline: zuvyOutsourseAssessments.deadline,
-              practiceCodeId: zuvyPracticeCode.id,
-            })
-            .from(zuvyPracticeCode)
-            .leftJoin(
-              zuvyOutsourseCodingQuestions,
-              eq(
-                zuvyPracticeCode.codingOutsourseId,
-                zuvyOutsourseCodingQuestions.id,
-              ),
-            )
-            .leftJoin(
-              zuvyOutsourseAssessments,
-              eq(
-                zuvyOutsourseCodingQuestions.assessmentOutsourseId,
-                zuvyOutsourseAssessments.id,
-              ),
-            )
-            .where(
-              and(
-                eq(zuvyPracticeCode.userId, BigInt(userId)),
-                inArray(zuvyPracticeCode.chapterId, codingChapterIds),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const codingCompletionsPromise =
-      codingChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyChapterTracking.chapterId,
-            })
-            .from(zuvyChapterTracking)
-            .where(
-              and(
-                eq(zuvyChapterTracking.userId, BigInt(userId)),
-                inArray(zuvyChapterTracking.chapterId, codingChapterIds),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const quizPromise =
-      quizChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyChapterTracking.chapterId,
-            })
-            .from(zuvyChapterTracking)
-            .where(
-              and(
-                eq(zuvyChapterTracking.userId, BigInt(userId)),
-                inArray(zuvyChapterTracking.chapterId, quizChapterIds),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const assignmentPromise =
-      assignmentChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyAssignmentSubmission.chapterId,
-              createdAt: zuvyAssignmentSubmission.createdAt,
-              timeLimit: zuvyAssignmentSubmission.timeLimit,
-            })
-            .from(zuvyAssignmentSubmission)
-            .innerJoin(
-              zuvyBootcamps,
-              eq(zuvyAssignmentSubmission.bootcampId, zuvyBootcamps.id),
-            )
-            .where(
-              and(
-                eq(zuvyAssignmentSubmission.userId, userId),
-                eq(zuvyAssignmentSubmission.bootcampId, bootcampId),
-                inArray(
-                  zuvyAssignmentSubmission.chapterId,
-                  assignmentChapterIds,
-                ),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const assessmentPromise =
-      assessmentChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyOutsourseAssessments.chapterId,
-              percentage: zuvyAssessmentSubmission.percentage,
-              submittedAt: zuvyAssessmentSubmission.submitedAt,
-              deadline: zuvyOutsourseAssessments.deadline,
-            })
-            .from(zuvyAssessmentSubmission)
-            .leftJoin(
-              zuvyOutsourseAssessments,
-              eq(
-                zuvyAssessmentSubmission.assessmentOutsourseId,
-                zuvyOutsourseAssessments.id,
-              ),
-            )
-            .where(
-              and(
-                eq(zuvyAssessmentSubmission.userId, userId),
-                eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
-                inArray(
-                  zuvyOutsourseAssessments.chapterId,
-                  assessmentChapterIds,
-                ),
-              ),
-            )
-        : Promise.resolve([]);
-
-    const recordingPromise =
-      recordingChapterIds.length > 0
-        ? db
-            .select({
-              chapterId: zuvyChapterTracking.chapterId,
-            })
-            .from(zuvyChapterTracking)
-            .where(
-              and(
-                eq(zuvyChapterTracking.userId, BigInt(userId)),
-                inArray(zuvyChapterTracking.chapterId, recordingChapterIds),
-                isNotNull(zuvyChapterTracking.completedAt),
-              ),
-            )
-        : Promise.resolve([]);
-
-    // 4. Run parallel queries
-    const [
-      videoCompletions,
-      articleCompletions,
-      codingSubmissions,
-      codingCompletions,
-      quizCompletions,
-      assignmentSubmissions,
-      assessmentSubmissions,
-      recordingCompletions,
-    ] = await Promise.all([
-      videoPromise,
-      articlePromise,
-      codingPromise,
-      codingCompletionsPromise,
-      quizPromise,
-      assignmentPromise,
-      assessmentPromise,
-      recordingPromise,
-    ]);
-
-    // 5. Process video results
-    for (const video of videoCompletions) {
-      if (video.chapterId != null) {
-        chapterPointsMap.set(video.chapterId, 10);
-      }
-    }
-
-    // 6. Process article results
-    for (const article of articleCompletions) {
-      if (article.chapterId != null) {
-        chapterPointsMap.set(article.chapterId, 10);
-      }
-    }
-
-    // 7. Process coding results
-    if (codingSubmissions.length > 0) {
-      const practiceCodeIds = codingSubmissions.map((s) => s.practiceCodeId);
-
-      const failedTestCases = await db
-        .select({
-          submissionId: zuvyTestCasesSubmission.submissionId,
-        })
-        .from(zuvyTestCasesSubmission)
-        .where(
-          and(
-            inArray(zuvyTestCasesSubmission.submissionId, practiceCodeIds),
-            sql`${zuvyTestCasesSubmission.status} != 'Accepted'`,
-          ),
-        );
-
-      const failedSubmissionIdsSet = new Set(
-        failedTestCases.map((tc) => tc.submissionId),
+      .from(zuvyLearnerLeaderboardChapterPoints)
+      .where(
+        and(
+          eq(zuvyLearnerLeaderboardChapterPoints.learnerId, userId),
+          eq(zuvyLearnerLeaderboardChapterPoints.bootcampId, bootcampId),
+          inArray(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterIds),
+        ),
       );
 
-      const chapterMaxPoints = new Map<number, number>();
-
-      for (const submission of codingSubmissions) {
-        if (submission.chapterId == null) {
-          continue;
-        }
-        const allTestCasesPassed = !failedSubmissionIdsSet.has(
-          submission.practiceCodeId,
-        );
-
-        const pointsBreakdown = this.calculateTotalCodingPoints(
-          submission.submittedAt,
-          submission.deadline,
-          allTestCasesPassed,
-        );
-
-        const existingMax = chapterMaxPoints.get(submission.chapterId) ?? 0;
-        if (pointsBreakdown.totalCodingPoints > existingMax) {
-          chapterMaxPoints.set(
-            submission.chapterId,
-            pointsBreakdown.totalCodingPoints,
-          );
-        }
-      }
-
-      for (const [chapterId, points] of chapterMaxPoints.entries()) {
-        const existingPoints = chapterPointsMap.get(chapterId) ?? 0;
-        chapterPointsMap.set(chapterId, existingPoints + points);
-      }
-    }
-
-    for (const completion of codingCompletions) {
-      if (completion.chapterId != null) {
-        const currentPoints = chapterPointsMap.get(completion.chapterId) ?? 0;
-        if (currentPoints < 5) {
-          chapterPointsMap.set(completion.chapterId, 5);
-        }
-      }
-    }
-
-    // 8. Process quiz results
-    for (const quiz of quizCompletions) {
-      if (quiz.chapterId != null) {
-        chapterPointsMap.set(quiz.chapterId, 5);
-      }
-    }
-
-    // 9. Process assignment results
-    for (const submission of assignmentSubmissions) {
-      if (submission.chapterId == null) {
-        continue;
-      }
-
-      const attemptPoints = 5;
-
-      const submittedSecond = submission.createdAt
-        ? Math.floor(new Date(submission.createdAt).getTime() / 1000)
-        : null;
-
-      const deadlineSecond = submission.timeLimit
-        ? Math.floor(new Date(submission.timeLimit).getTime() / 1000)
-        : null;
-
-      const bonusPoints =
-        submittedSecond !== null &&
-        deadlineSecond !== null &&
-        submittedSecond <= deadlineSecond
-          ? 5
-          : 0;
-
-      const totalPoints = attemptPoints + bonusPoints;
-
-      const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
-
-      chapterPointsMap.set(submission.chapterId, existingPoints + totalPoints);
-
-      assignmentBreakdownMap.set(submission.chapterId, {
-        assignment: attemptPoints,
-        bonus: bonusPoints,
-        performance: 0,
-      });
-    }
-
-    // 10. Process assessment results
-    for (const submission of assessmentSubmissions) {
-      if (submission.chapterId == null) {
-        continue;
-      }
-      const pointsBreakdown = this.calculateTotalAssessmentPoints(
-        submission.percentage || 0,
-        submission.submittedAt,
-        submission.deadline,
-      );
-
-      const existingPoints = chapterPointsMap.get(submission.chapterId) ?? 0;
-      chapterPointsMap.set(
-        submission.chapterId,
-        existingPoints + pointsBreakdown.totalPoints,
-      );
-    }
-
-    // 11. Process recording results
-    for (const recording of recordingCompletions) {
-      if (recording.chapterId != null) {
-        chapterPointsMap.set(recording.chapterId, 5);
-      }
+    for (const chapterPoint of persistedChapterPoints) {
+      chapterPointsMap.set(chapterPoint.chapterId, chapterPoint.points ?? 0);
     }
 
     return {
       chapterPointsMap,
       assignmentBreakdownMap,
     };
+  }
+
+  private mergeChapterPoints(
+    learnerId: number,
+    bootcampId: number,
+    chapterPointsByKey: Map<string, Map<number, number>>,
+    entry?: { chapterPoints: Map<number, number> },
+  ): void {
+    if (!entry?.chapterPoints?.size) {
+      return;
+    }
+
+    const learnerBootcampKey = `${learnerId}-${bootcampId}`;
+    const mergedChapterPoints =
+      chapterPointsByKey.get(learnerBootcampKey) ?? new Map<number, number>();
+
+    for (const [chapterId, points] of entry.chapterPoints.entries()) {
+      const currentPoints = mergedChapterPoints.get(chapterId) ?? 0;
+      mergedChapterPoints.set(chapterId, currentPoints + points);
+    }
+
+    chapterPointsByKey.set(learnerBootcampKey, mergedChapterPoints);
+  }
+
+  private async buildChapterPointRows(
+    allKeys: Set<string>,
+    assessmentMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        assessmentPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    codingMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        codingPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    quizMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        quizPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    recordingMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        recordingPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    assignmentMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        assignmentPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    videoMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        videoPoints: number;
+        lastActivityAt: string;
+      }
+    >,
+    articleMap: Map<
+      string,
+      {
+        chapterPoints: Map<number, number>;
+        articlePoints: number;
+        lastActivityAt: string;
+      }
+    >,
+  ): Promise<ChapterPointRow[]> {
+    const chapterPointsByKey = new Map<string, Map<number, number>>();
+
+    for (const key of allKeys) {
+      const [learnerId, bootcampId] = key.split('-').map(Number);
+
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        assessmentMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        codingMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        quizMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        recordingMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        assignmentMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        videoMap.get(key),
+      );
+      this.mergeChapterPoints(
+        learnerId,
+        bootcampId,
+        chapterPointsByKey,
+        articleMap.get(key),
+      );
+    }
+
+    const chapterIds = Array.from(
+      new Set(
+        Array.from(chapterPointsByKey.values()).flatMap((chapterPoints) =>
+          Array.from(chapterPoints.keys()),
+        ),
+      ),
+    );
+
+    const topicIdByChapter = new Map<number, number | null>();
+
+    if (chapterIds.length > 0) {
+      const chapters = await db
+        .select({
+          chapterId: zuvyModuleChapter.id,
+          topicId: zuvyModuleChapter.topicId,
+        })
+        .from(zuvyModuleChapter)
+        .where(inArray(zuvyModuleChapter.id, chapterIds));
+
+      for (const chapter of chapters) {
+        topicIdByChapter.set(chapter.chapterId, chapter.topicId ?? null);
+      }
+    }
+
+    const rows: ChapterPointRow[] = [];
+
+    for (const [key, chapterPoints] of chapterPointsByKey.entries()) {
+      const [learnerId, bootcampId] = key.split('-').map(Number);
+
+      for (const [chapterId, points] of chapterPoints.entries()) {
+        rows.push({
+          learnerId,
+          bootcampId,
+          chapterId,
+          topicId: topicIdByChapter.get(chapterId) ?? null,
+          points,
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  private async upsertChapterPointRows(
+    tx: any,
+    chapterPointRows: ChapterPointRow[],
+  ): Promise<void> {
+    const chunkSize = 100;
+
+    for (let i = 0; i < chapterPointRows.length; i += chunkSize) {
+      const chunk = chapterPointRows.slice(i, i + chunkSize);
+
+      await tx
+        .insert(zuvyLearnerLeaderboardChapterPoints)
+        .values(
+          chunk.map((row) => ({
+            learnerId: row.learnerId,
+            bootcampId: row.bootcampId,
+            chapterId: row.chapterId,
+            topicId: row.topicId,
+            points: row.points,
+            updatedAt: sql`NOW()`,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            zuvyLearnerLeaderboardChapterPoints.learnerId,
+            zuvyLearnerLeaderboardChapterPoints.bootcampId,
+            zuvyLearnerLeaderboardChapterPoints.chapterId,
+          ],
+          set: {
+            topicId: sql`excluded.topic_id`,
+            points: sql`excluded.points`,
+            updatedAt: sql`NOW()`,
+          },
+        });
+    }
+  }
+
+  private getLeaderboardPointColumnForTopic(
+    topicId: number | null,
+  ): LeaderboardPointColumn | null {
+    switch (topicId) {
+      case 1:
+        return 'videoPoints';
+      case 2:
+        return 'articlePoints';
+      case 3:
+        return 'codingPoints';
+      case 4:
+        return 'quizPoints';
+      case 5:
+        return 'assignmentPoints';
+      case 6:
+        return 'assessmentPoints';
+      case 8:
+        return 'recordingPoints';
+      default:
+        return null;
+    }
+  }
+
+  private async getExistingCalculatedChapterPointsForCompletion(
+    scope: CalculationScope,
+  ): Promise<{ topicId: number | null; points: number }> {
+    const chapter = await db
+      .select({
+        topicId: zuvyModuleChapter.topicId,
+      })
+      .from(zuvyModuleChapter)
+      .where(
+        and(
+          eq(zuvyModuleChapter.id, scope.chapterId),
+          eq(zuvyModuleChapter.moduleId, scope.moduleId),
+        ),
+      )
+      .limit(1);
+
+    const topicId = chapter[0]?.topicId ?? null;
+    const key = `${scope.userId}-${scope.bootcampId}`;
+    let entry:
+      | {
+          chapterPoints: Map<number, number>;
+        }
+      | undefined;
+
+    switch (topicId) {
+      case 1:
+        entry = (await this.calculateVideoPoints(scope)).get(key);
+        break;
+      case 2:
+        entry = (await this.calculateArticlePoints(scope)).get(key);
+        break;
+      case 3:
+        entry = (await this.calculateCodingPoints(scope)).get(key);
+        break;
+      case 4:
+        entry = (await this.calculateQuizPoints(scope)).get(key);
+        break;
+      case 5:
+        entry = (await this.calculateAssignmentPoints(scope)).get(key);
+        break;
+      case 6:
+        entry = (await this.calculateAssessmentPoints(scope)).get(key);
+        break;
+      case 8:
+        entry = (await this.calculateRecordingPoints(scope)).get(key);
+        break;
+      default:
+        return { topicId, points: 0 };
+    }
+
+    return {
+      topicId,
+      points: entry?.chapterPoints.get(scope.chapterId) ?? 0,
+    };
+  }
+
+  async updateChapterPointsForCompletion(
+    userId: number,
+    bootcampId: number,
+    moduleId: number,
+    chapterId: number,
+  ): Promise<void> {
+    const { topicId, points } =
+      await this.getExistingCalculatedChapterPointsForCompletion({
+        userId,
+        bootcampId,
+        moduleId,
+        chapterId,
+      });
+    const pointColumn = this.getLeaderboardPointColumnForTopic(topicId);
+
+    if (!pointColumn) {
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const existingChapterPoint = await tx
+        .select({
+          points: zuvyLearnerLeaderboardChapterPoints.points,
+        })
+        .from(zuvyLearnerLeaderboardChapterPoints)
+        .where(
+          and(
+            eq(zuvyLearnerLeaderboardChapterPoints.learnerId, userId),
+            eq(zuvyLearnerLeaderboardChapterPoints.bootcampId, bootcampId),
+            eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
+          ),
+        )
+        .limit(1);
+
+      const previousPoints = existingChapterPoint[0]?.points ?? 0;
+      const pointsDelta = points - previousPoints;
+
+      await this.upsertChapterPointRows(tx, [
+        {
+          learnerId: userId,
+          bootcampId,
+          chapterId,
+          topicId,
+          points,
+        },
+      ]);
+
+      if (pointsDelta === 0) {
+        return;
+      }
+
+      await tx
+        .insert(zuvyLearnerLeaderboard)
+        .values({
+          learnerId: userId,
+          bootcampId,
+          [pointColumn]: points,
+          totalPoints: points,
+          lastActivityAt: sql`NOW()`,
+          updatedAt: sql`NOW()`,
+        } as any)
+        .onConflictDoUpdate({
+          target: [
+            zuvyLearnerLeaderboard.learnerId,
+            zuvyLearnerLeaderboard.bootcampId,
+          ],
+          set: {
+            [pointColumn]: sql`COALESCE(${zuvyLearnerLeaderboard[pointColumn]}, 0) + ${pointsDelta}`,
+            totalPoints: sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) + ${pointsDelta}`,
+            lastActivityAt: sql`NOW()`,
+            updatedAt: sql`NOW()`,
+          } as any,
+        });
+    });
   }
 
   async updateLeaderboard(): Promise<{
@@ -1618,7 +1753,17 @@ export class LeaderboardService {
 
       let updatedCount = 0;
       const insertValues: any[] = [];
-      const updatePromises: any[] = [];
+      const updateValues: Array<{ id: number; data: any }> = [];
+      const chapterPointRows = await this.buildChapterPointRows(
+        allKeys,
+        assessmentMap,
+        codingMap,
+        quizMap,
+        recordingMap,
+        assignmentMap,
+        videoMap,
+        articleMap,
+      );
 
       for (const entry of leaderboardMap.values()) {
         const existing = existingEntryMap.get(
@@ -1665,6 +1810,10 @@ export class LeaderboardService {
             recordingEntry?.recordingPoints ?? existing.recordingPoints;
           const newAssignmentPoints =
             assignmentEntry?.assignmentPoints ?? existing.assignmentPoints;
+          this.logger.log(
+            `ASSIGNMENT CHECK: learner=${entry.learnerId}, bootcamp=${entry.bootcampId}, old=${existing.assignmentPoints}, calculated=${assignmentEntry?.assignmentPoints}, final=${newAssignmentPoints}`,
+          );
+
           const newVideoPoints =
             videoEntry?.videoPoints ?? existing.videoPoints;
           const newArticlePoints =
@@ -1714,23 +1863,10 @@ export class LeaderboardService {
             if (articleEntry)
               updateData.articlePoints = articleEntry.articlePoints;
 
-            updatePromises.push(
-              db
-                .update(zuvyLearnerLeaderboard)
-                .set(updateData)
-                .where(eq(zuvyLearnerLeaderboard.id, existing.id))
-                .then(() => {
-                  updatedCount++;
-                })
-                .catch((error) => {
-                  this.logger.error(
-                    `Failed to update leaderboard for learner ${entry.learnerId}, bootcamp ${entry.bootcampId}: ${this.getErrorMessage(
-                      error,
-                      'unknown error',
-                    )}`,
-                  );
-                }),
-            );
+            updateValues.push({
+              id: existing.id,
+              data: updateData,
+            });
           } else {
             // Mark as processed even if skipped to match original updatedCount behavior
             updatedCount++;
@@ -1755,29 +1891,27 @@ export class LeaderboardService {
         }
       }
 
-      // Execute insert in batches/bulk if any
-      if (insertValues.length > 0) {
-        try {
+      await db.transaction(async (tx) => {
+        // Execute inserts in batches/bulk if any
+        if (insertValues.length > 0) {
           const chunkSize = 100;
           for (let i = 0; i < insertValues.length; i += chunkSize) {
             const chunk = insertValues.slice(i, i + chunkSize);
-            await db.insert(zuvyLearnerLeaderboard as any).values(chunk);
+            await tx.insert(zuvyLearnerLeaderboard as any).values(chunk);
           }
           updatedCount += insertValues.length;
-        } catch (error) {
-          this.logger.error(
-            `Failed to bulk insert leaderboard entries: ${this.getErrorMessage(
-              error,
-              'unknown error',
-            )}`,
-          );
         }
-      }
 
-      // Execute updates in parallel
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-      }
+        for (const updateValue of updateValues) {
+          await tx
+            .update(zuvyLearnerLeaderboard)
+            .set(updateValue.data)
+            .where(eq(zuvyLearnerLeaderboard.id, updateValue.id));
+          updatedCount++;
+        }
+
+        await this.upsertChapterPointRows(tx, chapterPointRows);
+      });
 
       this.logger.log(
         `Successfully updated ${updatedCount} leaderboard entries`,

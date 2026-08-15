@@ -453,6 +453,13 @@ export class TrackingService {
             }
           }
 
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+          );
+
           return {
             status: 'success',
             message: 'Your progress has been updated successfully',

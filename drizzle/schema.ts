@@ -5195,6 +5195,45 @@ export const zuvyLearnerLeaderboard = main.table(
   }),
 );
 
+export const zuvyLearnerLeaderboardChapterPoints = main.table(
+  'zuvy_learner_leaderboard_chapter_points',
+  {
+    id: serial('id').primaryKey().notNull(),
+    learnerId: integer('learner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
+    chapterId: integer('chapter_id')
+      .notNull()
+      .references(() => zuvyModuleChapter.id, { onDelete: 'cascade' }),
+    topicId: integer('topic_id').references(() => zuvyModuleTopics.id, {
+      onDelete: 'set null',
+    }),
+    points: integer('points').default(0).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    idxLearnerBootcamp: index(
+      'idx_zuvy_leaderboard_chapter_points_learner_bootcamp',
+    ).on(table.learnerId, table.bootcampId),
+    idxChapterId: index('idx_zuvy_leaderboard_chapter_points_chapter_id').on(
+      table.chapterId,
+    ),
+    uniqLearnerBootcampChapter: uniqueIndex(
+      'uniq_zuvy_leaderboard_chapter_points_learner_bootcamp_chapter',
+    ).on(table.learnerId, table.bootcampId, table.chapterId),
+  }),
+);
+
 export const zuvyStudentBookingMetrics = main.table(
   'zuvy_student_booking_metrics',
   {
@@ -5274,6 +5313,28 @@ export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard,
     references: [zuvyBootcamps.id],
   }),
 }));
+
+export const zuvyLearnerLeaderboardChapterPointsRelations = relations(
+  zuvyLearnerLeaderboardChapterPoints,
+  ({ one }) => ({
+    learner: one(users, {
+      fields: [zuvyLearnerLeaderboardChapterPoints.learnerId],
+      references: [users.id],
+    }),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyLearnerLeaderboardChapterPoints.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    chapter: one(zuvyModuleChapter, {
+      fields: [zuvyLearnerLeaderboardChapterPoints.chapterId],
+      references: [zuvyModuleChapter.id],
+    }),
+    topic: one(zuvyModuleTopics, {
+      fields: [zuvyLearnerLeaderboardChapterPoints.topicId],
+      references: [zuvyModuleTopics.id],
+    }),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // One-time feature flags per user (e.g. onboarding tooltip)
