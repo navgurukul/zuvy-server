@@ -886,3 +886,45 @@ SELECT learner_id, bootcamp_id, chapter_id, points, COUNT(*)
 FROM zuvy_learner_leaderboard_chapter_points
 GROUP BY learner_id, bootcamp_id, chapter_id, points
 ORDER BY learner_id, chapter_id;
+
+
+
+SELECT
+  learner_id,
+  bootcamp_id,
+  chapter_id,
+  topic_id,
+  points
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE learner_id = 63619
+  AND bootcamp_id = 1047
+  AND chapter_id = 8050;
+
+
+
+
+  SELECT
+  learner_id,
+  bootcamp_id,
+  video_points,
+  total_points
+FROM zuvy_learner_leaderboard
+WHERE learner_id = 63619
+  AND bootcamp_id = 1047;
+
+
+
+  SELECT learner_id, bootcamp_id, chapter_id, topic_id, points
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE learner_id = 63619
+  AND bootcamp_id = 1047
+  AND chapter_id IN (8051, 8052);
+
+
+
+
+  SELECT *
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE learner_id = 63619
+  AND bootcamp_id = 1047
+  AND chapter_id = 8072;

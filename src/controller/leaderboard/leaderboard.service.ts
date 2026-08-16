@@ -1463,6 +1463,11 @@ export class LeaderboardService {
       .limit(1);
 
     const topicId = chapter[0]?.topicId ?? null;
+    console.log('CHAPTER LOOKUP', {
+      chapterId: scope.chapterId,
+      moduleId: scope.moduleId,
+      topicId,
+    });
     const key = `${scope.userId}-${scope.bootcampId}`;
     let entry:
       | {
@@ -1496,9 +1501,20 @@ export class LeaderboardService {
         return { topicId, points: 0 };
     }
 
+    console.log('CALCULATION ENTRY', {
+      key,
+      topicId,
+      chapterId: scope.chapterId,
+      chapterPoints: entry?.chapterPoints
+        ? Array.from(entry.chapterPoints.entries())
+        : null,
+    });
+
+    const requestedChapterId = Number(scope.chapterId);
+
     return {
       topicId,
-      points: entry?.chapterPoints.get(scope.chapterId) ?? 0,
+      points: entry?.chapterPoints.get(requestedChapterId) ?? 0,
     };
   }
 
@@ -1508,6 +1524,13 @@ export class LeaderboardService {
     moduleId: number,
     chapterId: number,
   ): Promise<void> {
+    console.log('LEADERBOARD CHAPTER UPDATE INPUT', {
+      userId,
+      bootcampId,
+      moduleId,
+      chapterId,
+    });
+
     const { topicId, points } =
       await this.getExistingCalculatedChapterPointsForCompletion({
         userId,
@@ -1515,9 +1538,18 @@ export class LeaderboardService {
         moduleId,
         chapterId,
       });
+    console.log('CALCULATED CHAPTER POINTS', {
+      topicId,
+      points,
+    });
+
     const pointColumn = this.getLeaderboardPointColumnForTopic(topicId);
 
     if (!pointColumn) {
+      console.log('NO LEADERBOARD POINT COLUMN', {
+        topicId,
+        chapterId,
+      });
       return;
     }
 
@@ -1538,7 +1570,19 @@ export class LeaderboardService {
 
       const previousPoints = existingChapterPoint[0]?.points ?? 0;
       const pointsDelta = points - previousPoints;
+      console.log('CHAPTER POINT DELTA', {
+        previousPoints,
+        points,
+        pointsDelta,
+      });
 
+      console.log('UPSERTING CHAPTER POINT', {
+        userId,
+        bootcampId,
+        chapterId,
+        topicId,
+        points,
+      });
       await this.upsertChapterPointRows(tx, [
         {
           learnerId: userId,

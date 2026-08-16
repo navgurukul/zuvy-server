@@ -227,6 +227,13 @@ export class TrackingService {
             .values(insertChapterTracking)
             .returning();
 
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+          );
+
           // None of these three depend on each other, or on the insert's
           // return value beyond it having already happened (so that the
           // completed-chapter count below includes the row just inserted).
@@ -453,18 +460,20 @@ export class TrackingService {
             }
           }
 
-          await this.leaderboardService.updateChapterPointsForCompletion(
-            userId,
-            bootcampId,
-            moduleId,
-            chapterId,
-          );
-
           return {
             status: 'success',
             message: 'Your progress has been updated successfully',
           };
         } else {
+          await db
+            .update(zuvyChapterTracking)
+            .set({
+              completedAt: sql`COALESCE(${zuvyChapterTracking.completedAt}, NOW())`,
+            } as any)
+            .where(
+              eq(zuvyChapterTracking.id, chapterExistsInChapterTracking[0].id),
+            );
+
           await this.leaderboardService.updateChapterPointsForCompletion(
             userId,
             bootcampId,
