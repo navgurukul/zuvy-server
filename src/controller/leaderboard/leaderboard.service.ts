@@ -1463,11 +1463,7 @@ export class LeaderboardService {
       .limit(1);
 
     const topicId = chapter[0]?.topicId ?? null;
-    console.log('CHAPTER LOOKUP', {
-      chapterId: scope.chapterId,
-      moduleId: scope.moduleId,
-      topicId,
-    });
+
     const key = `${scope.userId}-${scope.bootcampId}`;
     let entry:
       | {
@@ -1501,15 +1497,6 @@ export class LeaderboardService {
         return { topicId, points: 0 };
     }
 
-    console.log('CALCULATION ENTRY', {
-      key,
-      topicId,
-      chapterId: scope.chapterId,
-      chapterPoints: entry?.chapterPoints
-        ? Array.from(entry.chapterPoints.entries())
-        : null,
-    });
-
     const requestedChapterId = Number(scope.chapterId);
 
     return {
@@ -1524,13 +1511,6 @@ export class LeaderboardService {
     moduleId: number,
     chapterId: number,
   ): Promise<void> {
-    console.log('LEADERBOARD CHAPTER UPDATE INPUT', {
-      userId,
-      bootcampId,
-      moduleId,
-      chapterId,
-    });
-
     const { topicId, points } =
       await this.getExistingCalculatedChapterPointsForCompletion({
         userId,
@@ -1538,18 +1518,10 @@ export class LeaderboardService {
         moduleId,
         chapterId,
       });
-    console.log('CALCULATED CHAPTER POINTS', {
-      topicId,
-      points,
-    });
 
     const pointColumn = this.getLeaderboardPointColumnForTopic(topicId);
 
     if (!pointColumn) {
-      console.log('NO LEADERBOARD POINT COLUMN', {
-        topicId,
-        chapterId,
-      });
       return;
     }
 
@@ -1570,19 +1542,7 @@ export class LeaderboardService {
 
       const previousPoints = existingChapterPoint[0]?.points ?? 0;
       const pointsDelta = points - previousPoints;
-      console.log('CHAPTER POINT DELTA', {
-        previousPoints,
-        points,
-        pointsDelta,
-      });
 
-      console.log('UPSERTING CHAPTER POINT', {
-        userId,
-        bootcampId,
-        chapterId,
-        topicId,
-        points,
-      });
       await this.upsertChapterPointRows(tx, [
         {
           learnerId: userId,
@@ -1631,108 +1591,35 @@ export class LeaderboardService {
     try {
       this.logger.log('Starting main leaderboard update...');
 
-      const [
-        assessmentMap,
-        codingMap,
-        quizMap,
-        attendanceMap,
-        recordingMap,
-        assignmentMap,
-        videoMap,
-        articleMap,
-      ] = await Promise.all([
-        this.calculateAssessmentPoints(),
-        this.calculateCodingPoints(),
-        this.calculateQuizPoints(),
-        this.calculateAttendancePoints(),
-        this.calculateRecordingPoints(),
-        this.calculateAssignmentPoints(),
-        this.calculateVideoPoints(),
-        this.calculateArticlePoints(),
-      ]);
+      const attendanceMap = await this.calculateAttendancePoints();
 
       const leaderboardMap = new Map<
         string,
         {
           learnerId: number;
           bootcampId: number;
-          assessmentPoints: number;
-          codingPoints: number;
-          quizPoints: number;
           attendancePoints: number;
-          recordingPoints: number;
-          assignmentPoints: number;
-          videoPoints: number;
-          articlePoints: number;
-          totalPoints: number;
           lastActivityAt: string;
         }
       >();
 
       const allKeys = new Set<string>();
-      assessmentMap.forEach((_, key) => allKeys.add(key));
-      codingMap.forEach((_, key) => allKeys.add(key));
-      quizMap.forEach((_, key) => allKeys.add(key));
       attendanceMap.forEach((_, key) => allKeys.add(key));
-      recordingMap.forEach((_, key) => allKeys.add(key));
-      assignmentMap.forEach((_, key) => allKeys.add(key));
-      videoMap.forEach((_, key) => allKeys.add(key));
-      articleMap.forEach((_, key) => allKeys.add(key));
 
       for (const key of allKeys) {
         const [learnerId, bootcampId] = key.split('-').map(Number);
 
-        const assessmentEntry = assessmentMap.get(key);
-        const codingEntry = codingMap.get(key);
-        const quizEntry = quizMap.get(key);
         const attendanceEntry = attendanceMap.get(key);
-        const recordingEntry = recordingMap.get(key);
-        const assignmentEntry = assignmentMap.get(key);
-        const videoEntry = videoMap.get(key);
-        const articleEntry = articleMap.get(key);
 
-        const assessmentPoints = assessmentEntry?.assessmentPoints || 0;
-        const codingPoints = codingEntry?.codingPoints || 0;
-        const quizPoints = quizEntry?.quizPoints || 0;
         const attendancePoints = attendanceEntry?.attendancePoints || 0;
-        const recordingPoints = recordingEntry?.recordingPoints || 0;
-        const assignmentPoints = assignmentEntry?.assignmentPoints || 0;
-        const videoPoints = videoEntry?.videoPoints || 0;
-        const articlePoints = articleEntry?.articlePoints || 0;
-
-        const totalPoints =
-          assessmentPoints +
-          codingPoints +
-          quizPoints +
-          attendancePoints +
-          recordingPoints +
-          assignmentPoints +
-          videoPoints +
-          articlePoints;
 
         const lastActivityAt =
-          assessmentEntry?.lastActivityAt ||
-          codingEntry?.lastActivityAt ||
-          quizEntry?.lastActivityAt ||
-          attendanceEntry?.lastActivityAt ||
-          recordingEntry?.lastActivityAt ||
-          assignmentEntry?.lastActivityAt ||
-          videoEntry?.lastActivityAt ||
-          articleEntry?.lastActivityAt ||
-          new Date().toISOString();
+          attendanceEntry?.lastActivityAt || new Date().toISOString();
 
         leaderboardMap.set(key, {
           learnerId,
           bootcampId,
-          assessmentPoints,
-          codingPoints,
-          quizPoints,
           attendancePoints,
-          recordingPoints,
-          assignmentPoints,
-          videoPoints,
-          articlePoints,
-          totalPoints,
           lastActivityAt,
         });
       }
@@ -1798,91 +1685,26 @@ export class LeaderboardService {
       let updatedCount = 0;
       const insertValues: any[] = [];
       const updateValues: Array<{ id: number; data: any }> = [];
-      const chapterPointRows = await this.buildChapterPointRows(
-        allKeys,
-        assessmentMap,
-        codingMap,
-        quizMap,
-        recordingMap,
-        assignmentMap,
-        videoMap,
-        articleMap,
-      );
 
       for (const entry of leaderboardMap.values()) {
         const existing = existingEntryMap.get(
           `${entry.learnerId}-${entry.bootcampId}`,
         );
 
-        const assessmentEntry = assessmentMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-        const codingEntry = codingMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-        const quizEntry = quizMap.get(`${entry.learnerId}-${entry.bootcampId}`);
         const attendanceEntry = attendanceMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-        const recordingEntry = recordingMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-        const assignmentEntry = assignmentMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-
-        this.logger.log(
-          `ASSIGNMENT UPDATE DEBUG: learner=${entry.learnerId}, bootcamp=${entry.bootcampId}, assignmentPoints=${assignmentEntry?.assignmentPoints}`,
-        );
-
-        const videoEntry = videoMap.get(
-          `${entry.learnerId}-${entry.bootcampId}`,
-        );
-        const articleEntry = articleMap.get(
           `${entry.learnerId}-${entry.bootcampId}`,
         );
 
         if (existing) {
-          const newAssessmentPoints =
-            assessmentEntry?.assessmentPoints ?? existing.assessmentPoints;
-          const newCodingPoints =
-            codingEntry?.codingPoints ?? existing.codingPoints;
-          const newQuizPoints = quizEntry?.quizPoints ?? existing.quizPoints;
           const newAttendancePoints =
             attendanceEntry?.attendancePoints ?? existing.attendancePoints;
-          const newRecordingPoints =
-            recordingEntry?.recordingPoints ?? existing.recordingPoints;
-          const newAssignmentPoints =
-            assignmentEntry?.assignmentPoints ?? existing.assignmentPoints;
-          this.logger.log(
-            `ASSIGNMENT CHECK: learner=${entry.learnerId}, bootcamp=${entry.bootcampId}, old=${existing.assignmentPoints}, calculated=${assignmentEntry?.assignmentPoints}, final=${newAssignmentPoints}`,
-          );
-
-          const newVideoPoints =
-            videoEntry?.videoPoints ?? existing.videoPoints;
-          const newArticlePoints =
-            articleEntry?.articlePoints ?? existing.articlePoints;
-
-          const totalPoints =
-            newAssessmentPoints +
-            newCodingPoints +
-            newQuizPoints +
-            newAttendancePoints +
-            newRecordingPoints +
-            newAssignmentPoints +
-            newVideoPoints +
-            newArticlePoints;
+          const attendanceDelta =
+            newAttendancePoints - (existing.attendancePoints ?? 0);
+          const totalPoints = (existing.totalPoints ?? 0) + attendanceDelta;
 
           // Only update if something changed
           const hasChanged =
-            existing.assessmentPoints !== newAssessmentPoints ||
-            existing.codingPoints !== newCodingPoints ||
-            existing.quizPoints !== newQuizPoints ||
             existing.attendancePoints !== newAttendancePoints ||
-            existing.recordingPoints !== newRecordingPoints ||
-            existing.assignmentPoints !== newAssignmentPoints ||
-            existing.videoPoints !== newVideoPoints ||
-            existing.articlePoints !== newArticlePoints ||
             existing.totalPoints !== totalPoints ||
             existing.lastActivityAt !== entry.lastActivityAt;
 
@@ -1893,19 +1715,8 @@ export class LeaderboardService {
               totalPoints,
             };
 
-            if (assessmentEntry)
-              updateData.assessmentPoints = assessmentEntry.assessmentPoints;
-            if (codingEntry) updateData.codingPoints = codingEntry.codingPoints;
-            if (quizEntry) updateData.quizPoints = quizEntry.quizPoints;
             if (attendanceEntry)
               updateData.attendancePoints = attendanceEntry.attendancePoints;
-            if (recordingEntry)
-              updateData.recordingPoints = recordingEntry.recordingPoints;
-            if (assignmentEntry)
-              updateData.assignmentPoints = assignmentEntry.assignmentPoints;
-            if (videoEntry) updateData.videoPoints = videoEntry.videoPoints;
-            if (articleEntry)
-              updateData.articlePoints = articleEntry.articlePoints;
 
             updateValues.push({
               id: existing.id,
@@ -1919,15 +1730,8 @@ export class LeaderboardService {
           insertValues.push({
             learnerId: entry.learnerId,
             bootcampId: entry.bootcampId,
-            assessmentPoints: entry.assessmentPoints,
-            codingPoints: entry.codingPoints,
-            quizPoints: entry.quizPoints,
             attendancePoints: entry.attendancePoints,
-            recordingPoints: entry.recordingPoints,
-            assignmentPoints: entry.assignmentPoints,
-            videoPoints: entry.videoPoints,
-            articlePoints: entry.articlePoints,
-            totalPoints: entry.totalPoints,
+            totalPoints: entry.attendancePoints,
             lastActivityAt: entry.lastActivityAt,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -1953,8 +1757,6 @@ export class LeaderboardService {
             .where(eq(zuvyLearnerLeaderboard.id, updateValue.id));
           updatedCount++;
         }
-
-        await this.upsertChapterPointRows(tx, chapterPointRows);
       });
 
       this.logger.log(
@@ -1963,7 +1765,7 @@ export class LeaderboardService {
 
       return {
         success: true,
-        message: `Leaderboard updated successfully with all point types`,
+        message: `Leaderboard updated successfully without chapter completion points`,
         updated: updatedCount,
       };
     } catch (error) {

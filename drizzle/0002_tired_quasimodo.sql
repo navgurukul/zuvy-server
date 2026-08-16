@@ -927,4 +927,4 @@ WHERE learner_id = 63619
 FROM zuvy_learner_leaderboard_chapter_points
 WHERE learner_id = 63619
   AND bootcamp_id = 1047
-  AND chapter_id = 8072;
+  AND chapter_id = 8083;
