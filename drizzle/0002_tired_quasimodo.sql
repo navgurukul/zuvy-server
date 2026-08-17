@@ -866,35 +866,11 @@ ON "zuvy_user_feature_flags" ("user_id");
 
 
 
+ALTER TABLE zuvy_learner_leaderboard
+ADD COLUMN article_points INTEGER DEFAULT 0,
+ADD COLUMN video_points INTEGER DEFAULT 0;
 
 
-
-
-SELECT id, name
-FROM zuvy_course_modules
-WHERE id = 964;
-
-
-SELECT id, title
-FROM zuvy_course_projects
-WHERE id = 153;
-
-
-SELECT id, name, project_id
-FROM zuvy_course_modules
-WHERE id = 950;
-
-
-
-SELECT id, title
-FROM zuvy_course_projects
-WHERE id = 153;
-
-
-
-SELECT project_id
-FROM zuvy_course_modules
-WHERE id = 96;
 
 DELETE FROM "main"."zuvy_batch_enrollments" a
 USING "main"."zuvy_batch_enrollments" b
@@ -903,3 +879,9 @@ WHERE a.id < b.id
   AND a.bootcamp_id = b.bootcamp_id;
 
 ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_user_id_bootcamp_id_uniq" UNIQUE ("user_id", "bootcamp_id");
+
+
+
+
+
+

@@ -4,7 +4,6 @@ import {
   Post,
   Param,
   Query,
-  Body,
   BadRequestException,
   InternalServerErrorException,
   HttpException,
@@ -15,7 +14,6 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
-  ApiBody,
   ApiResponse,
 } from '@nestjs/swagger';
 import { LeaderboardService } from './leaderboard.service';
@@ -27,9 +25,9 @@ export class LeaderboardController {
 
   @Post('update')
   @ApiOperation({
-    summary: 'Update main leaderboard with all point types',
+    summary: 'Update main leaderboard without chapter completion points',
     description:
-      'Processes all submissions (assessments, coding, quiz, etc.) and updates learner leaderboard with combined points',
+      'Updates non-chapter-completion leaderboard data. Chapter completion points are updated only through tracking/updateChapterStatus.',
   })
   @ApiResponse({
     status: 200,
@@ -37,7 +35,8 @@ export class LeaderboardController {
     schema: {
       example: {
         success: true,
-        message: 'Leaderboard updated successfully with all point types',
+        message:
+          'Leaderboard updated successfully without chapter completion points',
         updated: 150,
       },
     },

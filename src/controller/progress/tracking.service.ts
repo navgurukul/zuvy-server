@@ -56,6 +56,7 @@ import {
   resolveZoomAttendanceReadiness,
   resolveGoogleMeetAttendanceReadiness,
 } from 'src/services/attendance/attendance-readiness';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -68,6 +69,7 @@ export class TrackingService {
     private classesService: ClassesService,
     private readonly zoomService: ZoomService,
     private readonly attendanceCalc: AttendanceCalculationService,
+    private readonly leaderboardService: LeaderboardService,
   ) {}
 
   /**
@@ -187,12 +189,16 @@ export class TrackingService {
     chapterId: number,
   ): Promise<any> {
     try {
-      // These two existence checks don't depend on each other - run in parallel,
-      // and only fetch the id column since only existence (row count) matters.
+      // These two existence checks don't depend on each other - run in parallel.
+      // Fetch topicId too so leaderboard scoring doesn't need to query this
+      // same chapter again.
       const [chapterExistsInModuleChapter, chapterExistsInChapterTracking] =
         await Promise.all([
           db
-            .select({ id: zuvyModuleChapter.id })
+            .select({
+              id: zuvyModuleChapter.id,
+              topicId: zuvyModuleChapter.topicId,
+            })
             .from(zuvyModuleChapter)
             .where(
               and(
@@ -224,6 +230,14 @@ export class TrackingService {
             .insert(zuvyChapterTracking)
             .values(insertChapterTracking)
             .returning();
+
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
+          );
 
           // None of these three depend on each other, or on the insert's
           // return value beyond it having already happened (so that the
@@ -456,6 +470,22 @@ export class TrackingService {
             message: 'Your progress has been updated successfully',
           };
         } else {
+          await db
+            .update(zuvyChapterTracking)
+            .set({
+              completedAt: sql`COALESCE(${zuvyChapterTracking.completedAt}, NOW())`,
+            } as any)
+            .where(
+              eq(zuvyChapterTracking.id, chapterExistsInChapterTracking[0].id),
+            );
+
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
+          );
           return [
             {
               status: 'error',
@@ -557,6 +587,19 @@ export class TrackingService {
             chapter['chapterTrackingDetails'].length > 0
               ? 'Completed'
               : 'Pending';
+        });
+
+        const chapterIds = trackingData.map((chapter) => chapter.id);
+
+        const { chapterPointsMap, assignmentBreakdownMap } =
+          await this.leaderboardService.getChapterWisePoints(
+            userId,
+            moduleDetails[0].bootcampId,
+            chapterIds,
+          );
+
+        trackingData.forEach((chapter) => {
+          chapter['sparks'] = chapterPointsMap.get(chapter.id) ?? 0;
         });
 
         return {

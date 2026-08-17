@@ -11,6 +11,7 @@ import { ClassesModule } from '../classes/classes.module';
 import { ZoomModule } from 'src/services/zoom/zoom.module';
 import { AttendanceCalculationModule } from 'src/services/attendance/attendance-calculation.module';
 import { AttendanceReconciliationJob } from 'src/services/attendance/attendance-reconciliation.job';
+import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 @Module({
   imports: [
     BatchesModule,
@@ -19,6 +20,7 @@ import { AttendanceReconciliationJob } from 'src/services/attendance/attendance-
     ClassesModule,
     ZoomModule,
     AttendanceCalculationModule,
+    LeaderboardModule,
   ],
   controllers: [TrackingController],
   providers: [TrackingService, JwtService, AttendanceReconciliationJob],
