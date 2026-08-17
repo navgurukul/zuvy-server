@@ -1448,22 +1448,8 @@ export class LeaderboardService {
 
   private async getExistingCalculatedChapterPointsForCompletion(
     scope: CalculationScope,
+    topicId: number | null,
   ): Promise<{ topicId: number | null; points: number }> {
-    const chapter = await db
-      .select({
-        topicId: zuvyModuleChapter.topicId,
-      })
-      .from(zuvyModuleChapter)
-      .where(
-        and(
-          eq(zuvyModuleChapter.id, scope.chapterId),
-          eq(zuvyModuleChapter.moduleId, scope.moduleId),
-        ),
-      )
-      .limit(1);
-
-    const topicId = chapter[0]?.topicId ?? null;
-
     const key = `${scope.userId}-${scope.bootcampId}`;
     let entry:
       | {
@@ -1510,14 +1496,18 @@ export class LeaderboardService {
     bootcampId: number,
     moduleId: number,
     chapterId: number,
+    topicId: number | null,
   ): Promise<void> {
-    const { topicId, points } =
-      await this.getExistingCalculatedChapterPointsForCompletion({
-        userId,
-        bootcampId,
-        moduleId,
-        chapterId,
-      });
+    const { points } =
+      await this.getExistingCalculatedChapterPointsForCompletion(
+        {
+          userId,
+          bootcampId,
+          moduleId,
+          chapterId,
+        },
+        topicId,
+      );
 
     const pointColumn = this.getLeaderboardPointColumnForTopic(topicId);
 

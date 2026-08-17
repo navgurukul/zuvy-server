@@ -189,12 +189,16 @@ export class TrackingService {
     chapterId: number,
   ): Promise<any> {
     try {
-      // These two existence checks don't depend on each other - run in parallel,
-      // and only fetch the id column since only existence (row count) matters.
+      // These two existence checks don't depend on each other - run in parallel.
+      // Fetch topicId too so leaderboard scoring doesn't need to query this
+      // same chapter again.
       const [chapterExistsInModuleChapter, chapterExistsInChapterTracking] =
         await Promise.all([
           db
-            .select({ id: zuvyModuleChapter.id })
+            .select({
+              id: zuvyModuleChapter.id,
+              topicId: zuvyModuleChapter.topicId,
+            })
             .from(zuvyModuleChapter)
             .where(
               and(
@@ -232,6 +236,7 @@ export class TrackingService {
             bootcampId,
             moduleId,
             chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
           );
 
           // None of these three depend on each other, or on the insert's
@@ -479,6 +484,7 @@ export class TrackingService {
             bootcampId,
             moduleId,
             chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
           );
           return [
             {
