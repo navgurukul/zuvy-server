@@ -152,6 +152,7 @@ export class LeaderboardService {
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
           deadline: zuvyOutsourseAssessments.deadline,
+          isPassed: zuvyAssessmentSubmission.isPassed,
         })
         .from(zuvyAssessmentSubmission)
         .leftJoin(
@@ -188,12 +189,28 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        const pointsBreakdown = this.calculateTotalAssessmentPoints(
-          submission.percentage || 0,
-          submission.submittedAt,
-          submission.deadline,
-        );
+        // const pointsBreakdown = this.calculateTotalAssessmentPoints(
+        //   submission.percentage || 0,
+        //   submission.submittedAt,
+        //   submission.deadline,
+        // );
 
+        let pointsBreakdown;
+
+        if (submission.isPassed) {
+          pointsBreakdown = this.calculateTotalAssessmentPoints(
+            submission.percentage || 0,
+            submission.submittedAt,
+            submission.deadline,
+          );
+        } else {
+          pointsBreakdown = {
+            attemptPoints: 0,
+            bonusPoints: 0,
+            percentagePoints: 0,
+            totalPoints: 0,
+          };
+        }
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
           assessmentPoints: 0,
@@ -347,6 +364,12 @@ export class LeaderboardService {
           submission.deadline,
           allTestCasesPassed,
         );
+
+        console.log('Coding Submission:', {
+          practiceCodeId: submission.practiceCodeId,
+          chapterId: submission.chapterId,
+          allTestCasesPassed,
+        });
 
         const key = `${submission.userId}-${submission.bootcampId}`;
         const entry = codingMap.get(key) || {
@@ -1972,21 +1995,54 @@ export class LeaderboardService {
     return allTestCasesPassed ? 15 : 0;
   }
 
+  // private calculateTotalCodingPoints(
+  //   submittedAt: string | null,
+  //   deadline: string | null,
+  //   allTestCasesPassed: boolean,
+  // ): {
+  //   attemptPoints: number;
+  //   bonusPoints: number;
+  //   testCasesPoints: number;
+  //   totalCodingPoints: number;
+  // } {
+  //   const attemptPoints = this.calculateCodingAttemptPoints();
+  //   const bonusPoints = this.calculateCodingOnTimeBonusPoints(
+  //     submittedAt,
+  //     deadline,
+  //   );
+  //   const testCasesPoints =
+  //     this.calculateTestCasesPassedPoints(allTestCasesPassed);
+
+  //   return {
+  //     attemptPoints,
+  //     bonusPoints,
+  //     testCasesPoints,
+  //     totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
+  //   };
+  // }
+
   private calculateTotalCodingPoints(
     submittedAt: string | null,
     deadline: string | null,
     allTestCasesPassed: boolean,
-  ): {
-    attemptPoints: number;
-    bonusPoints: number;
-    testCasesPoints: number;
-    totalCodingPoints: number;
-  } {
+  ) {
+    if (!allTestCasesPassed) {
+      return {
+        attemptPoints: 0,
+        bonusPoints: 0,
+        testCasesPoints: 0,
+        totalCodingPoints: 0,
+      };
+    }
+
+    // Ye tabhi chalega jab ALL test cases pass hon
     const attemptPoints = this.calculateCodingAttemptPoints();
+
     const bonusPoints = this.calculateCodingOnTimeBonusPoints(
       submittedAt,
       deadline,
     );
+
     const testCasesPoints =
       this.calculateTestCasesPassedPoints(allTestCasesPassed);
 
