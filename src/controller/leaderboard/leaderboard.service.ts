@@ -2035,7 +2035,6 @@ export class LeaderboardService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
       const totalLearners = Number(totalLearnersResult[0]?.count || 0);
-
       const allLearners = await db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
