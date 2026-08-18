@@ -2012,6 +2012,7 @@ export class LeaderboardService {
       if (Number.isNaN(normalizedLearnerId)) {
         throw new BadRequestException('Invalid learner ID');
       }
+
       const enrollment = await db
         .select({
           id: zuvyBatchEnrollments.id,
@@ -2024,7 +2025,6 @@ export class LeaderboardService {
           ),
         )
         .limit(1);
-
       if (enrollment.length === 0) {
         throw new ForbiddenException('You are not enrolled in this bootcamp.');
       }
