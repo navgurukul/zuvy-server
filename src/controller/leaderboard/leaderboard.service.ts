@@ -25,11 +25,8 @@ import {
   zuvyBatchEnrollments,
   zuvyAssignmentSubmission,
   zuvyLearnerLeaderboardChapterPoints,
-  zuvyCodingQuestions,
 } from '../../../drizzle/schema';
 import { eq, and, sql, inArray } from 'drizzle-orm';
-
-const CODING_CHAPTER_POINTS = 25;
 
 type ChapterPointRow = {
   learnerId: number;
@@ -155,7 +152,6 @@ export class LeaderboardService {
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
           deadline: zuvyOutsourseAssessments.deadline,
-          isPassed: zuvyAssessmentSubmission.isPassed,
         })
         .from(zuvyAssessmentSubmission)
         .leftJoin(
@@ -192,28 +188,12 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        // const pointsBreakdown = this.calculateTotalAssessmentPoints(
-        //   submission.percentage || 0,
-        //   submission.submittedAt,
-        //   submission.deadline,
-        // );
+        const pointsBreakdown = this.calculateTotalAssessmentPoints(
+          submission.percentage || 0,
+          submission.submittedAt,
+          submission.deadline,
+        );
 
-        let pointsBreakdown;
-
-        if (submission.isPassed) {
-          pointsBreakdown = this.calculateTotalAssessmentPoints(
-            submission.percentage || 0,
-            submission.submittedAt,
-            submission.deadline,
-          );
-        } else {
-          pointsBreakdown = {
-            attemptPoints: 0,
-            bonusPoints: 0,
-            percentagePoints: 0,
-            totalPoints: 0,
-          };
-        }
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
           assessmentPoints: 0,
@@ -269,156 +249,31 @@ export class LeaderboardService {
     >();
 
     try {
-      // const codingSubmissions = await db
-      //   .select({
-      //     userId: zuvyPracticeCode.userId,
-      //     bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
-      //     chapterId: zuvyOutsourseCodingQuestions.chapterId,
-      //     topicId: zuvyModuleChapter.topicId,
-      //     submittedAt: zuvyPracticeCode.createdAt,
-      //     deadline: zuvyOutsourseAssessments.deadline,
-      //     practiceCodeId: zuvyPracticeCode.id,
-      //   })
-      //   .from(zuvyPracticeCode)
-      //   .leftJoin(
-      //     zuvyOutsourseCodingQuestions,
-      //     eq(
-      //       zuvyPracticeCode.codingOutsourseId,
-      //       zuvyOutsourseCodingQuestions.id,
-      //     ),
-      //   )
-
-      //   .innerJoin(
-      //     zuvyBootcamps,
-      //     eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
-      //   )
-
-      //   .leftJoin(
-      //     zuvyOutsourseAssessments,
-      //     eq(
-      //       zuvyOutsourseCodingQuestions.assessmentOutsourseId,
-      //       zuvyOutsourseAssessments.id,
-      //     ),
-      //   )
-      //   .leftJoin(
-      //     zuvyModuleChapter,
-      //     eq(zuvyOutsourseCodingQuestions.chapterId, zuvyModuleChapter.id),
-      //   )
-      //   .where(
-      //     and(
-      //       sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
-      //       scope
-      //         ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
-      //         : sql`TRUE`,
-      //       scope
-      //         ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
-      //         : sql`TRUE`,
-      //       scope
-      //         ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
-      //         : sql`TRUE`,
-      //     ),
-      //   );
-
-      // const codingSubmissions = await db
-      //   .select({
-      //     practiceCodeId: zuvyPracticeCode.id,
-      //     userId: zuvyPracticeCode.userId,
-      //     questionId: zuvyPracticeCode.questionId,
-
-      //     codingOutsourseId: zuvyPracticeCode.codingOutsourseId,
-
-      //     bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
-      //     chapterId: zuvyOutsourseCodingQuestions.chapterId,
-
-      //     topicId: zuvyModuleChapter.topicId,
-
-      //     submittedAt: zuvyPracticeCode.createdAt,
-
-      //     deadline: zuvyOutsourseAssessments.deadline,
-      //   })
-      //   .from(zuvyPracticeCode)
-
-      //   .innerJoin(
-      //     zuvyOutsourseCodingQuestions,
-      //     eq(
-      //       zuvyPracticeCode.codingOutsourseId,
-      //       zuvyOutsourseCodingQuestions.id,
-      //     ),
-      //   )
-
-      //   .leftJoin(
-      //     zuvyOutsourseAssessments,
-      //     eq(
-      //       zuvyOutsourseCodingQuestions.assessmentOutsourseId,
-      //       zuvyOutsourseAssessments.id,
-      //     ),
-      //   )
-
-      //   .leftJoin(
-      //     zuvyModuleChapter,
-      //     eq(
-      //       zuvyOutsourseCodingQuestions.chapterId,
-      //       zuvyModuleChapter.id,
-      //     ),
-      //   )
-
-      //   .where(
-      //     and(
-      //       eq(
-      //         zuvyPracticeCode.userId,
-      //         BigInt(scope!.userId),
-      //       ),
-
-      //       eq(
-      //         zuvyOutsourseCodingQuestions.bootcampId,
-      //         scope!.bootcampId,
-      //       ),
-
-      //       eq(
-      //         zuvyOutsourseCodingQuestions.chapterId,
-      //         scope!.chapterId,
-      //       ),
-      //     ),
-      //   );
-
-      //         console.log('CODING CHAPTER DEBUG', {
-      //   scope,
-      //   count: codingSubmissions.length,
-      //   submissions: codingSubmissions.map((submission) => ({
-      //     userId: submission.userId,
-      //     bootcampId: submission.bootcampId,
-      //     chapterId: submission.chapterId,
-      //     topicId: submission.topicId,
-      //     practiceCodeId: submission.practiceCodeId,
-      //   })),
-      // });
-
       const codingSubmissions = await db
         .select({
-          practiceCodeId: zuvyPracticeCode.id,
           userId: zuvyPracticeCode.userId,
-          questionId: zuvyPracticeCode.questionId,
-          codingOutsourseId: zuvyPracticeCode.codingOutsourseId,
-
-          status: zuvyPracticeCode.status,
-
           bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
           chapterId: zuvyOutsourseCodingQuestions.chapterId,
-
           topicId: zuvyModuleChapter.topicId,
-
           submittedAt: zuvyPracticeCode.createdAt,
-
           deadline: zuvyOutsourseAssessments.deadline,
+          practiceCodeId: zuvyPracticeCode.id,
+          status: zuvyPracticeCode.status,
         })
         .from(zuvyPracticeCode)
-        .innerJoin(
+        .leftJoin(
           zuvyOutsourseCodingQuestions,
           eq(
             zuvyPracticeCode.codingOutsourseId,
             zuvyOutsourseCodingQuestions.id,
           ),
         )
+
+        .innerJoin(
+          zuvyBootcamps,
+          eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
+        )
+
         .leftJoin(
           zuvyOutsourseAssessments,
           eq(
@@ -432,168 +287,62 @@ export class LeaderboardService {
         )
         .where(
           and(
-            eq(zuvyPracticeCode.userId, BigInt(scope!.userId)),
-            eq(zuvyOutsourseCodingQuestions.bootcampId, scope!.bootcampId),
-            eq(zuvyOutsourseCodingQuestions.chapterId, scope!.chapterId),
+            sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
+            sql`${zuvyPracticeCode.status} = 'Accepted'`,
+            scope
+              ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+            scope
+              ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
+              : sql`TRUE`,
           ),
         );
-
-      //   const codingPoints = codingSubmissions.some(
-      //   (submission) => submission.status === 'correct',
-      // )
-      //   ? CODING_CHAPTER_POINTS
-      //   : 0;
-
-      //       if (codingSubmissions.length === 0) {
-      //         return codingMap;
-      //       }
-
-      // const practiceCodeIds = codingSubmissions
-      //   .map((s) => s.practiceCodeId)
-      //   .filter((id): id is number => id != null);
-
-      // const failedTestCases =
-      //   practiceCodeIds.length > 0
-      //     ? await db
-      //         .select({
-      //           submissionId: zuvyTestCasesSubmission.submissionId,
-      //         })
-      //         .from(zuvyTestCasesSubmission)
-      //         .where(
-      //           and(
-      //             inArray(
-      //               zuvyTestCasesSubmission.submissionId,
-      //               practiceCodeIds,
-      //             ),
-      //             sql`${zuvyTestCasesSubmission.status} != 'Accepted'`,
-      //           ),
-      //         )
-      //     : [];
-
-      // const failedSubmissionIdsSet = new Set(
-      //   failedTestCases.map((tc) => tc.submissionId),
-      // );
-
-      // for (const submission of codingSubmissions) {
-      //   if (
-      //     !submission.userId ||
-      //     !submission.bootcampId ||
-      //     !submission.practiceCodeId
-      //   ) {
-      //     continue;
-      //   }
-
-      //   const allTestCasesPassed = !failedSubmissionIdsSet.has(
-      //     submission.practiceCodeId,
-      //   );
-
-      //   const pointsBreakdown = this.calculateTotalCodingPoints(
-      //     submission.submittedAt,
-      //     submission.deadline,
-      //     allTestCasesPassed,
-      //   );
-
-      //   console.log('Coding Submission:', {
-      //     practiceCodeId: submission.practiceCodeId,
-      //     chapterId: submission.chapterId,
-      //     allTestCasesPassed,
-      //   });
-
-      //   const key = `${submission.userId}-${submission.bootcampId}`;
-      //   const entry = codingMap.get(key) || {
-      //     chapterPoints: new Map<number, number>(),
-      //     codingPoints: 0,
-      //     lastActivityAt: new Date().toISOString(),
-      //   };
-
-      //   entry.codingPoints += pointsBreakdown.totalCodingPoints;
-
-      //   if (submission.chapterId && submission.topicId === 3) {
-      //     const currentChapterPoints =
-      //       entry.chapterPoints.get(submission.chapterId) ?? 0;
-
-      //     entry.chapterPoints.set(
-      //       submission.chapterId,
-      //       currentChapterPoints + pointsBreakdown.totalCodingPoints,
-      //     );
-      //   }
-      //   entry.lastActivityAt =
-      //     submission.submittedAt || new Date().toISOString();
-
-      //   codingMap.set(key, entry);
-
-      //     for (const submission of codingSubmissions) {
-      // if (
-      //   !submission.userId ||
-      //   !submission.bootcampId ||
-      //   !submission.practiceCodeId
-      // ) {
-      //   continue;
-      // }
-
-      // const key = `${submission.userId}-${submission.bootcampId}`;
-
-      // const entry = codingMap.get(key) || {
-      //   chapterPoints: new Map<number, number>(),
-      //   codingPoints: 0,
-      //   lastActivityAt: new Date().toISOString(),
-      // };
-
-      // // Coding points based on status
-      // entry.codingPoints = codingPoints;
-
-      // if (submission.chapterId && submission.topicId === 3) {
-      //   entry.chapterPoints.set(
-      //     submission.chapterId,
-      //     codingPoints,
-      //   );
-      // }
-
-      // entry.lastActivityAt =
-      //   submission.submittedAt || new Date().toISOString();
-
-      // codingMap.set(key, entry);
-
-      //     }
-      //   } catch (error) {
-      //     this.logger.error(
-      //       `Error calculating coding points: ${this.getErrorMessage(
-      //         error,
-      //         'unknown error',
-      //       )}`,
-      //     );
-      //   }
-
-      //   return codingMap;
-      // }
-
-      const codingPoints = codingSubmissions.some(
-        (submission) => submission.status === 'Accepted',
-      )
-        ? CODING_CHAPTER_POINTS
-        : 0;
 
       if (codingSubmissions.length === 0) {
         return codingMap;
       }
       for (const submission of codingSubmissions) {
-        if (!submission.userId || !submission.practiceCodeId) {
+        if (
+          !submission.userId ||
+          !submission.bootcampId ||
+          !submission.practiceCodeId
+        ) {
           continue;
         }
 
-        const key = `${submission.userId}`;
+        const isAccepted = this.isAcceptedCodingSubmission(submission.status);
 
+        const pointsBreakdown = this.calculateTotalCodingPoints(
+          submission.submittedAt,
+          submission.deadline,
+          isAccepted,
+        );
+
+        if (!isAccepted) {
+          continue;
+        }
+
+        const key = `${submission.userId}-${submission.bootcampId}`;
         const entry = codingMap.get(key) || {
           chapterPoints: new Map<number, number>(),
           codingPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
 
-        const points =
-          submission.status === 'Accepted' ? CODING_CHAPTER_POINTS : 0;
+        entry.codingPoints += pointsBreakdown.totalCodingPoints;
 
-        entry.codingPoints = points;
+        if (submission.chapterId && submission.topicId === 3) {
+          const currentChapterPoints =
+            entry.chapterPoints.get(submission.chapterId) ?? 0;
 
+          entry.chapterPoints.set(
+            submission.chapterId,
+            currentChapterPoints + pointsBreakdown.totalCodingPoints,
+          );
+        }
         entry.lastActivityAt =
           submission.submittedAt || new Date().toISOString();
 
@@ -2196,42 +1945,25 @@ export class LeaderboardService {
     return 0;
   }
 
-  private calculateTestCasesPassedPoints(allTestCasesPassed: boolean): number {
-    return allTestCasesPassed ? 15 : 0;
+  private isAcceptedCodingSubmission(status?: string | null): boolean {
+    return (status ?? '').trim().toLowerCase() === 'accepted';
   }
 
-  // private calculateTotalCodingPoints(
-  //   submittedAt: string | null,
-  //   deadline: string | null,
-  //   allTestCasesPassed: boolean,
-  // ): {
-  //   attemptPoints: number;
-  //   bonusPoints: number;
-  //   testCasesPoints: number;
-  //   totalCodingPoints: number;
-  // } {
-  //   const attemptPoints = this.calculateCodingAttemptPoints();
-  //   const bonusPoints = this.calculateCodingOnTimeBonusPoints(
-  //     submittedAt,
-  //     deadline,
-  //   );
-  //   const testCasesPoints =
-  //     this.calculateTestCasesPassedPoints(allTestCasesPassed);
-
-  //   return {
-  //     attemptPoints,
-  //     bonusPoints,
-  //     testCasesPoints,
-  //     totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
-  //   };
-  // }
+  private calculateTestCasesPassedPoints(isAccepted: boolean): number {
+    return isAccepted ? 15 : 0;
+  }
 
   private calculateTotalCodingPoints(
     submittedAt: string | null,
     deadline: string | null,
-    allTestCasesPassed: boolean,
-  ) {
-    if (!allTestCasesPassed) {
+    isAccepted: boolean,
+  ): {
+    attemptPoints: number;
+    bonusPoints: number;
+    testCasesPoints: number;
+    totalCodingPoints: number;
+  } {
+    if (!isAccepted) {
       return {
         attemptPoints: 0,
         bonusPoints: 0,
@@ -2240,16 +1972,12 @@ export class LeaderboardService {
       };
     }
 
-    // Ye tabhi chalega jab ALL test cases pass hon
     const attemptPoints = this.calculateCodingAttemptPoints();
-
     const bonusPoints = this.calculateCodingOnTimeBonusPoints(
       submittedAt,
       deadline,
     );
-
-    const testCasesPoints =
-      this.calculateTestCasesPassedPoints(allTestCasesPassed);
+    const testCasesPoints = this.calculateTestCasesPassedPoints(true);
 
     return {
       attemptPoints,
