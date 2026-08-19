@@ -236,8 +236,6 @@ export class LeaderboardService {
           };
         }
 
-        // yahan aapka existing code continue rahega
-
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
           assessmentPoints: 0,
