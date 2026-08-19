@@ -258,6 +258,7 @@ export class LeaderboardService {
           submittedAt: zuvyPracticeCode.createdAt,
           deadline: zuvyOutsourseAssessments.deadline,
           practiceCodeId: zuvyPracticeCode.id,
+          status: zuvyPracticeCode.status,
         })
         .from(zuvyPracticeCode)
         .leftJoin(
@@ -287,6 +288,7 @@ export class LeaderboardService {
         .where(
           and(
             sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
+            sql`${zuvyPracticeCode.status} = 'Accepted'`,
             scope
               ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
               : sql`TRUE`,
@@ -302,33 +304,6 @@ export class LeaderboardService {
       if (codingSubmissions.length === 0) {
         return codingMap;
       }
-
-      const practiceCodeIds = codingSubmissions
-        .map((s) => s.practiceCodeId)
-        .filter((id): id is number => id != null);
-
-      const failedTestCases =
-        practiceCodeIds.length > 0
-          ? await db
-              .select({
-                submissionId: zuvyTestCasesSubmission.submissionId,
-              })
-              .from(zuvyTestCasesSubmission)
-              .where(
-                and(
-                  inArray(
-                    zuvyTestCasesSubmission.submissionId,
-                    practiceCodeIds,
-                  ),
-                  sql`${zuvyTestCasesSubmission.status} != 'Accepted'`,
-                ),
-              )
-          : [];
-
-      const failedSubmissionIdsSet = new Set(
-        failedTestCases.map((tc) => tc.submissionId),
-      );
-
       for (const submission of codingSubmissions) {
         if (
           !submission.userId ||
@@ -338,15 +313,17 @@ export class LeaderboardService {
           continue;
         }
 
-        const allTestCasesPassed = !failedSubmissionIdsSet.has(
-          submission.practiceCodeId,
-        );
+        const isAccepted = this.isAcceptedCodingSubmission(submission.status);
 
         const pointsBreakdown = this.calculateTotalCodingPoints(
           submission.submittedAt,
           submission.deadline,
-          allTestCasesPassed,
+          isAccepted,
         );
+
+        if (!isAccepted) {
+          continue;
+        }
 
         const key = `${submission.userId}-${submission.bootcampId}`;
         const entry = codingMap.get(key) || {
@@ -1968,27 +1945,39 @@ export class LeaderboardService {
     return 0;
   }
 
-  private calculateTestCasesPassedPoints(allTestCasesPassed: boolean): number {
-    return allTestCasesPassed ? 15 : 0;
+  private isAcceptedCodingSubmission(status?: string | null): boolean {
+    return (status ?? '').trim().toLowerCase() === 'accepted';
+  }
+
+  private calculateTestCasesPassedPoints(isAccepted: boolean): number {
+    return isAccepted ? 15 : 0;
   }
 
   private calculateTotalCodingPoints(
     submittedAt: string | null,
     deadline: string | null,
-    allTestCasesPassed: boolean,
+    isAccepted: boolean,
   ): {
     attemptPoints: number;
     bonusPoints: number;
     testCasesPoints: number;
     totalCodingPoints: number;
   } {
+    if (!isAccepted) {
+      return {
+        attemptPoints: 0,
+        bonusPoints: 0,
+        testCasesPoints: 0,
+        totalCodingPoints: 0,
+      };
+    }
+
     const attemptPoints = this.calculateCodingAttemptPoints();
     const bonusPoints = this.calculateCodingOnTimeBonusPoints(
       submittedAt,
       deadline,
     );
-    const testCasesPoints =
-      this.calculateTestCasesPassedPoints(allTestCasesPassed);
+    const testCasesPoints = this.calculateTestCasesPassedPoints(true);
 
     return {
       attemptPoints,
@@ -2023,6 +2012,7 @@ export class LeaderboardService {
       if (Number.isNaN(normalizedLearnerId)) {
         throw new BadRequestException('Invalid learner ID');
       }
+
       const enrollment = await db
         .select({
           id: zuvyBatchEnrollments.id,
@@ -2035,7 +2025,6 @@ export class LeaderboardService {
           ),
         )
         .limit(1);
-
       if (enrollment.length === 0) {
         throw new ForbiddenException('You are not enrolled in this bootcamp.');
       }
@@ -2046,7 +2035,6 @@ export class LeaderboardService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
       const totalLearners = Number(totalLearnersResult[0]?.count || 0);
-
       const allLearners = await db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
