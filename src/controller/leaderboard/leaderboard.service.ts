@@ -151,6 +151,7 @@ export class LeaderboardService {
           bootcampId: zuvyOutsourseAssessments.bootcampId,
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
+          isPassed: zuvyAssessmentSubmission.isPassed,
           deadline: zuvyOutsourseAssessments.deadline,
         })
         .from(zuvyAssessmentSubmission)
@@ -188,11 +189,22 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        const pointsBreakdown = this.calculateTotalAssessmentPoints(
-          submission.percentage || 0,
-          submission.submittedAt,
-          submission.deadline,
-        );
+        let pointsBreakdown;
+
+        if (submission.isPassed) {
+          pointsBreakdown = this.calculateTotalAssessmentPoints(
+            submission.percentage || 0,
+            submission.submittedAt,
+            submission.deadline,
+          );
+        } else {
+          pointsBreakdown = {
+            attemptPoints: 0,
+            bonusPoints: 0,
+            percentagePoints: 0,
+            totalPoints: 0,
+          };
+        }
 
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
