@@ -148,9 +148,11 @@ export class LeaderboardService {
         .select({
           userId: zuvyAssessmentSubmission.userId,
           percentage: zuvyAssessmentSubmission.percentage,
+          assessmentId: zuvyAssessmentSubmission.assessmentOutsourseId,
           bootcampId: zuvyOutsourseAssessments.bootcampId,
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
+          isPassed: zuvyAssessmentSubmission.isPassed,
           deadline: zuvyOutsourseAssessments.deadline,
         })
         .from(zuvyAssessmentSubmission)
@@ -181,18 +183,58 @@ export class LeaderboardService {
         return assessmentMap;
       }
 
+      // Get latest submission for each learner + assessment
+      const latestSubmissions = new Map<
+        string,
+        (typeof assessmentSubmissions)[number]
+      >();
+
       for (const submission of assessmentSubmissions) {
+        if (
+          !submission.userId ||
+          !submission.assessmentId ||
+          !submission.chapterId
+        ) {
+          continue;
+        }
+
+        const key = `${submission.userId}-${submission.assessmentId}`;
+
+        const existing = latestSubmissions.get(key);
+
+        if (
+          !existing ||
+          new Date(submission.submittedAt || 0).getTime() >
+            new Date(existing.submittedAt || 0).getTime()
+        ) {
+          latestSubmissions.set(key, submission);
+        }
+      }
+
+      // Process only latest submission
+      for (const submission of latestSubmissions.values()) {
         if (!submission.userId || !submission.bootcampId) {
           continue;
         }
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        const pointsBreakdown = this.calculateTotalAssessmentPoints(
-          submission.percentage || 0,
-          submission.submittedAt,
-          submission.deadline,
-        );
+        let pointsBreakdown;
+
+        if (submission.isPassed) {
+          pointsBreakdown = this.calculateTotalAssessmentPoints(
+            submission.percentage || 0,
+            submission.submittedAt,
+            submission.deadline,
+          );
+        } else {
+          pointsBreakdown = {
+            attemptPoints: 0,
+            bonusPoints: 0,
+            percentagePoints: 0,
+            totalPoints: 0,
+          };
+        }
 
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
