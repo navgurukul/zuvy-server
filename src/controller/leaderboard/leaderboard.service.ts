@@ -179,32 +179,6 @@ export class LeaderboardService {
           ),
         );
 
-      // if (assessmentSubmissions.length === 0) {
-      //   return assessmentMap;
-      // }
-
-      // for (const submission of assessmentSubmissions) {
-      //   if (!submission.userId || !submission.bootcampId) {
-      //     continue;
-      //   }
-      //   const key = `${submission.userId}-${submission.bootcampId}`;
-
-      //   let pointsBreakdown;
-      //   if (submission.isPassed) {
-      //     pointsBreakdown = this.calculateTotalAssessmentPoints(
-      //       submission.percentage || 0,
-      //       submission.submittedAt,
-      //       submission.deadline,
-      //     );
-      //   } else {
-      //     pointsBreakdown = {
-      //       attemptPoints: 0,
-      //       bonusPoints: 0,
-      //       percentagePoints: 0,
-      //       totalPoints: 0,
-      //     };
-      //   }
-
       if (assessmentSubmissions.length === 0) {
         return assessmentMap;
       }
