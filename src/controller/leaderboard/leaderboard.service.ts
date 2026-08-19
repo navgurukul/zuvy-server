@@ -148,6 +148,7 @@ export class LeaderboardService {
         .select({
           userId: zuvyAssessmentSubmission.userId,
           percentage: zuvyAssessmentSubmission.percentage,
+          assessmentId: zuvyAssessmentSubmission.assessmentOutsourseId,
           bootcampId: zuvyOutsourseAssessments.bootcampId,
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
@@ -178,11 +179,66 @@ export class LeaderboardService {
           ),
         );
 
+      // if (assessmentSubmissions.length === 0) {
+      //   return assessmentMap;
+      // }
+
+      // for (const submission of assessmentSubmissions) {
+      //   if (!submission.userId || !submission.bootcampId) {
+      //     continue;
+      //   }
+      //   const key = `${submission.userId}-${submission.bootcampId}`;
+
+      //   let pointsBreakdown;
+      //   if (submission.isPassed) {
+      //     pointsBreakdown = this.calculateTotalAssessmentPoints(
+      //       submission.percentage || 0,
+      //       submission.submittedAt,
+      //       submission.deadline,
+      //     );
+      //   } else {
+      //     pointsBreakdown = {
+      //       attemptPoints: 0,
+      //       bonusPoints: 0,
+      //       percentagePoints: 0,
+      //       totalPoints: 0,
+      //     };
+      //   }
+
       if (assessmentSubmissions.length === 0) {
         return assessmentMap;
       }
 
+      // Get latest submission for each learner + assessment
+      const latestSubmissions = new Map<
+        string,
+        (typeof assessmentSubmissions)[number]
+      >();
+
       for (const submission of assessmentSubmissions) {
+        if (
+          !submission.userId ||
+          !submission.assessmentId ||
+          !submission.chapterId
+        ) {
+          continue;
+        }
+
+        const key = `${submission.userId}-${submission.assessmentId}`;
+
+        const existing = latestSubmissions.get(key);
+
+        if (
+          !existing ||
+          new Date(submission.submittedAt || 0).getTime() >
+            new Date(existing.submittedAt || 0).getTime()
+        ) {
+          latestSubmissions.set(key, submission);
+        }
+      }
+
+      // Process only latest submission
+      for (const submission of latestSubmissions.values()) {
         if (!submission.userId || !submission.bootcampId) {
           continue;
         }
@@ -205,6 +261,8 @@ export class LeaderboardService {
             totalPoints: 0,
           };
         }
+
+        // yahan aapka existing code continue rahega
 
         const entry = assessmentMap.get(key) || {
           chapterPoints: new Map<number, number>(),
