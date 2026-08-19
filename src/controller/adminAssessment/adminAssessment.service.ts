@@ -632,6 +632,21 @@ Team Zuvy`;
           endDatetime: true,
           currentState: true,
         },
+        extras: (z) => ({
+          hasReattemptRequest: exists(
+            db
+              .select({ _: zuvyAssessmentSubmission.id })
+              .from(zuvyAssessmentSubmission)
+              .innerJoin(
+                zuvyAssessmentReattempt,
+                eq(
+                  zuvyAssessmentSubmission.id,
+                  zuvyAssessmentReattempt.assessmentSubmissionId,
+                ),
+              )
+              .where(eq(zuvyAssessmentSubmission.assessmentOutsourseId, z.id)),
+          ).as('hasReattemptRequest'),
+        }),
 
         with: {
           ModuleAssessment: {
