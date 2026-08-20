@@ -9,6 +9,10 @@ import {
   zuvyUserLicenses,
 } from '../../../drizzle/schema';
 import { eq, sql } from 'drizzle-orm';
+import {
+  computeMergedDurationsByKey,
+  ParticipantConnection,
+} from 'src/services/attendance/attendance-duration-merge';
 
 export interface ZoomMeetingRequest {
   topic: string;
@@ -135,6 +139,11 @@ export interface ZoomParticipantReportResponse {
   total_records?: number;
   next_page_token?: string;
   participants: ZoomParticipant[];
+  // Meeting-level fields (identical across every page of one occurrence) —
+  // duration is in seconds, matching each participant row's own `duration`.
+  duration?: number;
+  start_time?: string;
+  end_time?: string;
 }
 
 interface ZoomParticipant {
@@ -1005,6 +1014,11 @@ export class ZoomService {
       const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
       let allParticipants: ZoomParticipant[] = [];
       let nextPageToken = ''; // Start with an empty token
+      // Meeting-level fields are identical on every page — capture once,
+      // from the first page, for the interval-merge duration cap below.
+      let meetingDuration: number | undefined;
+      let meetingStartTime: string | undefined;
+      let meetingEndTime: string | undefined;
 
       // Use a do...while loop to fetch all pages of participants
       do {
@@ -1017,13 +1031,23 @@ export class ZoomService {
         if (response.data && response.data.participants) {
           allParticipants = allParticipants.concat(response.data.participants);
         }
+        if (meetingDuration === undefined) {
+          meetingDuration = response.data.duration;
+          meetingStartTime = response.data.start_time;
+          meetingEndTime = response.data.end_time;
+        }
 
         // Get the token for the next page. If it's empty or null, the loop will end.
         nextPageToken = response.data.next_page_token;
       } while (nextPageToken);
 
       // Return the complete list of participants from all pages
-      return { participants: allParticipants };
+      return {
+        participants: allParticipants,
+        duration: meetingDuration,
+        start_time: meetingStartTime,
+        end_time: meetingEndTime,
+      };
     } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`,
@@ -1294,37 +1318,64 @@ export class ZoomService {
 
       if (!pastSessions || pastSessions.length === 0) return [];
 
-      // Step 2: Fetch all participant lists from all sessions
-      const allSessionReports = [];
+      // Step 2: Fetch all participant lists from all sessions, keeping each
+      // occurrence's own reported meeting duration alongside its
+      // participants — needed below to cap that occurrence's merged
+      // durations. Must not be mixed across occurrences: each has its own
+      // actual length.
+      const allSessionReports: Array<{
+        participants: ZoomParticipant[];
+        meetingDurationSeconds: number | null;
+      }> = [];
       for (const session of pastSessions) {
         const report = await this.getMeetingParticipants(session.uuid);
         if (report && report.participants && report.participants.length > 0) {
-          allSessionReports.push(report.participants);
+          allSessionReports.push({
+            participants: report.participants,
+            meetingDurationSeconds: report.duration ?? null,
+          });
         }
       }
 
       if (allSessionReports.length === 0) return [];
 
       // ========================================================================
-      // NEW STEP: Consolidate each report to handle users rejoining the SAME session
+      // Consolidate each report to handle users connecting more than once in
+      // the SAME occurrence (dropped/rejoined, or — just as commonly — joined
+      // from a second device concurrently). Duration is derived by merging
+      // each person's join/leave intervals rather than summing each row's
+      // own duration, so a genuine overlap isn't double-counted the way
+      // naive addition would (this previously let a single participant's
+      // reported duration exceed the meeting's own length). See
+      // attendance-duration-merge.ts.
       // ========================================================================
-      const consolidatedReports = allSessionReports.map((report) => {
-        const consolidatedMap = new Map<string, ZoomParticipant>();
-        for (const participant of report) {
-          const key = participant.user_email || participant.name;
-          if (!key) continue;
+      const consolidatedReports = allSessionReports.map(
+        ({ participants, meetingDurationSeconds }) => {
+          const connections: ParticipantConnection[] = participants
+            .map((p) => ({
+              key: p.user_email || p.name,
+              joinTime: p.join_time,
+              leaveTime: p.leave_time,
+            }))
+            .filter((c): c is ParticipantConnection => Boolean(c.key));
 
-          if (consolidatedMap.has(key)) {
-            // If we've already seen this person in THIS report, just add their duration
-            const existingRecord = consolidatedMap.get(key)!;
-            existingRecord.duration += participant.duration;
-          } else {
-            // Otherwise, add them to the map for this report
-            consolidatedMap.set(key, { ...participant });
+          const mergedDurations = computeMergedDurationsByKey(
+            connections,
+            meetingDurationSeconds,
+          );
+
+          const consolidatedMap = new Map<string, ZoomParticipant>();
+          for (const participant of participants) {
+            const key = participant.user_email || participant.name;
+            if (!key || consolidatedMap.has(key)) continue;
+            consolidatedMap.set(key, {
+              ...participant,
+              duration: mergedDurations.get(key) ?? participant.duration,
+            });
           }
-        }
-        return Array.from(consolidatedMap.values());
-      });
+          return Array.from(consolidatedMap.values());
+        },
+      );
 
       // Step 3: Identify the main summary report from the CLEANED reports
       consolidatedReports.sort((a, b) => b.length - a.length);
@@ -1596,5 +1647,139 @@ export class ZoomService {
       source: 'meetingId',
       ...idResp.data,
     };
+  }
+
+  /**
+   * Fetch ALL recording files across ALL past instances of a meeting ID from Zoom.
+   * When an instructor leaves and re-enters a meeting multiple times, Zoom creates
+   * separate meeting instances (each with a unique UUID) under the same meeting ID.
+   * This method queries all past instance UUIDs via GET /past_meetings/{meetingId}/instances
+   * and aggregates all MP4 recording files into one complete list.
+   */
+  async getAllMeetingRecordings(meetingId: string | number): Promise<{
+    recording_files: any[];
+    instances_found: number;
+  }> {
+    const headers = await this.getHeaders();
+    const allFiles: any[] = [];
+    const seenFileIds = new Set<string>();
+    const uuidsProcessed = new Set<string>();
+
+    // Step 1: Query Zoom for all past instance UUIDs of this meeting ID
+    try {
+      const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+      const instancesRes = await axios.get(instancesUrl, { headers });
+      const meetings = instancesRes.data?.meetings || [];
+
+      for (const meetingInstance of meetings) {
+        const uuid = meetingInstance.uuid;
+        if (uuid && !uuidsProcessed.has(uuid)) {
+          uuidsProcessed.add(uuid);
+          try {
+            const encodedUuid = encodeURIComponent(encodeURIComponent(uuid));
+            const recUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+            const recRes = await axios.get(recUrl, { headers });
+            const files = recRes.data?.recording_files || [];
+            for (const f of files) {
+              if (f.id && !seenFileIds.has(f.id)) {
+                seenFileIds.add(f.id);
+                allFiles.push({ ...f, meeting_uuid: uuid });
+              }
+            }
+          } catch (instanceErr: any) {
+            this.logger.warn(
+              `Failed to fetch recording files for past instance UUID ${uuid}: ${instanceErr.message}`,
+            );
+          }
+        }
+      }
+    } catch (instancesErr: any) {
+      this.logger.warn(
+        `Failed to fetch past instances for meeting ${meetingId}: ${instancesErr.message}`,
+      );
+    }
+
+    // Step 2: Fallback / additional check directly by meetingId
+    try {
+      const directUrl = `${this.baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`;
+      const directRes = await axios.get(directUrl, { headers });
+      const files = directRes.data?.recording_files || [];
+      for (const f of files) {
+        if (f.id && !seenFileIds.has(f.id)) {
+          seenFileIds.add(f.id);
+          allFiles.push(f);
+        }
+      }
+    } catch (directErr: any) {
+      // Direct fetch may return 404 if meeting has ended and only accessible via UUIDs
+    }
+
+    return {
+      recording_files: allFiles,
+      instances_found: uuidsProcessed.size,
+    };
+  }
+
+  /**
+   * Check if any cloud recording for this Zoom meeting ID is currently processing on Zoom Cloud.
+   */
+  async isRecordingProcessingOnZoom(
+    meetingId: string | number,
+  ): Promise<boolean> {
+    try {
+      const headers = await this.getHeaders();
+      const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+      const instancesRes = await axios.get(instancesUrl, { headers });
+      const meetings = instancesRes.data?.meetings || [];
+
+      for (const instance of meetings) {
+        if (!instance.uuid) continue;
+        const encodedUuid = encodeURIComponent(
+          encodeURIComponent(instance.uuid),
+        );
+        try {
+          const recUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+          const recRes = await axios.get(recUrl, { headers });
+
+          if (recRes.data?.status === 'processing') {
+            return true;
+          }
+
+          const files = recRes.data?.recording_files || [];
+          for (const f of files) {
+            if (
+              f.file_type === 'MP4' &&
+              (f.status === 'processing' || !f.download_url)
+            ) {
+              return true;
+            }
+          }
+        } catch (err: any) {
+          if (err.response?.status === 404) {
+            // Recording object created but files not yet available on Zoom
+            return true;
+          }
+        }
+      }
+
+      try {
+        const directUrl = `${this.baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`;
+        const directRes = await axios.get(directUrl, { headers });
+        if (directRes.data?.status === 'processing') return true;
+        const files = directRes.data?.recording_files || [];
+        for (const f of files) {
+          if (
+            f.file_type === 'MP4' &&
+            (f.status === 'processing' || !f.download_url)
+          ) {
+            return true;
+          }
+        }
+      } catch (directErr: any) {}
+    } catch (err: any) {
+      // Ignore API errors and return false
+    }
+
+    return false;
   }
 }

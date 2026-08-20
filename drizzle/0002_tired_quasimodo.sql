@@ -863,3 +863,25 @@ CREATE TABLE "zuvy_user_feature_flags" (
 
 CREATE INDEX "zuvy_user_feature_flags_user_id_idx"
 ON "zuvy_user_feature_flags" ("user_id");
+
+
+
+ALTER TABLE zuvy_learner_leaderboard
+ADD COLUMN article_points INTEGER DEFAULT 0,
+ADD COLUMN video_points INTEGER DEFAULT 0;
+
+
+
+DELETE FROM "main"."zuvy_batch_enrollments" a
+USING "main"."zuvy_batch_enrollments" b
+WHERE a.id < b.id
+  AND a.user_id = b.user_id
+  AND a.bootcamp_id = b.bootcamp_id;
+
+ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_user_id_bootcamp_id_uniq" UNIQUE ("user_id", "bootcamp_id");
+
+
+
+
+
+

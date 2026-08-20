@@ -10,6 +10,8 @@ import {
   desc,
   lt,
   isNotNull,
+  or,
+  isNull,
 } from 'drizzle-orm';
 import { error, log } from 'console';
 import {
@@ -54,6 +56,7 @@ import {
   resolveZoomAttendanceReadiness,
   resolveGoogleMeetAttendanceReadiness,
 } from 'src/services/attendance/attendance-readiness';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -66,6 +69,7 @@ export class TrackingService {
     private classesService: ClassesService,
     private readonly zoomService: ZoomService,
     private readonly attendanceCalc: AttendanceCalculationService,
+    private readonly leaderboardService: LeaderboardService,
   ) {}
 
   /**
@@ -185,12 +189,16 @@ export class TrackingService {
     chapterId: number,
   ): Promise<any> {
     try {
-      // These two existence checks don't depend on each other - run in parallel,
-      // and only fetch the id column since only existence (row count) matters.
+      // These two existence checks don't depend on each other - run in parallel.
+      // Fetch topicId too so leaderboard scoring doesn't need to query this
+      // same chapter again.
       const [chapterExistsInModuleChapter, chapterExistsInChapterTracking] =
         await Promise.all([
           db
-            .select({ id: zuvyModuleChapter.id })
+            .select({
+              id: zuvyModuleChapter.id,
+              topicId: zuvyModuleChapter.topicId,
+            })
             .from(zuvyModuleChapter)
             .where(
               and(
@@ -222,6 +230,14 @@ export class TrackingService {
             .insert(zuvyChapterTracking)
             .values(insertChapterTracking)
             .returning();
+
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
+          );
 
           // None of these three depend on each other, or on the insert's
           // return value beyond it having already happened (so that the
@@ -363,9 +379,23 @@ export class TrackingService {
               )
               .then((rows) => rows[0].count),
             db
-              .select({ count: sql<number>`count(*)::int` })
+              .select({
+                count: sql<number>`count(${zuvyModuleChapter.id})::int`,
+              })
               .from(zuvyModuleChapter)
-              .where(inArray(zuvyModuleChapter.moduleId, moduleIds))
+              .leftJoin(
+                zuvyOutsourseAssessments,
+                eq(zuvyModuleChapter.id, zuvyOutsourseAssessments.chapterId),
+              )
+              .where(
+                and(
+                  inArray(zuvyModuleChapter.moduleId, moduleIds),
+                  or(
+                    isNull(zuvyOutsourseAssessments.currentState),
+                    inArray(zuvyOutsourseAssessments.currentState, [1, 2, 3]),
+                  ),
+                ),
+              )
               .then((rows) => rows[0].count),
           ]);
 
@@ -375,35 +405,87 @@ export class TrackingService {
               100,
           );
 
-          // fix: single upsert against the (userId, bootcampId) unique
-          // constraint instead of select-then-insert-or-update — removes
-          // both the extra existence-check round trip and the race window
-          // where two concurrent requests for the same user+bootcamp could
-          // each see "no row" and both attempt an insert.
-          await db
-            .insert(zuvyBootcampTracking)
-            .values({
-              userId,
-              bootcampId,
-              progress: bootcampProgress,
-              updatedAt: sql`NOW()`,
-            } as any)
-            .onConflictDoUpdate({
-              target: [
-                zuvyBootcampTracking.userId,
-                zuvyBootcampTracking.bootcampId,
-              ],
-              set: {
+          // Single upsert against the (userId, bootcampId) unique constraint
+          // added by migration 0039_add_performance_indexes.sql. That
+          // migration must be applied manually (CREATE INDEX CONCURRENTLY
+          // can't run inside the transaction the regular migration runner
+          // uses) - until it has been, Postgres rejects this ON CONFLICT
+          // with error 42P10. Fall back to a plain select-then-insert-or-
+          // update in that case so the endpoint keeps working either way
+          // (see the identical fallback in the bootcampProgress lookup
+          // below in this file).
+          try {
+            await db
+              .insert(zuvyBootcampTracking)
+              .values({
+                userId,
+                bootcampId,
                 progress: bootcampProgress,
                 updatedAt: sql`NOW()`,
-              } as any,
-            });
+              } as any)
+              .onConflictDoUpdate({
+                target: [
+                  zuvyBootcampTracking.userId,
+                  zuvyBootcampTracking.bootcampId,
+                ],
+                set: {
+                  progress: bootcampProgress,
+                  updatedAt: sql`NOW()`,
+                } as any,
+              });
+          } catch (err) {
+            if (err.code !== '42P10') {
+              throw err;
+            }
+            const existingBootcampTracking =
+              await db.query.zuvyBootcampTracking.findFirst({
+                where: (bootcampTracking, { and, eq }) =>
+                  and(
+                    eq(bootcampTracking.userId, userId),
+                    eq(bootcampTracking.bootcampId, bootcampId),
+                  ),
+              });
+            if (existingBootcampTracking) {
+              await db
+                .update(zuvyBootcampTracking)
+                .set({
+                  progress: bootcampProgress,
+                  updatedAt: sql`NOW()`,
+                } as any)
+                .where(
+                  eq(zuvyBootcampTracking.id, existingBootcampTracking.id),
+                );
+            } else {
+              await db.insert(zuvyBootcampTracking).values({
+                userId,
+                bootcampId,
+                progress: bootcampProgress,
+                updatedAt: sql`NOW()`,
+              } as any);
+            }
+          }
 
           return {
             status: 'success',
             message: 'Your progress has been updated successfully',
           };
         } else {
+          await db
+            .update(zuvyChapterTracking)
+            .set({
+              completedAt: sql`COALESCE(${zuvyChapterTracking.completedAt}, NOW())`,
+            } as any)
+            .where(
+              eq(zuvyChapterTracking.id, chapterExistsInChapterTracking[0].id),
+            );
+
+          await this.leaderboardService.updateChapterPointsForCompletion(
+            userId,
+            bootcampId,
+            moduleId,
+            chapterId,
+            chapterExistsInModuleChapter[0].topicId ?? null,
+          );
           return [
             {
               status: 'error',
@@ -505,6 +587,19 @@ export class TrackingService {
             chapter['chapterTrackingDetails'].length > 0
               ? 'Completed'
               : 'Pending';
+        });
+
+        const chapterIds = trackingData.map((chapter) => chapter.id);
+
+        const { chapterPointsMap, assignmentBreakdownMap } =
+          await this.leaderboardService.getChapterWisePoints(
+            userId,
+            moduleDetails[0].bootcampId,
+            chapterIds,
+          );
+
+        trackingData.forEach((chapter) => {
+          chapter['sparks'] = chapterPointsMap.get(chapter.id) ?? 0;
         });
 
         return {

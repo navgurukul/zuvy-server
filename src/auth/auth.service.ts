@@ -163,6 +163,7 @@ export class AuthService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            inArray(zuvyUserRoles.name, roles),
             orgId !== null
               ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),
@@ -280,16 +281,24 @@ export class AuthService {
         selectedOrg = userOrgs[0];
       }
 
-      // Get user roles (scoped to org)
-      const roles = await this.getUserRoles(
-        Number(user.id),
-        selectedOrg?.orgId,
-      );
+      const orgId = selectedOrg?.orgId ?? null;
+
+      // Regular users with no organization membership always log in as a
+      // plain student, regardless of any stray global-scoped role
+      // assignment. Super admins are global by design (they have no
+      // orgId) and must keep their role.
+      let roles: string[];
+      if (orgId === null) {
+        const globalRoles = await this.getUserRoles(Number(user.id), null);
+        roles = globalRoles.includes('super_admin') ? globalRoles : ['student'];
+      } else {
+        roles = await this.getUserRoles(Number(user.id), orgId);
+      }
 
       // Get formatted permissions
       const permissions = await this.getFormattedPermissions(
         Number(user.id),
-        selectedOrg?.orgId,
+        orgId,
         roles,
       );
 
@@ -300,7 +309,7 @@ export class AuthService {
         role: user.mode,
         rolesList: roles,
         permissions: permissions,
-        orgId: selectedOrg?.orgId || null,
+        orgId: orgId,
         orgName: selectedOrg?.orgName || null,
         isPoc: selectedOrg?.pocEmail === user.email,
       };
@@ -330,7 +339,7 @@ export class AuthService {
           .insert(zuvyUserOrganizations)
           .values({
             userId: Number(user.id),
-            organizationId: selectedOrg?.orgId || null,
+            organizationId: orgId,
             userEmail: user.email,
             accessToken: access_token,
             refreshToken: refresh_token,
@@ -383,7 +392,7 @@ export class AuthService {
           role: user.mode,
           center: user.center,
           rolesList: roles,
-          orgId: selectedOrg?.orgId || null,
+          orgId: orgId,
           orgName: selectedOrg?.orgName || null,
           isPoc: selectedOrg?.pocEmail === user.email,
           permissions: permissions,
@@ -765,6 +774,18 @@ export class AuthService {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw new UnauthorizedException('User not found');
 
+    // Validate that the target organization actually exists before doing
+    // anything else. Without this check, a caller could switch into (and
+    // create a userOrg mapping for) a non-existent organization ID.
+    const [org] = await db
+      .select()
+      .from(zuvyOrganizations)
+      .where(eq(zuvyOrganizations.id, targetOrgId));
+
+    if (!org) {
+      throw new UnauthorizedException('Organization does not exist');
+    }
+
     // Check for super_admin role globally
     const globalRoles = await this.getUserRoles(Number(userId), null);
     const isSuperAdmin = globalRoles.includes('super_admin');
@@ -787,11 +808,6 @@ export class AuthService {
         );
       }
     }
-
-    const [org] = await db
-      .select()
-      .from(zuvyOrganizations)
-      .where(eq(zuvyOrganizations.id, targetOrgId));
 
     let roles = await this.getUserRoles(Number(userId), targetOrgId);
 
