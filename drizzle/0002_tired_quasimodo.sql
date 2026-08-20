@@ -885,3 +885,9 @@ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollmen
 
 
 
+
+SELECT *
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE learner_id = 63619
+  AND bootcamp_id = 1047
+  AND chapter_id = 8224;

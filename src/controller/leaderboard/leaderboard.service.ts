@@ -291,54 +291,78 @@ export class LeaderboardService {
     >();
 
     try {
+      // const codingSubmissions = await db
+      //   .select({
+      //     userId: zuvyPracticeCode.userId,
+      //     bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
+      //     // chapterId: zuvyPracticeCode.chapterId,
+      //     chapterId: zuvyOutsourseCodingQuestions.chapterId,
+      //     topicId: zuvyModuleChapter.topicId,
+      //     submittedAt: zuvyPracticeCode.createdAt,
+      //     // deadline: zuvyOutsourseAssessments.deadline,
+      //     practiceCodeId: zuvyPracticeCode.id,
+      //     status: zuvyPracticeCode.status,
+      //   })
+      //   .from(zuvyPracticeCode)
+      //   .leftJoin(
+      //     zuvyOutsourseCodingQuestions,
+      //     eq(
+      //       zuvyPracticeCode.codingOutsourseId,
+      //       zuvyOutsourseCodingQuestions.id,
+      //     ),
+      //   )
+
+      //   .innerJoin(
+      //     zuvyBootcamps,
+      //     eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
+      //   )
+
+      //   .leftJoin(
+      //     zuvyOutsourseAssessments,
+      //     eq(
+      //       zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+      //       zuvyOutsourseAssessments.id,
+      //     ),
+      //   )
+      //   .leftJoin(
+      //     zuvyModuleChapter,
+      //     eq(zuvyOutsourseCodingQuestions.chapterId, zuvyModuleChapter.id),
+      //   )
+      //   .where(
+      //     and(
+      //       sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
+      //       sql`${zuvyPracticeCode.status} = 'Accepted'`,
+      //       scope
+      //         ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
+      //         : sql`TRUE`,
+      //       scope
+      //         ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
+      //       : sql`TRUE`,
+      //        scope
+      //         ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
+      //          : sql`TRUE`,
+      //),
+      // );
+
       const codingSubmissions = await db
         .select({
           userId: zuvyPracticeCode.userId,
-          bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
-          chapterId: zuvyOutsourseCodingQuestions.chapterId,
+          chapterId: zuvyPracticeCode.chapterId,
           topicId: zuvyModuleChapter.topicId,
           submittedAt: zuvyPracticeCode.createdAt,
-          deadline: zuvyOutsourseAssessments.deadline,
           practiceCodeId: zuvyPracticeCode.id,
           status: zuvyPracticeCode.status,
         })
         .from(zuvyPracticeCode)
         .leftJoin(
-          zuvyOutsourseCodingQuestions,
-          eq(
-            zuvyPracticeCode.codingOutsourseId,
-            zuvyOutsourseCodingQuestions.id,
-          ),
-        )
-
-        .innerJoin(
-          zuvyBootcamps,
-          eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
-        )
-
-        .leftJoin(
-          zuvyOutsourseAssessments,
-          eq(
-            zuvyOutsourseCodingQuestions.assessmentOutsourseId,
-            zuvyOutsourseAssessments.id,
-          ),
-        )
-        .leftJoin(
           zuvyModuleChapter,
-          eq(zuvyOutsourseCodingQuestions.chapterId, zuvyModuleChapter.id),
+          eq(zuvyPracticeCode.chapterId, zuvyModuleChapter.id),
         )
         .where(
           and(
-            sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
-            sql`${zuvyPracticeCode.status} = 'Accepted'`,
+            eq(zuvyPracticeCode.status, 'Accepted'),
             scope
               ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
-              : sql`TRUE`,
-            scope
-              ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
-              : sql`TRUE`,
-            scope
-              ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
               : sql`TRUE`,
           ),
         );
@@ -346,45 +370,91 @@ export class LeaderboardService {
       if (codingSubmissions.length === 0) {
         return codingMap;
       }
+      //       for (const submission of codingSubmissions) {
+      //           console.log('CODING CHECK:', {
+      //     userId: submission.userId,
+      //     chapterId: submission.chapterId,
+      //     topicId: submission.topicId,
+      //     status: submission.status,
+      //   });
+
+      // if (
+      //   !submission.userId ||
+      //   !submission.practiceCodeId
+      // ) {
+      //   continue;
+      // }
+      //         // const isAccepted = this.isAcceptedCodingSubmission(submission.status);
+      //         // const pointsBreakdown = this.calculateTotalCodingPoints(isAccepted);
+      //         // if (!isAccepted) {
+      //         //   continue;
+      //         // }
+
+      //       const pointsBreakdown = this.calculateTotalCodingPoints(true);
+      //       console.log('CODING POINTS:', pointsBreakdown);
+
+      //         // const key = `${submission.userId}-${submission.bootcampId}`;
+      //         const key = `${submission.userId}-${scope?.bootcampId}`;
+      //         const entry = codingMap.get(key) || {
+      //           chapterPoints: new Map<number, number>(),
+      //           codingPoints: 0,
+      //           lastActivityAt: new Date().toISOString(),
+      //         };
+
+      //         entry.codingPoints += pointsBreakdown.totalCodingPoints;
+
+      //         // if (submission.chapterId && submission.topicId === 3) {
+      //         //   const currentChapterPoints =
+      //         //     entry.chapterPoints.get(submission.chapterId) ?? 0;
+
+      //         //   entry.chapterPoints.set(
+      //         //     submission.chapterId,
+      //         //     currentChapterPoints + pointsBreakdown.totalCodingPoints,
+      //         //   );
+      //         // }
+
+      //     if (submission.chapterId && submission.topicId === 3) {
+      //   if (!entry.chapterPoints.has(submission.chapterId)) {
+      //     entry.chapterPoints.set(
+      //       submission.chapterId,
+      //       pointsBreakdown.totalCodingPoints,
+      //     );
+
+      //     entry.codingPoints += pointsBreakdown.totalCodingPoints;
+      //   }
+      // }
+      //         entry.lastActivityAt =
+      //           submission.submittedAt || new Date().toISOString();
+
+      //         codingMap.set(key, entry);
+      //       }
+
       for (const submission of codingSubmissions) {
-        if (
-          !submission.userId ||
-          !submission.bootcampId ||
-          !submission.practiceCodeId
-        ) {
+        if (!submission.userId || !submission.practiceCodeId) {
           continue;
         }
 
-        const isAccepted = this.isAcceptedCodingSubmission(submission.status);
+        const pointsBreakdown = this.calculateTotalCodingPoints(true);
 
-        const pointsBreakdown = this.calculateTotalCodingPoints(
-          submission.submittedAt,
-          submission.deadline,
-          isAccepted,
-        );
+        const key = `${submission.userId}-${scope?.bootcampId}`;
 
-        if (!isAccepted) {
-          continue;
-        }
-
-        const key = `${submission.userId}-${submission.bootcampId}`;
         const entry = codingMap.get(key) || {
           chapterPoints: new Map<number, number>(),
           codingPoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
 
-        entry.codingPoints += pointsBreakdown.totalCodingPoints;
-
         if (submission.chapterId && submission.topicId === 3) {
-          const currentChapterPoints =
-            entry.chapterPoints.get(submission.chapterId) ?? 0;
+          if (!entry.chapterPoints.has(submission.chapterId)) {
+            entry.chapterPoints.set(
+              submission.chapterId,
+              pointsBreakdown.totalCodingPoints,
+            );
 
-          entry.chapterPoints.set(
-            submission.chapterId,
-            currentChapterPoints + pointsBreakdown.totalCodingPoints,
-          );
+            entry.codingPoints += pointsBreakdown.totalCodingPoints;
+          }
         }
+
         entry.lastActivityAt =
           submission.submittedAt || new Date().toISOString();
 
@@ -1483,8 +1553,16 @@ export class LeaderboardService {
       case 2:
         entry = (await this.calculateArticlePoints(scope)).get(key);
         break;
+      // case 3:
+      //   entry = (await this.calculateCodingPoints(scope)).get(key);
+
+      //   break;
+
       case 3:
-        entry = (await this.calculateCodingPoints(scope)).get(key);
+        const codingResult = await this.calculateCodingPoints(scope);
+
+        entry = codingResult.get(key);
+
         break;
       case 4:
         entry = (await this.calculateQuizPoints(scope)).get(key);
@@ -1960,72 +2038,95 @@ export class LeaderboardService {
     return 10;
   }
 
-  private calculateCodingOnTimeBonusPoints(
-    submittedAt: string | null,
-    deadline: string | null,
-  ): number {
-    if (!submittedAt || !deadline) {
-      return 0;
-    }
+  // private calculateCodingOnTimeBonusPoints(
+  //   submittedAt: string | null,
+  //   deadline: string | null,
+  // ): number {
+  //   if (!submittedAt || !deadline) {
+  //     return 0;
+  //   }
 
-    try {
-      const submissionTime = new Date(submittedAt).getTime();
-      const deadlineTime = new Date(deadline).getTime();
+  //   try {
+  //     const submissionTime = new Date(submittedAt).getTime();
+  //     const deadlineTime = new Date(deadline).getTime();
 
-      if (submissionTime <= deadlineTime) {
-        return 3;
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to parse coding deadline dates: ${this.getErrorMessage(
-          error,
-          'unknown error',
-        )}`,
-      );
-    }
+  //     if (submissionTime <= deadlineTime) {
+  //       return 3;
+  //     }
+  //   } catch (error) {
+  //     this.logger.warn(
+  //       `Failed to parse coding deadline dates: ${this.getErrorMessage(
+  //         error,
+  //         'unknown error',
+  //       )}`,
+  //     );
+  //   }
 
-    return 0;
-  }
+  //   return 0;
+  // }
 
-  private isAcceptedCodingSubmission(status?: string | null): boolean {
-    return (status ?? '').trim().toLowerCase() === 'accepted';
-  }
+  // private isAcceptedCodingSubmission(status?: string | null): boolean {
+  //   return (status ?? '').trim().toLowerCase() === 'accepted';
+  // }
 
-  private calculateTestCasesPassedPoints(isAccepted: boolean): number {
-    return isAccepted ? 15 : 0;
-  }
+  // private calculateTestCasesPassedPoints(isAccepted: boolean): number {
+  //   return isAccepted ? 15 : 0;
+  // }
 
-  private calculateTotalCodingPoints(
-    submittedAt: string | null,
-    deadline: string | null,
-    isAccepted: boolean,
-  ): {
+  // private calculateTotalCodingPoints(
+  //   submittedAt: string | null,
+  //   deadline: string | null,
+  //   isAccepted: boolean,
+  // ): {
+  //   attemptPoints: number;
+  //   bonusPoints: number;
+  //   testCasesPoints: number;
+  //   totalCodingPoints: number;
+  // } {
+  //   if (!isAccepted) {
+  //     return {
+  //       attemptPoints: 0,
+  //       bonusPoints: 0,
+  //       testCasesPoints: 0,
+  //       totalCodingPoints: 0,
+  //     };
+  //   }
+
+  //   const attemptPoints = this.calculateCodingAttemptPoints();
+  //   const bonusPoints = this.calculateCodingOnTimeBonusPoints(
+  //     submittedAt,
+  //     deadline,
+  //   );
+  //   const testCasesPoints = this.calculateTestCasesPassedPoints(true);
+
+  //   return {
+  //     attemptPoints,
+  //     bonusPoints,
+  //     testCasesPoints,
+  //     totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
+  //   };
+  // }
+
+  private calculateTotalCodingPoints(isAccepted: boolean): {
     attemptPoints: number;
-    bonusPoints: number;
-    testCasesPoints: number;
+    codingPoints: number;
     totalCodingPoints: number;
   } {
     if (!isAccepted) {
       return {
         attemptPoints: 0,
-        bonusPoints: 0,
-        testCasesPoints: 0,
+        codingPoints: 0,
         totalCodingPoints: 0,
       };
     }
 
     const attemptPoints = this.calculateCodingAttemptPoints();
-    const bonusPoints = this.calculateCodingOnTimeBonusPoints(
-      submittedAt,
-      deadline,
-    );
-    const testCasesPoints = this.calculateTestCasesPassedPoints(true);
+    const codingPoints = 10;
 
     return {
       attemptPoints,
-      bonusPoints,
-      testCasesPoints,
-      totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
+      codingPoints,
+      totalCodingPoints: attemptPoints + codingPoints,
     };
   }
 
