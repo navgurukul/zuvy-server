@@ -36,6 +36,8 @@ import {
   zuvySessionRecordViews,
   zuvyBootcamps,
   zuvyBatches,
+  zuvyLearnerLeaderboardChapterPoints,
+  zuvyLearnerLeaderboard,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -2490,6 +2492,73 @@ export class ContentService {
         null,
       ];
     }
+
+    // ####################Get chapter points before deleting the chapter in leaderboars chapters points table##############################
+    const chapterPoints = await db
+      .select({
+        learnerId: zuvyLearnerLeaderboardChapterPoints.learnerId,
+        bootcampId: zuvyLearnerLeaderboardChapterPoints.bootcampId,
+        points: zuvyLearnerLeaderboardChapterPoints.points,
+        topicId: zuvyLearnerLeaderboardChapterPoints.topicId,
+      })
+      .from(zuvyLearnerLeaderboardChapterPoints)
+      .where(
+        and(
+          eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
+          eq(zuvyLearnerLeaderboardChapterPoints.bootcampId, bootcampId),
+        ),
+      );
+    console.log('CHAPTER POINTS BEFORE DELETE:', chapterPoints);
+
+    // Map chapter topicId to the corresponding leaderboard points column
+    const topicPointsColumn = {
+      1: 'videoPoints',
+      2: 'articlePoints',
+      3: 'codingPoints',
+      4: 'quizPoints',
+      5: 'assignmentPoints',
+      6: 'assessmentPoints',
+    } as const;
+
+    // Remove the deleted chapter's points from the corresponding
+    // leaderboard category and from totalPoints
+    for (const chapterPoint of chapterPoints) {
+      const points = chapterPoint.points ?? 0;
+
+      if (!points || !chapterPoint.learnerId) {
+        continue;
+      }
+
+      const pointColumn = topicPointsColumn[chapterPoint.topicId];
+
+      const updateData: any = {
+        totalPoints: sql`
+      GREATEST(
+        ${zuvyLearnerLeaderboard.totalPoints} - ${points},
+        0
+      )
+    `,
+      };
+      if (pointColumn) {
+        updateData[pointColumn] = sql`
+      GREATEST(
+        ${zuvyLearnerLeaderboard[pointColumn]} - ${points},
+        0
+      )
+    `;
+      }
+      await db
+        .update(zuvyLearnerLeaderboard)
+        .set(updateData)
+        .where(
+          and(
+            eq(zuvyLearnerLeaderboard.learnerId, chapterPoint.learnerId),
+            eq(zuvyLearnerLeaderboard.bootcampId, chapterPoint.bootcampId),
+          ),
+        );
+    }
+
+    // ###############################
     const chapterRecord = chapterInfo[0];
     if (chapterInfo[0].topicId == 8) {
       await db

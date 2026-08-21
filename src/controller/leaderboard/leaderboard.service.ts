@@ -59,6 +59,7 @@ export class LeaderboardService {
     return error instanceof Error ? error.message : fallback;
   }
 
+  // Calculates assessment performance points based on the percentage score.
   private calculatePercentagePoints(percentage: number): number {
     if (percentage >= 90) {
       return 30;
@@ -71,59 +72,27 @@ export class LeaderboardService {
     }
   }
 
+  // Return points for attempting an assessment.
   private calculateSubmissionAttemptPoints(): number {
     return 10;
   }
 
-  private calculateOnTimeBonusPoints(
-    submittedAt: string | null,
-    deadline: string | null,
-  ): number {
-    if (!submittedAt || !deadline) {
-      return 0;
-    }
-
-    try {
-      const submissionTime = new Date(submittedAt).getTime();
-      const deadlineTime = new Date(deadline).getTime();
-
-      if (submissionTime <= deadlineTime) {
-        return 5;
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to parse deadline dates: ${this.getErrorMessage(
-          error,
-          'unknown error',
-        )}`,
-      );
-    }
-
-    return 0;
-  }
-
-  private calculateTotalAssessmentPoints(
-    percentage: number,
-    submittedAt: string | null,
-    deadline: string | null,
-  ): {
+  // Calculates total assessment points by combining attempt and performance points.
+  private calculateTotalAssessmentPoints(percentage: number): {
     attemptPoints: number;
-    bonusPoints: number;
     percentagePoints: number;
     totalPoints: number;
   } {
     const attemptPoints = this.calculateSubmissionAttemptPoints();
-    const bonusPoints = this.calculateOnTimeBonusPoints(submittedAt, deadline);
     const percentagePoints = this.calculatePercentagePoints(percentage || 0);
 
     return {
       attemptPoints,
-      bonusPoints,
       percentagePoints,
-      totalPoints: attemptPoints + bonusPoints + percentagePoints,
+      totalPoints: attemptPoints + percentagePoints,
     };
   }
-
+  // Calculate assessment points for each learner and chapter.
   private async calculateAssessmentPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -153,7 +122,6 @@ export class LeaderboardService {
           chapterId: zuvyOutsourseAssessments.chapterId,
           submittedAt: zuvyAssessmentSubmission.submitedAt,
           isPassed: zuvyAssessmentSubmission.isPassed,
-          deadline: zuvyOutsourseAssessments.deadline,
         })
         .from(zuvyAssessmentSubmission)
         .leftJoin(
@@ -224,13 +192,10 @@ export class LeaderboardService {
         if (submission.isPassed) {
           pointsBreakdown = this.calculateTotalAssessmentPoints(
             submission.percentage || 0,
-            submission.submittedAt,
-            submission.deadline,
           );
         } else {
           pointsBreakdown = {
             attemptPoints: 0,
-            bonusPoints: 0,
             percentagePoints: 0,
             totalPoints: 0,
           };
@@ -271,6 +236,7 @@ export class LeaderboardService {
     return assessmentMap;
   }
 
+  // Calculate coding points for accepted coding submissions.
   private async calculateCodingPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -291,59 +257,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // const codingSubmissions = await db
-      //   .select({
-      //     userId: zuvyPracticeCode.userId,
-      //     bootcampId: zuvyOutsourseCodingQuestions.bootcampId,
-      //     // chapterId: zuvyPracticeCode.chapterId,
-      //     chapterId: zuvyOutsourseCodingQuestions.chapterId,
-      //     topicId: zuvyModuleChapter.topicId,
-      //     submittedAt: zuvyPracticeCode.createdAt,
-      //     // deadline: zuvyOutsourseAssessments.deadline,
-      //     practiceCodeId: zuvyPracticeCode.id,
-      //     status: zuvyPracticeCode.status,
-      //   })
-      //   .from(zuvyPracticeCode)
-      //   .leftJoin(
-      //     zuvyOutsourseCodingQuestions,
-      //     eq(
-      //       zuvyPracticeCode.codingOutsourseId,
-      //       zuvyOutsourseCodingQuestions.id,
-      //     ),
-      //   )
-
-      //   .innerJoin(
-      //     zuvyBootcamps,
-      //     eq(zuvyOutsourseCodingQuestions.bootcampId, zuvyBootcamps.id),
-      //   )
-
-      //   .leftJoin(
-      //     zuvyOutsourseAssessments,
-      //     eq(
-      //       zuvyOutsourseCodingQuestions.assessmentOutsourseId,
-      //       zuvyOutsourseAssessments.id,
-      //     ),
-      //   )
-      //   .leftJoin(
-      //     zuvyModuleChapter,
-      //     eq(zuvyOutsourseCodingQuestions.chapterId, zuvyModuleChapter.id),
-      //   )
-      //   .where(
-      //     and(
-      //       sql`${zuvyOutsourseCodingQuestions.bootcampId} IS NOT NULL`,
-      //       sql`${zuvyPracticeCode.status} = 'Accepted'`,
-      //       scope
-      //         ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
-      //         : sql`TRUE`,
-      //       scope
-      //         ? eq(zuvyOutsourseCodingQuestions.bootcampId, scope.bootcampId)
-      //       : sql`TRUE`,
-      //        scope
-      //         ? eq(zuvyOutsourseCodingQuestions.chapterId, scope.chapterId)
-      //          : sql`TRUE`,
-      //),
-      // );
-
       const codingSubmissions = await db
         .select({
           userId: zuvyPracticeCode.userId,
@@ -370,65 +283,6 @@ export class LeaderboardService {
       if (codingSubmissions.length === 0) {
         return codingMap;
       }
-      //       for (const submission of codingSubmissions) {
-      //           console.log('CODING CHECK:', {
-      //     userId: submission.userId,
-      //     chapterId: submission.chapterId,
-      //     topicId: submission.topicId,
-      //     status: submission.status,
-      //   });
-
-      // if (
-      //   !submission.userId ||
-      //   !submission.practiceCodeId
-      // ) {
-      //   continue;
-      // }
-      //         // const isAccepted = this.isAcceptedCodingSubmission(submission.status);
-      //         // const pointsBreakdown = this.calculateTotalCodingPoints(isAccepted);
-      //         // if (!isAccepted) {
-      //         //   continue;
-      //         // }
-
-      //       const pointsBreakdown = this.calculateTotalCodingPoints(true);
-      //       console.log('CODING POINTS:', pointsBreakdown);
-
-      //         // const key = `${submission.userId}-${submission.bootcampId}`;
-      //         const key = `${submission.userId}-${scope?.bootcampId}`;
-      //         const entry = codingMap.get(key) || {
-      //           chapterPoints: new Map<number, number>(),
-      //           codingPoints: 0,
-      //           lastActivityAt: new Date().toISOString(),
-      //         };
-
-      //         entry.codingPoints += pointsBreakdown.totalCodingPoints;
-
-      //         // if (submission.chapterId && submission.topicId === 3) {
-      //         //   const currentChapterPoints =
-      //         //     entry.chapterPoints.get(submission.chapterId) ?? 0;
-
-      //         //   entry.chapterPoints.set(
-      //         //     submission.chapterId,
-      //         //     currentChapterPoints + pointsBreakdown.totalCodingPoints,
-      //         //   );
-      //         // }
-
-      //     if (submission.chapterId && submission.topicId === 3) {
-      //   if (!entry.chapterPoints.has(submission.chapterId)) {
-      //     entry.chapterPoints.set(
-      //       submission.chapterId,
-      //       pointsBreakdown.totalCodingPoints,
-      //     );
-
-      //     entry.codingPoints += pointsBreakdown.totalCodingPoints;
-      //   }
-      // }
-      //         entry.lastActivityAt =
-      //           submission.submittedAt || new Date().toISOString();
-
-      //         codingMap.set(key, entry);
-      //       }
-
       for (const submission of codingSubmissions) {
         if (!submission.userId || !submission.practiceCodeId) {
           continue;
@@ -472,6 +326,7 @@ export class LeaderboardService {
     return codingMap;
   }
 
+  // Calculate quiz points using attempt and score points.
   private async calculateQuizPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -483,16 +338,12 @@ export class LeaderboardService {
     >
   > {
     try {
-      this.logger.log('Calculating quiz points...');
-
       const quizSubmissions = await db
         .select({
           userId: zuvyQuizTracking.userId,
           bootcampId: zuvyOutsourseQuizzes.bootcampId,
           mcqScore: zuvyAssessmentSubmission.mcqScore,
           requiredMCQScore: zuvyAssessmentSubmission.requiredMCQScore,
-          submittedAt: zuvyAssessmentSubmission.submitedAt,
-          deadline: zuvyOutsourseAssessments.deadline,
           attemptCount: zuvyQuizTracking.attemptCount,
           createdAt: zuvyQuizTracking.createdAt,
         })
@@ -574,10 +425,6 @@ export class LeaderboardService {
         return quizMap;
       }
 
-      this.logger.log(
-        `Found ${quizSubmissions.length} quiz submissions and ${standaloneQuizCompletions.length} standalone completions`,
-      );
-
       for (const submission of quizSubmissions) {
         if (!submission.userId || !submission.bootcampId) {
           continue;
@@ -595,14 +442,10 @@ export class LeaderboardService {
             (submission.mcqScore / submission.requiredMCQScore) * 100;
         }
 
-        const attemptPoints = 5;
-        const bonusPoints = this.calculateQuizOnTimeBonusPoints(
-          submission.submittedAt,
-          submission.deadline,
-        );
+        const attemptPoints = 10;
         const scorePoints = this.calculateQuizScorePoints(quizPercentage);
 
-        const totalQuizPoints = attemptPoints + bonusPoints + scorePoints;
+        const totalQuizPoints = attemptPoints + scorePoints;
 
         const entry = quizMap.get(key) || {
           chapterPoints: new Map<number, number>(),
@@ -611,11 +454,7 @@ export class LeaderboardService {
         };
 
         entry.quizPoints += totalQuizPoints;
-        entry.lastActivityAt =
-          submission.submittedAt ||
-          submission.createdAt ||
-          new Date().toISOString();
-
+        entry.lastActivityAt = submission.createdAt || new Date().toISOString();
         quizMap.set(key, entry);
       }
 
@@ -659,9 +498,9 @@ export class LeaderboardService {
         const entry = quizMap.get(key);
         if (entry) {
           for (const chapterId of chapterSet) {
-            entry.chapterPoints.set(chapterId, 5);
+            entry.chapterPoints.set(chapterId, 10);
           }
-          entry.quizPoints += chapterSet.size * 5;
+          entry.quizPoints += chapterSet.size * 10;
         }
       }
 
@@ -680,33 +519,7 @@ export class LeaderboardService {
     }
   }
 
-  private calculateQuizOnTimeBonusPoints(
-    submittedAt: string | null,
-    deadline: string | null,
-  ): number {
-    if (!submittedAt || !deadline) {
-      return 0;
-    }
-
-    try {
-      const submissionTime = new Date(submittedAt).getTime();
-      const deadlineTime = new Date(deadline).getTime();
-
-      if (submissionTime <= deadlineTime) {
-        return 3;
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to parse quiz deadline: ${this.getErrorMessage(
-          error,
-          'unknown error',
-        )}`,
-      );
-    }
-
-    return 0;
-  }
-
+  // Calculate quiz points based on the score percentage.
   private calculateQuizScorePoints(percentage: number): number {
     if (percentage >= 90) {
       return 15;
@@ -719,6 +532,7 @@ export class LeaderboardService {
     }
   }
 
+  // Calculate points for present attendance.
   private async calculateAttendancePoints(): Promise<
     Map<
       string,
@@ -795,6 +609,7 @@ export class LeaderboardService {
     }
   }
 
+  // Calculate points for completed recording chapters.
   private async calculateRecordingPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -917,6 +732,7 @@ export class LeaderboardService {
     }
   }
 
+  // Calculate assignment points including the on-time bonus.
   private async calculateAssignmentPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -1033,6 +849,7 @@ export class LeaderboardService {
     }
   }
 
+  // Calculate points for completed video chapters.
   private async calculateVideoPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -1138,6 +955,7 @@ export class LeaderboardService {
     }
   }
 
+  // Calculate points for completed article chapters.
   private async calculateArticlePoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -1303,6 +1121,7 @@ export class LeaderboardService {
     };
   }
 
+  // Merge chapter points from different activities.
   private mergeChapterPoints(
     learnerId: number,
     bootcampId: number,
@@ -1325,6 +1144,7 @@ export class LeaderboardService {
     chapterPointsByKey.set(learnerBootcampKey, mergedChapterPoints);
   }
 
+  // Create rows for chapter-wise points.
   private async buildChapterPointRows(
     allKeys: Set<string>,
     assessmentMap: Map<
@@ -1476,6 +1296,7 @@ export class LeaderboardService {
     return rows;
   }
 
+  // Save or update chapter-wise points.
   private async upsertChapterPointRows(
     tx: any,
     chapterPointRows: ChapterPointRow[],
@@ -1512,6 +1333,7 @@ export class LeaderboardService {
     }
   }
 
+  // Get the leaderboard column for a chapter topic.
   private getLeaderboardPointColumnForTopic(
     topicId: number | null,
   ): LeaderboardPointColumn | null {
@@ -1535,6 +1357,7 @@ export class LeaderboardService {
     }
   }
 
+  // Get calculated points for a completed chapter.
   private async getExistingCalculatedChapterPointsForCompletion(
     scope: CalculationScope,
     topicId: number | null,
@@ -1553,11 +1376,6 @@ export class LeaderboardService {
       case 2:
         entry = (await this.calculateArticlePoints(scope)).get(key);
         break;
-      // case 3:
-      //   entry = (await this.calculateCodingPoints(scope)).get(key);
-
-      //   break;
-
       case 3:
         const codingResult = await this.calculateCodingPoints(scope);
 
@@ -1588,6 +1406,7 @@ export class LeaderboardService {
     };
   }
 
+  // Update chapter points and the main leaderboard.
   async updateChapterPointsForCompletion(
     userId: number,
     bootcampId: number,
@@ -1871,6 +1690,7 @@ export class LeaderboardService {
     }
   }
 
+  // Get the leaderboard for a bootcamp.
   async getBootcampLeaderboard(
     bootcampId?: number,
     limit: number = 100,
@@ -1956,6 +1776,7 @@ export class LeaderboardService {
     }
   }
 
+  // Get a learner's leaderboard details.
   async getLearnerPosition(
     learnerId: number,
     bootcampId: number,
@@ -2038,75 +1859,6 @@ export class LeaderboardService {
     return 10;
   }
 
-  // private calculateCodingOnTimeBonusPoints(
-  //   submittedAt: string | null,
-  //   deadline: string | null,
-  // ): number {
-  //   if (!submittedAt || !deadline) {
-  //     return 0;
-  //   }
-
-  //   try {
-  //     const submissionTime = new Date(submittedAt).getTime();
-  //     const deadlineTime = new Date(deadline).getTime();
-
-  //     if (submissionTime <= deadlineTime) {
-  //       return 3;
-  //     }
-  //   } catch (error) {
-  //     this.logger.warn(
-  //       `Failed to parse coding deadline dates: ${this.getErrorMessage(
-  //         error,
-  //         'unknown error',
-  //       )}`,
-  //     );
-  //   }
-
-  //   return 0;
-  // }
-
-  // private isAcceptedCodingSubmission(status?: string | null): boolean {
-  //   return (status ?? '').trim().toLowerCase() === 'accepted';
-  // }
-
-  // private calculateTestCasesPassedPoints(isAccepted: boolean): number {
-  //   return isAccepted ? 15 : 0;
-  // }
-
-  // private calculateTotalCodingPoints(
-  //   submittedAt: string | null,
-  //   deadline: string | null,
-  //   isAccepted: boolean,
-  // ): {
-  //   attemptPoints: number;
-  //   bonusPoints: number;
-  //   testCasesPoints: number;
-  //   totalCodingPoints: number;
-  // } {
-  //   if (!isAccepted) {
-  //     return {
-  //       attemptPoints: 0,
-  //       bonusPoints: 0,
-  //       testCasesPoints: 0,
-  //       totalCodingPoints: 0,
-  //     };
-  //   }
-
-  //   const attemptPoints = this.calculateCodingAttemptPoints();
-  //   const bonusPoints = this.calculateCodingOnTimeBonusPoints(
-  //     submittedAt,
-  //     deadline,
-  //   );
-  //   const testCasesPoints = this.calculateTestCasesPassedPoints(true);
-
-  //   return {
-  //     attemptPoints,
-  //     bonusPoints,
-  //     testCasesPoints,
-  //     totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
-  //   };
-  // }
-
   private calculateTotalCodingPoints(isAccepted: boolean): {
     attemptPoints: number;
     codingPoints: number;
@@ -2130,6 +1882,7 @@ export class LeaderboardService {
     };
   }
 
+  // Get the ranked leaderboard for a learner's bootcamp.
   async getStudentLeaderboard(
     learnerId: number | string,
     bootcampId: number,

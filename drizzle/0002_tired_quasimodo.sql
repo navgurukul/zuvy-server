@@ -891,3 +891,26 @@ FROM zuvy_learner_leaderboard_chapter_points
 WHERE learner_id = 63619
   AND bootcamp_id = 1047
   AND chapter_id = 8224;
+
+
+
+  SELECT
+  learner_id,
+  bootcamp_id,
+  video_points,
+  article_points,
+  coding_points,
+  quiz_points,
+  assignment_points,
+  assessment_points,
+  total_points
+FROM zuvy_learner_leaderboard
+WHERE learner_id = 36182
+  AND bootcamp_id = 1047;
+
+
+
+
+  SELECT *
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE chapter_id = 8235;
