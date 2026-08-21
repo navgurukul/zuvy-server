@@ -2528,7 +2528,6 @@ export class ContentService {
       if (!points || !chapterPoint.learnerId) {
         continue;
       }
-
       const pointColumn = topicPointsColumn[chapterPoint.topicId];
 
       const updateData: any = {

@@ -18,6 +18,7 @@ import {
   zuvyOutsourseQuizzes,
   zuvyStudentAttendanceRecords,
   AttendanceStatus,
+  zuvySessions,
   zuvyChapterTracking,
   zuvyModuleChapter,
   zuvyCourseModules,
@@ -48,6 +49,7 @@ type LeaderboardPointColumn =
   | 'codingPoints'
   | 'quizPoints'
   | 'recordingPoints'
+  | 'attendancePoints'
   | 'assignmentPoints'
   | 'articlePoints'
   | 'videoPoints';
@@ -533,10 +535,11 @@ export class LeaderboardService {
   }
 
   // Calculate points for present attendance.
-  private async calculateAttendancePoints(): Promise<
+  private async calculateAttendancePoints(scope?: CalculationScope): Promise<
     Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         attendancePoints: number;
         lastActivityAt: string;
       }
@@ -545,6 +548,7 @@ export class LeaderboardService {
     const attendanceMap = new Map<
       string,
       {
+        chapterPoints: Map<number, number>;
         attendancePoints: number;
         lastActivityAt: string;
       }
@@ -555,15 +559,31 @@ export class LeaderboardService {
         .select({
           userId: zuvyStudentAttendanceRecords.userId,
           bootcampId: zuvyStudentAttendanceRecords.bootcampId,
+          sessionId: zuvyStudentAttendanceRecords.sessionId,
+          chapterId: zuvySessions.chapterId,
           status: zuvyStudentAttendanceRecords.status,
           attendanceDate: zuvyStudentAttendanceRecords.attendanceDate,
           createdAt: zuvyStudentAttendanceRecords.createdAt,
         })
         .from(zuvyStudentAttendanceRecords)
+        .leftJoin(
+          zuvySessions,
+          eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id),
+        )
         .where(
           and(
             eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
             sql`${zuvyStudentAttendanceRecords.bootcampId} IS NOT NULL`,
+
+            scope
+              ? eq(zuvyStudentAttendanceRecords.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+
+            scope
+              ? eq(zuvyStudentAttendanceRecords.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+
+            scope ? eq(zuvySessions.chapterId, scope.chapterId) : sql`TRUE`,
           ),
         );
 
@@ -572,31 +592,33 @@ export class LeaderboardService {
         return attendanceMap;
       }
 
-      this.logger.log(`Found ${attendanceRecords.length} attendance records`);
-
       for (const record of attendanceRecords) {
-        if (!record.userId || !record.bootcampId) {
+        if (!record.userId || !record.bootcampId || !record.chapterId) {
           continue;
         }
 
         const key = `${record.userId}-${record.bootcampId}`;
 
-        const pointsPerSession = 10;
-
         const entry = attendanceMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
           attendancePoints: 0,
           lastActivityAt: new Date().toISOString(),
         };
 
-        entry.attendancePoints += pointsPerSession;
+        const pointsPerSession = 10;
+
+        // Prevent duplicate points for the same chapter
+        if (!entry.chapterPoints.has(record.chapterId)) {
+          entry.chapterPoints.set(record.chapterId, pointsPerSession);
+
+          entry.attendancePoints += pointsPerSession;
+        }
+
         entry.lastActivityAt = record.createdAt || new Date().toISOString();
 
         attendanceMap.set(key, entry);
       }
 
-      this.logger.log(
-        `Processed attendance for ${attendanceMap.size} learner-bootcamp combinations`,
-      );
       return attendanceMap;
     } catch (error) {
       this.logger.error(
@@ -605,11 +627,134 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+
       return attendanceMap;
     }
   }
 
   // Calculate points for completed recording chapters.
+  // private async calculateRecordingPoints(scope?: CalculationScope): Promise<
+  //   Map<
+  //     string,
+  //     {
+  //       chapterPoints: Map<number, number>;
+  //       recordingPoints: number;
+  //       lastActivityAt: string;
+  //     }
+  //   >
+  // > {
+  //   const recordingMap = new Map<
+  //     string,
+  //     {
+  //       chapterPoints: Map<number, number>;
+  //       recordingPoints: number;
+  //       lastActivityAt: string;
+  //     }
+  //   >();
+
+  //   try {
+  //     const recordingCompletions = await db
+  //       .select({
+  //         userId: zuvyChapterTracking.userId,
+  //         chapterId: zuvyChapterTracking.chapterId,
+  //         bootcampId: zuvyCourseModules.bootcampId,
+  //         completedAt: zuvyChapterTracking.completedAt,
+  //       })
+  //       .from(zuvyChapterTracking)
+  //       .leftJoin(
+  //         zuvyModuleChapter,
+  //         eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
+  //       )
+  //       .leftJoin(
+  //         zuvyCourseModules,
+  //         eq(zuvyChapterTracking.moduleId, zuvyCourseModules.id),
+  //       )
+  //       .where(
+  //         and(
+  //           sql`${zuvyModuleChapter.topicId} = 8`, // Filter for recording chapters (topic_id = 8)
+  //           sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+  //           sql`${zuvyChapterTracking.completedAt} IS NOT NULL`, // Only completed chapters
+  //           scope
+  //             ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
+  //             : sql`TRUE`,
+  //           scope
+  //             ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
+  //             : sql`TRUE`,
+  //           scope
+  //             ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
+  //             : sql`TRUE`,
+  //         ),
+  //       );
+
+  //     if (recordingCompletions.length === 0) {
+  //       this.logger.log('No recording completions found');
+  //       return recordingMap;
+  //     }
+
+  //     this.logger.log(
+  //       `Found ${recordingCompletions.length} recording completion records`,
+  //     );
+
+  //     const completionsByLearnerBootcamp = new Map<string, Set<number>>();
+
+  //     for (const completion of recordingCompletions) {
+  //       if (
+  //         !completion.userId ||
+  //         !completion.bootcampId ||
+  //         !completion.chapterId
+  //       ) {
+  //         continue;
+  //       }
+
+  //       const key = `${completion.userId}-${completion.bootcampId}`;
+
+  //       if (!completionsByLearnerBootcamp.has(key)) {
+  //         completionsByLearnerBootcamp.set(key, new Set());
+  //       }
+
+  //       const chapterSet = completionsByLearnerBootcamp.get(key);
+  //       chapterSet.add(completion.chapterId);
+
+  //       if (!recordingMap.has(key)) {
+  //         recordingMap.set(key, {
+  //           chapterPoints: new Map<number, number>(),
+  //           recordingPoints: 0,
+  //           lastActivityAt: completion.completedAt || new Date().toISOString(),
+  //         });
+  //       } else {
+  //         const entry = recordingMap.get(key);
+  //         entry.lastActivityAt = completion.completedAt || entry.lastActivityAt;
+  //       }
+  //     }
+
+  //     for (const [key, chapterSet] of completionsByLearnerBootcamp.entries()) {
+  //       const distinctChapterCount = chapterSet.size;
+  //       const pointsPerRecording = 5;
+  //       const totalRecordingPoints = distinctChapterCount * pointsPerRecording;
+
+  //       const entry = recordingMap.get(key);
+  //       entry.recordingPoints = totalRecordingPoints;
+
+  //       for (const chapterId of chapterSet) {
+  //         entry.chapterPoints.set(chapterId, pointsPerRecording);
+  //       }
+  //     }
+
+  //     this.logger.log(
+  //       `Processed recording completions for ${recordingMap.size} learner-bootcamp combinations`,
+  //     );
+  //     return recordingMap;
+  //   } catch (error) {
+  //     this.logger.error(
+  //       `Error calculating recording points: ${this.getErrorMessage(
+  //         error,
+  //         'unknown error',
+  //       )}`,
+  //     );
+  //     return recordingMap;
+  //   }
+  // }
+
   private async calculateRecordingPoints(scope?: CalculationScope): Promise<
     Map<
       string,
@@ -630,12 +775,15 @@ export class LeaderboardService {
     >();
 
     try {
+      // Get completed recording chapters.
+      // 1 chapter = 1 session.
       const recordingCompletions = await db
         .select({
           userId: zuvyChapterTracking.userId,
           chapterId: zuvyChapterTracking.chapterId,
           bootcampId: zuvyCourseModules.bootcampId,
           completedAt: zuvyChapterTracking.completedAt,
+          sessionId: zuvySessions.id,
         })
         .from(zuvyChapterTracking)
         .leftJoin(
@@ -644,19 +792,33 @@ export class LeaderboardService {
         )
         .leftJoin(
           zuvyCourseModules,
-          eq(zuvyChapterTracking.moduleId, zuvyCourseModules.id),
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
+        .leftJoin(
+          zuvySessions,
+          and(
+            eq(zuvySessions.chapterId, zuvyChapterTracking.chapterId),
+            eq(zuvySessions.bootcampId, zuvyCourseModules.bootcampId),
+          ),
         )
         .where(
           and(
-            sql`${zuvyModuleChapter.topicId} = 8`, // Filter for recording chapters (topic_id = 8)
+            // Recording topic
+            eq(zuvyModuleChapter.topicId, 8),
+
             sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
-            sql`${zuvyChapterTracking.completedAt} IS NOT NULL`, // Only completed chapters
+
+            // Only completed recordings
+            sql`${zuvyChapterTracking.completedAt} IS NOT NULL`,
+
             scope
               ? eq(zuvyChapterTracking.userId, BigInt(scope.userId))
               : sql`TRUE`,
+
             scope
               ? eq(zuvyCourseModules.bootcampId, scope.bootcampId)
               : sql`TRUE`,
+
             scope
               ? eq(zuvyChapterTracking.chapterId, scope.chapterId)
               : sql`TRUE`,
@@ -668,58 +830,77 @@ export class LeaderboardService {
         return recordingMap;
       }
 
-      this.logger.log(
-        `Found ${recordingCompletions.length} recording completion records`,
-      );
+      // Get only learners who were PRESENT in the live session.
+      const attendanceRecords = await db
+        .select({
+          userId: zuvyStudentAttendanceRecords.userId,
+          sessionId: zuvyStudentAttendanceRecords.sessionId,
+        })
+        .from(zuvyStudentAttendanceRecords)
+        .where(
+          eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
+        );
 
-      const completionsByLearnerBootcamp = new Map<string, Set<number>>();
+      // userId + sessionId => attended
+      const attendedSessions = new Set(
+        attendanceRecords.map(
+          (attendance) => `${attendance.userId}-${attendance.sessionId}`,
+        ),
+      );
 
       for (const completion of recordingCompletions) {
         if (
           !completion.userId ||
           !completion.bootcampId ||
-          !completion.chapterId
+          !completion.chapterId ||
+          !completion.sessionId
         ) {
           continue;
         }
 
         const key = `${completion.userId}-${completion.bootcampId}`;
 
-        if (!completionsByLearnerBootcamp.has(key)) {
-          completionsByLearnerBootcamp.set(key, new Set());
+        // Did learner attend the live session?
+        const attended = attendedSessions.has(
+          `${completion.userId}-${completion.sessionId}`,
+        );
+
+        /*
+         * Rules:
+         *
+         * PRESENT + recording watched
+         * -> recording points = 0
+         *
+         * ABSENT + recording watched
+         * -> recording points = 5
+         *
+         * ABSENT + recording not watched
+         * -> this completion does not exist here
+         * -> recording points = 0
+         */
+        const recordingPoints = attended ? 0 : 5;
+
+        const entry = recordingMap.get(key) || {
+          chapterPoints: new Map<number, number>(),
+          recordingPoints: 0,
+          lastActivityAt: completion.completedAt || new Date().toISOString(),
+        };
+
+        if (recordingPoints > 0) {
+          entry.chapterPoints.set(completion.chapterId, recordingPoints);
+
+          entry.recordingPoints += recordingPoints;
         }
 
-        const chapterSet = completionsByLearnerBootcamp.get(key);
-        chapterSet.add(completion.chapterId);
+        entry.lastActivityAt = completion.completedAt || entry.lastActivityAt;
 
-        if (!recordingMap.has(key)) {
-          recordingMap.set(key, {
-            chapterPoints: new Map<number, number>(),
-            recordingPoints: 0,
-            lastActivityAt: completion.completedAt || new Date().toISOString(),
-          });
-        } else {
-          const entry = recordingMap.get(key);
-          entry.lastActivityAt = completion.completedAt || entry.lastActivityAt;
-        }
-      }
-
-      for (const [key, chapterSet] of completionsByLearnerBootcamp.entries()) {
-        const distinctChapterCount = chapterSet.size;
-        const pointsPerRecording = 5;
-        const totalRecordingPoints = distinctChapterCount * pointsPerRecording;
-
-        const entry = recordingMap.get(key);
-        entry.recordingPoints = totalRecordingPoints;
-
-        for (const chapterId of chapterSet) {
-          entry.chapterPoints.set(chapterId, pointsPerRecording);
-        }
+        recordingMap.set(key, entry);
       }
 
       this.logger.log(
-        `Processed recording completions for ${recordingMap.size} learner-bootcamp combinations`,
+        `Processed recording points for ${recordingMap.size} learner-bootcamp combinations`,
       );
+
       return recordingMap;
     } catch (error) {
       this.logger.error(
@@ -728,6 +909,7 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+
       return recordingMap;
     }
   }
@@ -1350,6 +1532,8 @@ export class LeaderboardService {
         return 'assignmentPoints';
       case 6:
         return 'assessmentPoints';
+      case 7:
+        return 'attendancePoints';
       case 8:
         return 'recordingPoints';
       default:
@@ -1391,6 +1575,10 @@ export class LeaderboardService {
       case 6:
         entry = (await this.calculateAssessmentPoints(scope)).get(key);
         break;
+      case 7:
+        entry = (await this.calculateAttendancePoints(scope)).get(key);
+        break;
+
       case 8:
         entry = (await this.calculateRecordingPoints(scope)).get(key);
         break;

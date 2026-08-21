@@ -903,6 +903,8 @@ WHERE learner_id = 63619
   quiz_points,
   assignment_points,
   assessment_points,
+  attendance_points,
+  recording_points,
   total_points
 FROM zuvy_learner_leaderboard
 WHERE learner_id = 36182
@@ -913,4 +915,4 @@ WHERE learner_id = 36182
 
   SELECT *
 FROM zuvy_learner_leaderboard_chapter_points
-WHERE chapter_id = 8235;
+WHERE chapter_id = 8237;
