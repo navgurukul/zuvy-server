@@ -2518,6 +2518,8 @@ export class ContentService {
       4: 'quizPoints',
       5: 'assignmentPoints',
       6: 'assessmentPoints',
+      7: 'attendancePoints',
+      8: 'recordingPoints',
     } as const;
 
     // Remove the deleted chapter's points from the corresponding

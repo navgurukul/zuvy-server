@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Param,
   Query,
   BadRequestException,
@@ -23,48 +22,7 @@ import { LeaderboardService } from './leaderboard.service';
 export class LeaderboardController {
   constructor(private readonly leaderboardService: LeaderboardService) {}
 
-  @Post('update')
-  @ApiOperation({
-    summary: 'Update main leaderboard without chapter completion points',
-    description:
-      'Updates non-chapter-completion leaderboard data. Chapter completion points are updated only through tracking/updateChapterStatus.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Leaderboard updated successfully',
-    schema: {
-      example: {
-        success: true,
-        message:
-          'Leaderboard updated successfully without chapter completion points',
-        updated: 150,
-      },
-    },
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-  })
-  async updateLeaderboard() {
-    try {
-      const result = await this.leaderboardService.updateLeaderboard();
-
-      if (!result.success) {
-        throw new InternalServerErrorException(result.error || result.message);
-      }
-
-      return {
-        success: result.success,
-        message: result.message,
-        updated: result.updated,
-      };
-    } catch (error) {
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'Failed to update leaderboard',
-      );
-    }
-  }
-
+  // Get leaderboard data for all bootcamps
   @Get('learners/data')
   @ApiOperation({
     summary: 'Get leaderboard across all bootcamps',
@@ -112,6 +70,7 @@ export class LeaderboardController {
     }
   }
 
+  // Get leaderboard data for a specific bootcamp
   @Get('bootcamp/:bootcampId')
   @ApiOperation({
     summary: 'Get bootcamp leaderboard',
@@ -246,6 +205,7 @@ export class LeaderboardController {
     }
   }
 
+  // Get current student's leaderboard and rank
   @Get('student/data')
   @ApiOperation({
     summary: 'Get student leaderboard with current learner',
