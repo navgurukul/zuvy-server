@@ -264,6 +264,7 @@ export class LeaderboardService {
           userId: zuvyPracticeCode.userId,
           chapterId: zuvyPracticeCode.chapterId,
           topicId: zuvyModuleChapter.topicId,
+          bootcampId: zuvyCourseModules.bootcampId,
           submittedAt: zuvyPracticeCode.createdAt,
           practiceCodeId: zuvyPracticeCode.id,
           status: zuvyPracticeCode.status,
@@ -273,10 +274,15 @@ export class LeaderboardService {
           zuvyModuleChapter,
           eq(zuvyPracticeCode.chapterId, zuvyModuleChapter.id),
         )
+        .leftJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id),
+        )
         .where(
           and(
             eq(zuvyPracticeCode.status, 'Accepted'),
             eq(zuvyPracticeCode.userId, BigInt(scope.userId)),
+            eq(zuvyCourseModules.bootcampId, scope.bootcampId),
           ),
         );
 
@@ -290,7 +296,7 @@ export class LeaderboardService {
 
         const pointsBreakdown = this.calculateTotalCodingPoints(true);
 
-        const key = `${submission.userId}-${scope.bootcampId}`;
+        const key = `${submission.userId}-${submission.bootcampId}`;
 
         const entry = codingMap.get(key) || {
           chapterPoints: new Map<number, number>(),
@@ -323,6 +329,31 @@ export class LeaderboardService {
       );
     }
     return codingMap;
+  }
+
+  private calculateCodingAttemptPoints(): number {
+    return 10;
+  }
+  private calculateTotalCodingPoints(isAccepted: boolean): {
+    attemptPoints: number;
+    codingPoints: number;
+    totalCodingPoints: number;
+  } {
+    if (!isAccepted) {
+      return {
+        attemptPoints: 0,
+        codingPoints: 0,
+        totalCodingPoints: 0,
+      };
+    }
+    const attemptPoints = this.calculateCodingAttemptPoints();
+    const codingPoints = 10;
+
+    return {
+      attemptPoints,
+      codingPoints,
+      totalCodingPoints: attemptPoints + codingPoints,
+    };
   }
 
   // Calculate quiz points using attempt and score points.
@@ -710,11 +741,6 @@ export class LeaderboardService {
           userId: zuvyStudentAttendanceRecords.userId,
           sessionId: zuvyStudentAttendanceRecords.sessionId,
         })
-        // .from(zuvyStudentAttendanceRecords)
-        // .where(
-        //   eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
-        // );
-
         .from(zuvyStudentAttendanceRecords)
         .where(
           and(
@@ -1740,33 +1766,6 @@ export class LeaderboardService {
       }
       return null;
     }
-  }
-
-  private calculateCodingAttemptPoints(): number {
-    return 10;
-  }
-
-  private calculateTotalCodingPoints(isAccepted: boolean): {
-    attemptPoints: number;
-    codingPoints: number;
-    totalCodingPoints: number;
-  } {
-    if (!isAccepted) {
-      return {
-        attemptPoints: 0,
-        codingPoints: 0,
-        totalCodingPoints: 0,
-      };
-    }
-
-    const attemptPoints = this.calculateCodingAttemptPoints();
-    const codingPoints = 10;
-
-    return {
-      attemptPoints,
-      codingPoints,
-      totalCodingPoints: attemptPoints + codingPoints,
-    };
   }
 
   // Get the ranked leaderboard for a learner's bootcamp.

@@ -276,7 +276,6 @@ export class LeaderboardController {
       if (isNaN(bootcampId) || bootcampId <= 0) {
         throw new BadRequestException('Invalid bootcampId');
       }
-      console.log('BOOTCAMP FILTER:', bootcampId);
 
       const result = await this.leaderboardService.getStudentLeaderboard(
         learnerId,
