@@ -239,7 +239,7 @@ export class LeaderboardService {
   }
 
   // Calculate coding points for accepted coding submissions.
-  private async calculateCodingPoints(scope?: CalculationScope): Promise<
+  private async calculateCodingPoints(scope: CalculationScope): Promise<
     Map<
       string,
       {
@@ -276,9 +276,7 @@ export class LeaderboardService {
         .where(
           and(
             eq(zuvyPracticeCode.status, 'Accepted'),
-            scope
-              ? eq(zuvyPracticeCode.userId, BigInt(scope.userId))
-              : sql`TRUE`,
+            eq(zuvyPracticeCode.userId, BigInt(scope.userId)),
           ),
         );
 
@@ -292,7 +290,7 @@ export class LeaderboardService {
 
         const pointsBreakdown = this.calculateTotalCodingPoints(true);
 
-        const key = `${submission.userId}-${scope?.bootcampId}`;
+        const key = `${submission.userId}-${scope.bootcampId}`;
 
         const entry = codingMap.get(key) || {
           chapterPoints: new Map<number, number>(),
@@ -324,7 +322,6 @@ export class LeaderboardService {
         )}`,
       );
     }
-
     return codingMap;
   }
 
@@ -1838,12 +1835,6 @@ export class LeaderboardService {
         )
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
         .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
-
-      // Add ranks to all learners
-      // const learnersWithRanks = allLearners.map((learner, index) => ({
-      //   ...learner,
-      //   rank: index + 1,
-      // }));
 
       const learnersWithRanks = allLearners.map((learner, index) => ({
         learnerId: Number(learner.learnerId),
