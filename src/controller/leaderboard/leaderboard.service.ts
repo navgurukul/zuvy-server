@@ -12,8 +12,6 @@ import {
   zuvyOutsourseAssessments,
   zuvyLearnerLeaderboard,
   zuvyPracticeCode,
-  zuvyOutsourseCodingQuestions,
-  zuvyTestCasesSubmission,
   zuvyQuizTracking,
   zuvyOutsourseQuizzes,
   zuvyStudentAttendanceRecords,
@@ -61,6 +59,10 @@ export class LeaderboardService {
     return error instanceof Error ? error.message : fallback;
   }
 
+  // Return points for attempting a chapter.
+  private calculateAttemptPoints(): number {
+    return 10;
+  }
   // Calculates assessment performance points based on the percentage score.
   private calculatePercentagePoints(percentage: number): number {
     if (percentage >= 90) {
@@ -74,18 +76,13 @@ export class LeaderboardService {
     }
   }
 
-  // Return points for attempting an assessment.
-  private calculateSubmissionAttemptPoints(): number {
-    return 10;
-  }
-
   // Calculates total assessment points by combining attempt and performance points.
   private calculateTotalAssessmentPoints(percentage: number): {
     attemptPoints: number;
     percentagePoints: number;
     totalPoints: number;
   } {
-    const attemptPoints = this.calculateSubmissionAttemptPoints();
+    const attemptPoints = this.calculateAttemptPoints();
     const percentagePoints = this.calculatePercentagePoints(percentage || 0);
 
     return {
@@ -331,9 +328,6 @@ export class LeaderboardService {
     return codingMap;
   }
 
-  private calculateCodingAttemptPoints(): number {
-    return 10;
-  }
   private calculateTotalCodingPoints(isAccepted: boolean): {
     attemptPoints: number;
     codingPoints: number;
@@ -346,7 +340,7 @@ export class LeaderboardService {
         totalCodingPoints: 0,
       };
     }
-    const attemptPoints = this.calculateCodingAttemptPoints();
+    const attemptPoints = this.calculateAttemptPoints();
     const codingPoints = 10;
 
     return {
