@@ -713,9 +713,24 @@ export class LeaderboardService {
           userId: zuvyStudentAttendanceRecords.userId,
           sessionId: zuvyStudentAttendanceRecords.sessionId,
         })
+        // .from(zuvyStudentAttendanceRecords)
+        // .where(
+        //   eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
+        // );
+
         .from(zuvyStudentAttendanceRecords)
         .where(
-          eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
+          and(
+            eq(zuvyStudentAttendanceRecords.status, AttendanceStatus.PRESENT),
+
+            scope
+              ? eq(zuvyStudentAttendanceRecords.userId, BigInt(scope.userId))
+              : sql`TRUE`,
+
+            scope
+              ? eq(zuvyStudentAttendanceRecords.bootcampId, scope.bootcampId)
+              : sql`TRUE`,
+          ),
         );
 
       // userId + sessionId => attended
@@ -1567,6 +1582,8 @@ export class LeaderboardService {
       attendancePoints: number;
       recordingPoints: number;
       assignmentPoints: number;
+      articlePoints: number;
+      videoPoints: number;
       totalPoints: number;
       lastActivityAt: string;
     }>
@@ -1583,6 +1600,8 @@ export class LeaderboardService {
             quizPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.quizPoints}, 0)`,
             attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
             recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
+            articlePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.articlePoints}, 0)`,
+            videoPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.videoPoints}, 0)`,
             assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
             totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
             lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
@@ -1613,6 +1632,8 @@ export class LeaderboardService {
             quizPoints: zuvyLearnerLeaderboard.quizPoints,
             attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
             recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+            articlePoints: zuvyLearnerLeaderboard.articlePoints,
+            videoPoints: zuvyLearnerLeaderboard.videoPoints,
             assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
             totalPoints: zuvyLearnerLeaderboard.totalPoints,
             lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
@@ -1652,6 +1673,8 @@ export class LeaderboardService {
     attendancePoints: number;
     recordingPoints: number;
     assignmentPoints: number;
+    articlePoints: number;
+    videoPoints: number;
     totalPoints: number;
     lastActivityAt: string;
   } | null> {
@@ -1667,6 +1690,8 @@ export class LeaderboardService {
           attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
           recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
           assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
+          articlePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.articlePoints}, 0)`,
+          videoPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.videoPoints}, 0)`,
           totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
@@ -1701,6 +1726,8 @@ export class LeaderboardService {
         attendancePoints: learnerEntry[0].attendancePoints,
         recordingPoints: learnerEntry[0].recordingPoints,
         assignmentPoints: learnerEntry[0].assignmentPoints,
+        articlePoints: learnerEntry[0].articlePoints,
+        videoPoints: learnerEntry[0].videoPoints,
         totalPoints: learnerEntry[0].totalPoints,
         lastActivityAt: learnerEntry[0].lastActivityAt,
       };
