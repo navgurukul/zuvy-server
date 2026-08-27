@@ -1674,7 +1674,12 @@ export class SubmissionService {
       await db
         .update(zuvyAssessmentSubmission)
         .set(updateAssessmentMcqInfo)
-        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+        .where(
+          and(
+            eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            eq(zuvyAssessmentSubmission.userId, userId),
+          ),
+        )
         .returning();
 
       // Return combined data
@@ -1782,7 +1787,12 @@ export class SubmissionService {
         await db
           .update(zuvyAssessmentSubmission)
           .set({ attemptedOpenEndedQuestions: insertData.length } as any)
-          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+          .where(
+            and(
+              eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+              eq(zuvyAssessmentSubmission.userId, userId),
+            ),
+          )
           .returning();
       }
       return {
@@ -3567,18 +3577,18 @@ Zuvy LMS Team
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? ([session.batchId, session.secondBatchId].find((id: any) =>
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null)
-              : (session.batchId ?? session.secondBatchId ?? null);
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? (batchMap[Number(resolvedBatchId)] ?? null)
+                ? batchMap[Number(resolvedBatchId)] ?? null
                 : null;
             const isCompleted = completedUserIdsSet.has(Number(record.userId));
             allRecords.push({

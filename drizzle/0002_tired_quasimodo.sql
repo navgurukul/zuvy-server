@@ -883,6 +883,10 @@ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollmen
 
 
 
+SELECT id, user_id, assessment_submission_id
+FROM zuvy_open_ended_question_submission
+ORDER BY id DESC;
+
 
 
 

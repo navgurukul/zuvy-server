@@ -12,6 +12,7 @@ import {
   Optional,
   Query,
   BadRequestException,
+  ForbiddenException,
   Req,
   Res,
   UseGuards,
@@ -25,6 +26,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { helperVariable } from 'src/constants/helper';
 import {
   InstructorFeedbackDto,
   PatchOpenendedQuestionDto,
@@ -240,8 +242,19 @@ export class SubmissionController {
   @Post('/instructor/feedback')
   async instructorFeedback(
     @Body() data: InstructorFeedbackDto,
+    @Req() req: any,
     @Query('id') id: number,
   ) {
+    const roles = req.user[0]?.roles;
+    if (
+      !roles?.includes(helperVariable.instructor) &&
+      !roles?.includes(helperVariable.admin)
+    ) {
+      throw new ForbiddenException(
+        'You are not authorized to grade this submission',
+      );
+    }
+
     return this.submissionService.instructorFeedback(data, id);
   }
 
