@@ -822,13 +822,21 @@ export class SubmissionController {
     }
   }
   //recalcOnlyMCQ
+
   @Patch('/assessment/recalcOnlyMCQ')
   @ApiOperation({ summary: 'Recalculating the MCQ score' })
   async recalcAndFixMCQForAssessment(
     @Query('assessment_outsourse_id') assessmentOutsourseId: number,
     @Res() res,
+    @Req() req: any,
   ) {
     try {
+      const roles = req.user[0]?.roles || [];
+      if (!roles.includes('admin') && !roles.includes('instructor')) {
+        throw new ForbiddenException(
+          'Only admin or instructor can recalculate MCQ score',
+        );
+      }
       let [err, success] =
         await this.submissionService.recalcAndFixMCQForAssessment(
           assessmentOutsourseId,
