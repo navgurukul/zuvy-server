@@ -235,8 +235,13 @@ export class SubmissionController {
   async patchOpenendedQuestion(
     @Body() data: PatchOpenendedQuestionDto,
     @Query('id') id: number,
+    @Req() req: any,
   ) {
-    return this.submissionService.patchOpenendedQuestion(data, id);
+    return this.submissionService.patchOpenendedQuestion(
+      data,
+      id,
+      req.user[0].id,
+    );
   }
 
   @Post('/instructor/feedback')

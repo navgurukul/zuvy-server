@@ -953,12 +953,18 @@ export class SubmissionService {
     }
   }
 
-  async patchOpenendedQuestion(data: any, id: number) {
+  async patchOpenendedQuestion(data: any, id: number, userId: number) {
     try {
       const res = await db
         .update(zuvyOpenEndedQuestionSubmission)
         .set(data)
-        .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        // .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestionSubmission.id, id),
+            eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+          ),
+        )
         .returning();
       return res;
     } catch (err) {
