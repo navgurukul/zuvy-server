@@ -1,5 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
+import { CacheModule } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-redis-yet';
 import { JwtModule } from '@nestjs/jwt';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
 import { ScheduleModule as NestScheduleModule } from '@nestjs/schedule';
@@ -64,6 +66,16 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
       signOptions: { expiresIn: '24h' },
     }),
     ConfigModule.forRoot({ isGlobal: true }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: async () => ({
+        store: await redisStore({
+          url:
+            process.env.REDIS_URL ||
+            `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`,
+        }),
+      }),
+    }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
@@ -128,3 +140,4 @@ export class AppModule implements NestModule {
     consumer.apply(JwtMiddleware).forRoutes('*');
   }
 }
+//
