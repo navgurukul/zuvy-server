@@ -1006,9 +1006,17 @@ export class MentorSlotService {
             watermark: false,
             use_pmi: false,
             approval_type: 0,
+            // Recognized by Zoom as "invited" for the host's waiting-room
+            // policy (participants_to_place_in_waiting_room = 2), so the
+            // student bypasses the waiting room instead of needing manual
+            // admission.
+            meeting_invitees: studentEmail ? [{ email: studentEmail }] : [],
             audio: 'both',
             auto_recording: 'cloud',
             waiting_room: true,
+            // `mode: 'custom'` is required or Zoom ignores who_goes_to_waiting_room.
+            // Lets the invited student (meeting_invitees below) bypass the
+            // waiting room while everyone else waits.
             waiting_room_options: {
               mode: 'custom',
               who_goes_to_waiting_room: 'users_not_on_invite',

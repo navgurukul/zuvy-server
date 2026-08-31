@@ -77,6 +77,21 @@ export class ScheduleService {
     }
   }
 
+  // Guards against a host (or a Zoom account admin) manually disabling the
+  // waiting room any time between meeting creation and the session actually
+  // starting — activateDueZoomSessions only applies the policy once, at
+  // creation, so nothing else would otherwise catch that drift.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async reaffirmZoomWaitingRoomPolicy() {
+    try {
+      await this.classesService.reaffirmWaitingRoomPolicyForActiveSessions();
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to reaffirm Zoom waiting room policy: ${error.message}`,
+      );
+    }
+  }
+
   // @Cron('*/5 * * * *')
   @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
