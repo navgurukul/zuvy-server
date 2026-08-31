@@ -231,6 +231,8 @@ export class TrackingService {
             .values(insertChapterTracking)
             .returning();
 
+          // Calculate and save leaderboard points for the completed chapter.
+          // Points are calculated based on the chapter's topic (video, quiz, coding, etc.).
           await this.leaderboardService.updateChapterPointsForCompletion(
             userId,
             bootcampId,
@@ -479,6 +481,7 @@ export class TrackingService {
               eq(zuvyChapterTracking.id, chapterExistsInChapterTracking[0].id),
             );
 
+          // Recalculate leaderboard points to keep chapter points in sync.
           await this.leaderboardService.updateChapterPointsForCompletion(
             userId,
             bootcampId,
