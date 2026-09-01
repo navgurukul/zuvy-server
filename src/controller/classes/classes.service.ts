@@ -5457,7 +5457,7 @@ export class ClassesService {
           participant_video: true,
           join_before_host: false,
           mute_upon_entry: true,
-          waiting_room: false,
+          waiting_room: true,
           attendance_reporting: true,
         },
       };
