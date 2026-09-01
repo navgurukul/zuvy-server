@@ -2181,7 +2181,7 @@ export class SubmissionService {
           email: s['user'].email,
           status: 'Not Submitted',
           batchId: s.batchId ?? null,
-          batchName: s['batchInfo'].name ?? null,
+          batchName: s['batchInfo']?.name ?? null,
           submittedAt: null,
         }));
 
@@ -2730,9 +2730,9 @@ export class SubmissionService {
         const totalPages = safeLimit
           ? Math.ceil(totalStudentsCount / safeLimit)
           : 1;
-        const deadlineDate = new Date(
-          chapterDeadline[0].completionDate,
-        ).getTime();
+        const deadlineDate = chapterDeadline[0].completionDate
+          ? new Date(chapterDeadline[0].completionDate).getTime()
+          : null;
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
           .filter((statusCode) => statusCode['user'])
@@ -2745,11 +2745,13 @@ export class SubmissionService {
               ({ batchId: null, batchName: null } as const);
             if (
               studentAssignmentStatus &&
-              studentAssignmentStatus['completedAt']
+              studentAssignmentStatus['completedAt'] &&
+              deadlineDate !== null
             ) {
               const createdAtDate = new Date(
                 studentAssignmentStatus['completedAt'],
               ).getTime();
+
               if (createdAtDate > deadlineDate) {
                 isLate = true;
               }
@@ -3009,7 +3011,7 @@ export class SubmissionService {
           null,
           {
             statusCode: 202,
-            message: 'assessmet submission not found',
+            message: 'assessment submission not found',
           },
         ];
       }
