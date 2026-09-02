@@ -266,8 +266,8 @@ export class ClassesService {
   private isPendingZoomMeetingId(meetingId?: string | null) {
     return Boolean(
       meetingId &&
-      (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
-        meetingId.startsWith('activating-')),
+        (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
+          meetingId.startsWith('activating-')),
     );
   }
 
@@ -412,7 +412,15 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: false,
+        waiting_room: true,
+        // `mode: 'custom'` is required or Zoom ignores who_goes_to_waiting_room
+        // and falls back to the host's account/group default. Verified via
+        // Zoom's own API validation error. Lets anyone in `meeting_invitees`
+        // below bypass the waiting room while everyone else waits.
+        waiting_room_options: {
+          mode: 'custom',
+          who_goes_to_waiting_room: 'users_not_on_invite',
+        },
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
@@ -549,6 +557,71 @@ export class ClassesService {
       } catch (error: any) {
         this.logger.error(
           `Failed to activate scheduled Zoom session ${session.id}: ${error.message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Re-applies the host's waiting-room policy for sessions whose Zoom meeting
+   * already exists and is starting now or started recently.
+   *
+   * `activateZoomSession` only sets this once, at the moment the real Zoom
+   * meeting is created. If a host (or a Zoom account admin) manually flips
+   * their waiting room off any time between that creation and the meeting
+   * actually starting, nothing else re-syncs it — this closes that gap by
+   * re-enforcing it right around start time too.
+   */
+  async reaffirmWaitingRoomPolicyForActiveSessions() {
+    const nowIso = new Date().toISOString();
+    const windowStartIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    const dueSessions = await db
+      .select({
+        id: zuvySessions.id,
+        batchId: zuvySessions.batchId,
+        meetingId: zuvySessions.meetingId,
+      })
+      .from(zuvySessions)
+      .where(
+        and(
+          this.blockingZoomSessionCondition(),
+          sql`${zuvySessions.startTime} <= ${nowIso}`,
+          sql`${zuvySessions.startTime} > ${windowStartIso}`,
+          sql`${zuvySessions.endTime} > ${nowIso}`,
+        ),
+      );
+
+    for (const session of dueSessions) {
+      if (
+        !session.meetingId ||
+        this.isPendingZoomMeetingId(session.meetingId)
+      ) {
+        // Not activated yet — activateScheduledZoomSessions will apply the
+        // policy fresh when it creates this meeting.
+        continue;
+      }
+
+      try {
+        const instructorResult = await this.getInstructorDetails(
+          session.batchId,
+        );
+        const hostEmail = instructorResult.instructor?.email;
+        if (!hostEmail) continue;
+
+        await this.zoomService.applyLicensedUserSettings(hostEmail);
+        await this.zoomService.updateMeeting(session.meetingId, {
+          settings: {
+            waiting_room: true,
+            waiting_room_options: {
+              mode: 'custom',
+              who_goes_to_waiting_room: 'users_not_on_invite',
+            },
+          },
+        });
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to reaffirm waiting room policy for session ${session.id}: ${error.message}`,
         );
       }
     }
@@ -1085,7 +1158,9 @@ export class ClassesService {
       const startsNow =
         saveResult.data?.[0] &&
         this.shouldActivateZoomSessionNow(saveResult.data[0]);
+
       if (startsNow && saveResult.data?.[0]?.id) {
+        // if (saveResult.data?.[0]?.id) {
         const activatedSession = await this.activateZoomSession(
           saveResult.data[0].id,
         );
@@ -1104,9 +1179,10 @@ export class ClassesService {
 
       return {
         status: 'success',
-        message: startsNow
-          ? 'Zoom session created and activated successfully'
-          : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
+        message: 'Zoom session created and activated successfully',
+        // message: startsNow
+        //   ? 'Zoom session created and activated successfully'
+        //   : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
         data: responseSessions,
         descriptionSuffix,
       };
@@ -1651,8 +1727,8 @@ export class ClassesService {
 
               throw new Error(
                 nextAvailableAt &&
-                  nextAvailableAt.getTime() >
-                    new Date(original.startTime).getTime()
+                nextAvailableAt.getTime() >
+                  new Date(original.startTime).getTime()
                   ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
                   : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
@@ -5450,7 +5526,18 @@ export class ClassesService {
           participant_video: true,
           join_before_host: false,
           mute_upon_entry: true,
-          waiting_room: false,
+          // Must stay true — Zoom only lets invited participants (this
+          // `meeting_invitees` list) bypass the waiting room when it's
+          // enabled. Setting this false previously disabled the waiting
+          // room every time invitees were synced.
+          waiting_room: true,
+          // Re-assert 'custom' mode so the updated `meeting_invitees` list
+          // above keeps actually gating entry — omitting this would let the
+          // meeting silently fall back to the host's account/group default.
+          waiting_room_options: {
+            mode: 'custom',
+            who_goes_to_waiting_room: 'users_not_on_invite',
+          },
           attendance_reporting: true,
         },
       };

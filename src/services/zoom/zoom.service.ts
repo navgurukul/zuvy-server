@@ -43,6 +43,19 @@ export interface ZoomMeetingRequest {
     auto_recording?: string; // local, cloud, none
     enforce_login?: boolean;
     waiting_room?: boolean;
+    // Meeting-level "who bypasses the waiting room" control. `mode` MUST be
+    // 'custom' for `who_goes_to_waiting_room` to take effect — Zoom silently
+    // ignores the value (falls back to 'follow_setting', i.e. the host's
+    // account/group default) if `mode` is omitted. Verified valid enum for
+    // who_goes_to_waiting_room via Zoom's own validation error: 'everyone',
+    // 'users_not_in_account', 'users_not_in_account_or_whitelisted_domains',
+    // 'users_not_on_invite', 'users_not_in_org'. 'users_not_on_invite' lets
+    // anyone in this meeting's `meeting_invitees` list bypass the waiting
+    // room while everyone else waits.
+    waiting_room_options?: {
+      mode?: string;
+      who_goes_to_waiting_room?: string;
+    };
     // New attendance and meeting control settings
     attendance_reporting?: boolean; // Enable attendance tracking
     end_on_auto_off?: boolean; // End meeting when host leaves
@@ -110,6 +123,10 @@ export interface ZoomMeetingResponse {
     duration: number;
     status: string;
   }>;
+  meeting_invitees?: any[];
+  settings?: {
+    meeting_invitees?: any[];
+  };
 }
 
 export interface ZoomAttendanceResponse {
@@ -235,18 +252,33 @@ export class ZoomService {
   private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
     return {
       security: {
-        waiting_room: false,
+        waiting_room: true,
       },
       scheduled_meeting: {
         host_video: true,
         participants_video: true,
         audio_type: 'both',
         join_before_host: false,
-        waiting_room: false,
+        waiting_room: true,
         force_pmi_jbh_password: false,
         pstn_password_protected: false,
       },
       in_meeting: {
+        waiting_room: true,
+        // 0 = Everyone, 1 = Users not in account, 2 = Users not in account
+        // and not invited, 3 = No one. We want invited participants
+        // (meeting_invitees / registrants) to bypass the waiting room while
+        // everyone else waits, so this must be 2 — NOT 3 ("No one"), which
+        // would place nobody in the waiting room and defeat the feature.
+        participants_to_place_in_waiting_room: 2,
+        // Sent both flat and nested: Zoom has accepted the nested
+        // `waiting_room_settings` shape on write while echoing it back flat
+        // on read for this account (verified via GET after PATCH).
+        waiting_room_settings: {
+          participants_to_place_in_waiting_room: 2,
+          users_who_can_admit_participants_from_waiting_room: 0,
+        },
+        users_who_can_admit_participants_from_waiting_room: 0,
         e2e_encryption: true,
         chat: true,
         private_chat: true,
@@ -284,6 +316,23 @@ export class ZoomService {
         recording_audio_transcript: true,
         auto_recording: 'cloud',
         host_pause_stop_recording: true,
+      },
+    };
+  }
+
+  /**
+   * Meeting-level waiting room settings: enable it, and let anyone in this
+   * meeting's `meeting_invitees` list bypass it while everyone else waits.
+   * `mode: 'custom'` is required — without it Zoom ignores
+   * `who_goes_to_waiting_room` and falls back to the host's account/group
+   * default (verified via Zoom's own API validation).
+   */
+  private buildMeetingWaitingRoomSettings() {
+    return {
+      waiting_room: true,
+      waiting_room_options: {
+        mode: 'custom',
+        who_goes_to_waiting_room: 'users_not_on_invite',
       },
     };
   }
@@ -447,6 +496,21 @@ export class ZoomService {
     try {
       const url = `${this.baseUrl}/users/me/meetings`;
 
+      // Step 1: Apply User-Level Account Default Settings
+      try {
+        await this.applyLicensedUserSettings('me');
+      } catch (userSettingErr: any) {
+        this.logger.warn(
+          `User setting patch skipped or failed: ${userSettingErr.message}`,
+        );
+      }
+
+      // Step 2: Enforce Meeting-Level Waiting Room directly in initial POST payload.
+      meetingData.settings = {
+        ...(meetingData.settings || {}),
+        ...this.buildMeetingWaitingRoomSettings(),
+      };
+
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
@@ -454,6 +518,26 @@ export class ZoomService {
       );
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
+
+      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      try {
+        const patchUrl = `${this.baseUrl}/meetings/${response.data.id}`;
+        await axios.patch(
+          patchUrl,
+          {
+            settings: this.buildMeetingWaitingRoomSettings(),
+          },
+          { headers: await this.getHeaders() },
+        );
+        this.logger.log(
+          `Patched meeting-level Waiting Room for Zoom meeting: ${response.data.id}`,
+        );
+      } catch (patchErr: any) {
+        this.logger.warn(
+          `Failed to patch waiting room setting for meeting ${response.data.id}: ${patchErr.message}`,
+        );
+      }
+
       return { success: true, data: response.data };
     } catch (error: any) {
       this.logger.error(
@@ -479,6 +563,26 @@ export class ZoomService {
       // Log request intent (helps debug wrong-host issues)
       this.logger.log(`Creating Zoom meeting for user: ${userEmailOrId}`);
 
+      // Step 1: Set the actual HOST's user-level waiting room policy as a
+      // baseline default before creating the meeting. This must target the
+      // real host — patching 'me' here would silently no-op the policy for
+      // every meeting created on someone else's behalf. The meeting-level
+      // `waiting_room_options` set below is what actually enforces
+      // "invited only" for this specific meeting.
+      try {
+        await this.applyLicensedUserSettings(userEmailOrId);
+      } catch (userSettingErr: any) {
+        this.logger.warn(
+          `User setting patch skipped or failed for host ${userEmailOrId}: ${userSettingErr.message}`,
+        );
+      }
+
+      // Step 2: Enforce Meeting-Level Waiting Room directly in initial POST payload.
+      meetingData.settings = {
+        ...(meetingData.settings || {}),
+        ...this.buildMeetingWaitingRoomSettings(),
+      };
+
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
@@ -486,6 +590,25 @@ export class ZoomService {
       );
 
       const meeting = response.data;
+
+      // Explicitly patch meeting to guarantee meeting-level Waiting Room setting
+      try {
+        const patchUrl = `${this.baseUrl}/meetings/${meeting.id}`;
+        await axios.patch(
+          patchUrl,
+          {
+            settings: this.buildMeetingWaitingRoomSettings(),
+          },
+          { headers },
+        );
+        this.logger.log(
+          `Patched meeting-level Waiting Room for Zoom meeting: ${meeting.id}`,
+        );
+      } catch (patchErr: any) {
+        this.logger.warn(
+          `Failed to patch waiting room setting for meeting ${meeting.id}: ${patchErr.message}`,
+        );
+      }
 
       // Strong logging for debugging
       this.logger.log(`Zoom meeting created successfully: ${meeting.id}`);
