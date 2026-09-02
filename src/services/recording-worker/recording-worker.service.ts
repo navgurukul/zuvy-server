@@ -10,6 +10,7 @@ import * as path from 'path';
 import axios from 'axios';
 import { google } from 'googleapis';
 import { Subject } from 'rxjs';
+import { resolveDownloadAuth } from './recording-download-auth';
 
 const RECORDING_WORKER_ENABLED =
   process.env.RECORDING_WORKER_ENABLED === 'true';
@@ -42,6 +43,12 @@ type RecordingSegment = {
   recording_start?: string;
   recording_end?: string;
   meeting_uuid?: string;
+  // Zoom's `rec/webhook_download/...` URLs only accept the `download_token`
+  // issued alongside the `recording.completed` webhook — not our S2S OAuth
+  // API token. Captured at ingest time; absent for segments backfilled from
+  // a live REST API refetch (those carry a `rec/download/...` URL instead,
+  // which does accept the OAuth token).
+  download_token?: string;
 };
 
 @Injectable()
@@ -147,7 +154,11 @@ export class RecordingWorkerService implements OnModuleInit {
     return 3;
   }
 
-  private buildSegmentManifest(files: any[], meetingUuid?: string | null) {
+  private buildSegmentManifest(
+    files: any[],
+    meetingUuid?: string | null,
+    downloadToken?: string | null,
+  ) {
     const mp4Files = (files || [])
       .filter((f: any) => f.file_type === 'MP4')
       .filter((f: any) => !String(f.recording_type || '').includes('chat'));
@@ -186,6 +197,7 @@ export class RecordingWorkerService implements OnModuleInit {
         recording_start: f.recording_start,
         recording_end: f.recording_end,
         meeting_uuid: f.meeting_uuid || meetingUuid || f.meeting_id,
+        download_token: downloadToken || undefined,
       }));
   }
 
@@ -200,6 +212,7 @@ export class RecordingWorkerService implements OnModuleInit {
     meetingUuid: string | null;
     recordingFiles: any[];
     fallbackStartTime?: string | null;
+    downloadToken?: string | null;
   }) {
     const tableName =
       params.table === 'mentor'
@@ -211,6 +224,7 @@ export class RecordingWorkerService implements OnModuleInit {
     const newManifest = this.buildSegmentManifest(
       params.recordingFiles,
       params.meetingUuid,
+      params.downloadToken,
     );
 
     this.logger.log({
@@ -713,7 +727,15 @@ export class RecordingWorkerService implements OnModuleInit {
       if (seg?.id) segmentMap.set(seg.id, seg);
     }
     for (const seg of fetchedManifest) {
-      if (seg?.id) segmentMap.set(seg.id, seg);
+      if (!seg?.id) continue;
+      // Live REST refetches never carry a download_token (Zoom only issues
+      // it via the webhook), so don't let a refresh erase one we already
+      // captured for this same segment id.
+      const previous = segmentMap.get(seg.id);
+      segmentMap.set(seg.id, {
+        ...seg,
+        download_token: seg.download_token || previous?.download_token,
+      });
     }
 
     const manifest = Array.from(segmentMap.values()).sort(
@@ -973,11 +995,33 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    // Append access token to download URL for authentication
-    const accessToken = await this.zoomService.getAccessToken();
-    const downloadUrl = rawDownloadUrl.includes('access_token=')
-      ? rawDownloadUrl
-      : `${rawDownloadUrl}?access_token=${accessToken}`;
+    const authDecision = resolveDownloadAuth(
+      rawDownloadUrl,
+      segmentObj?.download_token,
+    );
+
+    let downloadUrl: string;
+    switch (authDecision.kind) {
+      case 'already-authed':
+        downloadUrl = rawDownloadUrl;
+        break;
+      case 'webhook-token':
+        downloadUrl = `${rawDownloadUrl}?access_token=${authDecision.token}`;
+        break;
+      case 'oauth-token': {
+        const accessToken = await this.zoomService.getAccessToken();
+        downloadUrl = `${rawDownloadUrl}?access_token=${accessToken}`;
+        break;
+      }
+    }
+
+    this.logJob('log', job, 'Resolved recording download auth', {
+      recordingFileId,
+      urlKind: rawDownloadUrl.includes('/webhook_download/')
+        ? 'webhook_download'
+        : 'rest_download',
+      authKind: authDecision.kind,
+    });
 
     const tempPath = `${finalPath}.part`;
     const writer = fs.createWriteStream(tempPath);
@@ -1557,7 +1601,14 @@ export class RecordingWorkerService implements OnModuleInit {
         if (seg?.id) segmentMap.set(seg.id, seg);
       }
       for (const seg of latestManifest) {
-        if (seg?.id) segmentMap.set(seg.id, seg);
+        if (!seg?.id) continue;
+        // Same reasoning as the mid-pipeline refetch above: preserve a
+        // previously captured webhook download_token across this REST sync.
+        const previous = segmentMap.get(seg.id);
+        segmentMap.set(seg.id, {
+          ...seg,
+          download_token: seg.download_token || previous?.download_token,
+        });
       }
       const combinedManifest = Array.from(segmentMap.values()).sort(
         (a, b) =>

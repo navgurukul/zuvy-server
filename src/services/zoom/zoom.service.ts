@@ -13,6 +13,7 @@ import {
   computeMergedDurationsByKey,
   ParticipantConnection,
 } from 'src/services/attendance/attendance-duration-merge';
+import { encodeZoomMeetingUuid } from './zoom-uuid-encoding';
 
 export interface ZoomMeetingRequest {
   topic: string;
@@ -1722,8 +1723,12 @@ export class ZoomService {
   async getZoomRecordingFilesByUuid(
     uuid: string,
   ): Promise<ZoomRecordingDetails> {
-    // Zoom UUIDs can contain / + = so MUST be encoded
-    const encodedUuid = encodeURIComponent(uuid);
+    // See encodeZoomMeetingUuid for why this must be double-encoded — this
+    // was previously single-encoded and is what caused the
+    // recording-download pipeline to silently fall back to the
+    // webhook-only download URL for any meeting instance whose UUID starts
+    // with '/' (e.g. "/FzK10XmQEW9MF+q/CXNxw==").
+    const encodedUuid = encodeZoomMeetingUuid(uuid);
     const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
 
     const response = await axios.get(url, {
@@ -1745,8 +1750,7 @@ export class ZoomService {
     // Try UUID first (Zoom best practice)
     if (params.meetingUuid) {
       try {
-        // Zoom requires UUID to be URL-encoded (base64 safe)
-        const encodedUuid = encodeURIComponent(params.meetingUuid);
+        const encodedUuid = encodeZoomMeetingUuid(params.meetingUuid);
 
         const uuidUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
         const uuidResp = await axios.get(uuidUrl, { headers });
