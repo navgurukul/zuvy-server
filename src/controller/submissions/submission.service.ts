@@ -317,7 +317,7 @@ export class SubmissionService {
       });
 
       // Get the total number of students matching the chapter, module, batch, and search criteria
-      const totalStudentsRes = await db
+      const totalSubmittedStudentsRes = await db
         .select({
           count: count(zuvyChapterTracking.id),
         })
@@ -359,7 +359,7 @@ export class SubmissionService {
               : []),
           ),
         );
-      const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+      const totalStudentsCount = totalSubmittedStudentsRes[0]?.count ?? 0;
       const totalPages = safeLimit
         ? Math.ceil(totalStudentsCount / safeLimit)
         : 1;
@@ -2681,6 +2681,33 @@ export class SubmissionService {
             };
           });
         }
+
+        // const totalStudentsResult = await db
+        //   .select({
+        //     count: count(zuvyBatchEnrollments.id),
+        //   })
+        //   .from(zuvyBatchEnrollments)
+        //   .where(
+        //     and(
+        //       eq(zuvyBatchEnrollments.batchId, batchId),
+        //       isNotNull(zuvyBatchEnrollments.batchId),
+        //     ),
+        //   );
+        // const totalStudents = totalStudentsResult[0]?.count ?? 0;
+
+        const totalStudentsResult = await db
+          .select({
+            count: count(zuvyBatchEnrollments.id),
+          })
+          .from(zuvyBatchEnrollments)
+          .where(
+            batchId !== undefined
+              ? eq(zuvyBatchEnrollments.batchId, batchId)
+              : undefined,
+          );
+
+        const totalStudents = Number(totalStudentsResult[0]?.count ?? 0);
+
         // Get the total student count for pagination using enrollment table to respect batch filtering
         const totalStudentsRes = await db
           .select({
@@ -2792,7 +2819,9 @@ export class SubmissionService {
               chapterId: chapterDeadline[0].id,
               chapterName: chapterDeadline[0].title,
               totalPages,
-              totalStudentsCount,
+              // totalStudentsCount,
+              totalStudents,
+              totalSubmittedStudents: totalStudentsCount,
               currentPage,
             },
           },
