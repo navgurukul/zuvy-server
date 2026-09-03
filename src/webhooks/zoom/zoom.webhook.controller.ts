@@ -167,6 +167,10 @@ export class ZoomWebhookController {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
         const recordingFiles = payload.object.recording_files || [];
+        // Sibling of `payload`, not inside it — required to authenticate
+        // any `rec/webhook_download/...` URLs in recordingFiles; the general
+        // S2S OAuth API token is rejected (401) on those URLs.
+        const downloadToken = body?.download_token || null;
 
         this.logger.log({
           msg: 'Recording completed — ingesting instance',
@@ -202,6 +206,7 @@ export class ZoomWebhookController {
             meetingUuid,
             recordingFiles,
             fallbackStartTime: payload.object.start_time,
+            downloadToken,
           });
           this.recordingWorkerTrigger.triggerNow();
         }
@@ -223,6 +228,7 @@ export class ZoomWebhookController {
             meetingUuid,
             recordingFiles,
             fallbackStartTime: payload.object.start_time,
+            downloadToken,
           });
           this.recordingWorkerTrigger.triggerNow();
         }
