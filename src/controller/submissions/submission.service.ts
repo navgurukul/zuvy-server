@@ -237,6 +237,7 @@ export class SubmissionService {
     chapterId: number,
     moduleId: number,
     batchId?: number,
+    bootcampId: number,
     limit?: number,
     offset?: number,
     searchStudent?: string,
@@ -317,7 +318,7 @@ export class SubmissionService {
       });
 
       // Get the total number of students matching the chapter, module, batch, and search criteria
-      const totalStudentsRes = await db
+      const totalSubmittedStudentsRes = await db
         .select({
           count: count(zuvyChapterTracking.id),
         })
@@ -359,9 +360,25 @@ export class SubmissionService {
               : []),
           ),
         );
+      const totalSubmittedStudents = totalSubmittedStudentsRes[0]?.count ?? 0;
+
+      const totalStudentsRes = await db
+        .select({
+          count: count(zuvyBatchEnrollments.id),
+        })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            ...(batchId ? [eq(zuvyBatchEnrollments.batchId, batchId)] : []),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
+        );
+
       const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+
       const totalPages = safeLimit
-        ? Math.ceil(totalStudentsCount / safeLimit)
+        ? Math.ceil(totalSubmittedStudents / safeLimit)
         : 1;
 
       // Prepare the result with data about each student's attempts and submission status
@@ -474,8 +491,12 @@ export class SubmissionService {
           return 0;
         });
       }
-
-      return { data, totalPages, totalStudentsCount };
+      return {
+        data,
+        totalPages,
+        totalStudentsCount,
+        totalSubmittedStudents,
+      };
     } catch (err) {
       throw err;
     }
@@ -2092,6 +2113,10 @@ export class SubmissionService {
           },
         });
 
+      const totalSubmittedStudents = new Set(
+        statusOfCompletedStudentFormRaw.map((student) => student.userId),
+      ).size;
+
       /* -------------------------------------------------- */
       /* 🔹 FETCH BATCH INFO FOR COMPLETED USERS */
       /* -------------------------------------------------- */
@@ -2215,8 +2240,10 @@ export class SubmissionService {
         chapterId,
         combinedData: paginatedData,
         totalPages,
-        totalStudentsCount: combinedData.length,
-        totalAllStudents,
+        // totalStudentsCount: combinedData.length,
+        // totalAllStudents
+        totalStudentsCount: totalAllStudents,
+        totalSubmittedStudents,
       };
     } catch (err) {
       throw err;
@@ -3567,18 +3594,18 @@ Zuvy LMS Team
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? ([session.batchId, session.secondBatchId].find((id: any) =>
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null)
-              : (session.batchId ?? session.secondBatchId ?? null);
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? (batchMap[Number(resolvedBatchId)] ?? null)
+                ? batchMap[Number(resolvedBatchId)] ?? null
                 : null;
             const isCompleted = completedUserIdsSet.has(Number(record.userId));
             allRecords.push({

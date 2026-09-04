@@ -106,6 +106,12 @@ export class SubmissionController {
   @Get('/practiseProblemStatus/:moduleId')
   @ApiOperation({ summary: 'Get the status of practise Problems' })
   @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Bootcamp id',
+  })
+  @ApiQuery({
     name: 'chapterId',
     required: true,
     type: Number,
@@ -157,6 +163,7 @@ export class SubmissionController {
   })
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
     @Query('chapterId') chapterId: number,
     @Query('questionId') questionId: number,
     @Query('batchId') batchId?: number,
@@ -171,6 +178,7 @@ export class SubmissionController {
       chapterId,
       moduleId,
       batchId,
+      bootcampId,
       limit,
       offset,
       searchStudent,
