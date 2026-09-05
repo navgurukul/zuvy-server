@@ -2738,21 +2738,10 @@ export class SubmissionService {
             };
           });
         }
-
-        const totalStudentsResult = await db
-          .select({
-            count: count(),
-          })
-          .from(zuvyBatchEnrollments)
-          .where(
-            and(
-              eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-              batchId
-                ? eq(zuvyBatchEnrollments.batchId, batchId)
-                : isNotNull(zuvyBatchEnrollments.batchId),
-            ),
-          );
-        const totalStudents = Number(totalStudentsResult[0]?.count ?? 0);
+        const totalStudentsCount = await this.getTotalStudentsCount(
+          bootcampId,
+          batchId,
+        );
 
         // Get the total student count for pagination using enrollment table to respect batch filtering
         const totalSubmittedStudentsRes = await db
@@ -2799,9 +2788,10 @@ export class SubmissionService {
                 : []),
             ),
           );
-        const totalStudentsCount = totalSubmittedStudentsRes[0]?.count ?? 0;
+        const totalSubmittedStudentsCount =
+          totalSubmittedStudentsRes[0]?.count ?? 0;
         const totalPages = safeLimit
-          ? Math.ceil(totalStudentsCount / safeLimit)
+          ? Math.ceil(totalSubmittedStudentsCount / safeLimit)
           : 1;
         const deadlineDate = chapterDeadline[0].completionDate
           ? new Date(chapterDeadline[0].completionDate).getTime()
@@ -2865,8 +2855,8 @@ export class SubmissionService {
               chapterId: chapterDeadline[0].id,
               chapterName: chapterDeadline[0].title,
               totalPages,
-              totalStudents,
-              totalSubmittedStudents: totalStudentsCount,
+              totalStudentsCount,
+              totalSubmittedStudentsCount,
               currentPage,
             },
           },
