@@ -684,7 +684,6 @@ Team Zuvy`;
                 ),
               ),
             orderBy: (sub, { desc }) => desc(sub.startedAt),
-            limit: 1,
           },
         },
       });

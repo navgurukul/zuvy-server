@@ -980,12 +980,18 @@ export class SubmissionService {
     }
   }
 
-  async patchOpenendedQuestion(data: any, id: number) {
+  async patchOpenendedQuestion(data: any, id: number, userId: number) {
     try {
       const res = await db
         .update(zuvyOpenEndedQuestionSubmission)
         .set(data)
-        .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        // .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestionSubmission.id, id),
+            eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+          ),
+        )
         .returning();
       return res;
     } catch (err) {
@@ -1708,7 +1714,12 @@ export class SubmissionService {
       await db
         .update(zuvyAssessmentSubmission)
         .set(updateAssessmentMcqInfo)
-        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+        .where(
+          and(
+            eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            eq(zuvyAssessmentSubmission.userId, userId),
+          ),
+        )
         .returning();
 
       // Return combined data
@@ -1816,7 +1827,12 @@ export class SubmissionService {
         await db
           .update(zuvyAssessmentSubmission)
           .set({ attemptedOpenEndedQuestions: insertData.length } as any)
-          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+          .where(
+            and(
+              eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+              eq(zuvyAssessmentSubmission.userId, userId),
+            ),
+          )
           .returning();
       }
       return {
@@ -2203,7 +2219,7 @@ export class SubmissionService {
           email: s['user'].email,
           status: 'Not Submitted',
           batchId: s.batchId ?? null,
-          batchName: s['batchInfo'].name ?? null,
+          batchName: s['batchInfo']?.name ?? null,
           submittedAt: null,
         }));
 
@@ -2537,6 +2553,23 @@ export class SubmissionService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
       if (chapterDeadline.length > 0) {
+        const chapterDetails = await db.query.zuvyModuleChapter.findFirst({
+          where: (chapter, { eq }) => eq(chapter.id, chapterId),
+          columns: {
+            id: true,
+          },
+          with: {
+            courseModulesData: {
+              columns: {
+                bootcampId: true,
+              },
+            },
+          },
+        });
+
+        const bootcampId = Number(
+          chapterDetails?.courseModulesData?.bootcampId,
+        );
         // Normalize pagination inputs up-front so they can be pushed down to
         // the DB query below. Non-positive/invalid limits are treated as
         // "no limit".
@@ -2705,8 +2738,24 @@ export class SubmissionService {
             };
           });
         }
+
+        const totalStudentsResult = await db
+          .select({
+            count: count(),
+          })
+          .from(zuvyBatchEnrollments)
+          .where(
+            and(
+              eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+              batchId
+                ? eq(zuvyBatchEnrollments.batchId, batchId)
+                : isNotNull(zuvyBatchEnrollments.batchId),
+            ),
+          );
+        const totalStudents = Number(totalStudentsResult[0]?.count ?? 0);
+
         // Get the total student count for pagination using enrollment table to respect batch filtering
-        const totalStudentsRes = await db
+        const totalSubmittedStudentsRes = await db
           .select({
             count: count(zuvyChapterTracking.id),
           })
@@ -2750,13 +2799,13 @@ export class SubmissionService {
                 : []),
             ),
           );
-        const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+        const totalStudentsCount = totalSubmittedStudentsRes[0]?.count ?? 0;
         const totalPages = safeLimit
           ? Math.ceil(totalStudentsCount / safeLimit)
           : 1;
-        const deadlineDate = new Date(
-          chapterDeadline[0].completionDate,
-        ).getTime();
+        const deadlineDate = chapterDeadline[0].completionDate
+          ? new Date(chapterDeadline[0].completionDate).getTime()
+          : null;
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
           .filter((statusCode) => statusCode['user'])
@@ -2769,11 +2818,13 @@ export class SubmissionService {
               ({ batchId: null, batchName: null } as const);
             if (
               studentAssignmentStatus &&
-              studentAssignmentStatus['completedAt']
+              studentAssignmentStatus['completedAt'] &&
+              deadlineDate !== null
             ) {
               const createdAtDate = new Date(
                 studentAssignmentStatus['completedAt'],
               ).getTime();
+
               if (createdAtDate > deadlineDate) {
                 isLate = true;
               }
@@ -2814,7 +2865,8 @@ export class SubmissionService {
               chapterId: chapterDeadline[0].id,
               chapterName: chapterDeadline[0].title,
               totalPages,
-              totalStudentsCount,
+              totalStudents,
+              totalSubmittedStudents: totalStudentsCount,
               currentPage,
             },
           },
@@ -3033,7 +3085,7 @@ export class SubmissionService {
           null,
           {
             statusCode: 202,
-            message: 'assessmet submission not found',
+            message: 'assessment submission not found',
           },
         ];
       }
