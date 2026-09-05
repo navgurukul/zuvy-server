@@ -12,6 +12,7 @@ import {
   Optional,
   Query,
   BadRequestException,
+  ForbiddenException,
   Req,
   Res,
   UseGuards,
@@ -25,6 +26,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { helperVariable } from 'src/constants/helper';
 import {
   InstructorFeedbackDto,
   PatchOpenendedQuestionDto,
@@ -233,15 +235,31 @@ export class SubmissionController {
   async patchOpenendedQuestion(
     @Body() data: PatchOpenendedQuestionDto,
     @Query('id') id: number,
+    @Req() req: any,
   ) {
-    return this.submissionService.patchOpenendedQuestion(data, id);
+    return this.submissionService.patchOpenendedQuestion(
+      data,
+      id,
+      req.user[0].id,
+    );
   }
 
   @Post('/instructor/feedback')
   async instructorFeedback(
     @Body() data: InstructorFeedbackDto,
+    @Req() req: any,
     @Query('id') id: number,
   ) {
+    const roles = req.user[0]?.roles;
+    if (
+      !roles?.includes(helperVariable.instructor) &&
+      !roles?.includes(helperVariable.admin)
+    ) {
+      throw new ForbiddenException(
+        'You are not authorized to grade this submission',
+      );
+    }
+
     return this.submissionService.instructorFeedback(data, id);
   }
 
@@ -804,13 +822,21 @@ export class SubmissionController {
     }
   }
   //recalcOnlyMCQ
+
   @Patch('/assessment/recalcOnlyMCQ')
   @ApiOperation({ summary: 'Recalculating the MCQ score' })
   async recalcAndFixMCQForAssessment(
     @Query('assessment_outsourse_id') assessmentOutsourseId: number,
     @Res() res,
+    @Req() req: any,
   ) {
     try {
+      const roles = req.user[0]?.roles || [];
+      if (!roles.includes('admin') && !roles.includes('instructor')) {
+        throw new ForbiddenException(
+          'Only admin or instructor can recalculate MCQ score',
+        );
+      }
       let [err, success] =
         await this.submissionService.recalcAndFixMCQForAssessment(
           assessmentOutsourseId,
