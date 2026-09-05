@@ -1585,16 +1585,21 @@ export class ZoomService {
     return response.data;
   }
 
-  async deleteFromZoomCloud(meetingId: string | number, recordingId: string) {
-    // Note: Zoom API uses the meeting UUID for deletion, which might be different from the ID.
-    // For simplicity, this example assumes meetingId can be used, but you may need to fetch the UUID.
-    const encodedUuid = encodeURIComponent(encodeURIComponent(meetingId));
+  // `meetingUuid` must be the Zoom meeting UUID (job.zoom_meeting_uuid), not
+  // the numeric meeting ID — the recordings endpoint is keyed by UUID.
+  // `recordingId` is accepted for logging/traceability only; Zoom's delete
+  // endpoint operates on all recording files for the meeting UUID at once,
+  // there's no per-file delete. No `?action=` query param is passed, so this
+  // uses Zoom's default (move to trash, recoverable within Zoom's own
+  // retention window) rather than a permanent delete.
+  async deleteFromZoomCloud(meetingUuid: string | number, recordingId: string) {
+    const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
     this.logger.log(
       `Deleting Zoom recording for meeting UUID: ${encodedUuid}, recording ID: ${recordingId}`,
     );
     const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
     await axios.delete(url, { headers: await this.getHeaders() });
-    this.logger.log(`Deleted Zoom recording for meeting ${meetingId}`);
+    this.logger.log(`Deleted Zoom recording for meeting ${meetingUuid}`);
   }
 
   async getZoomRecordingFilesByUuid(

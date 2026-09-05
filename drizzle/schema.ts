@@ -2261,7 +2261,15 @@ export const zuvySessions = main.table('zuvy_sessions', {
       onUpdate: 'cascade',
     }),
   title: text('title').notNull(),
+  // NOTE: despite the name, this currently holds the YouTube playback URL
+  // once upload completes (see recording-worker.service.ts uploadToYoutube),
+  // not an S3 link — tracking.service.ts/student.service.ts read it directly
+  // as "the recording link" and check it for a youtube.com substring, so its
+  // existing semantics must not change. The actual S3 pointer lives in
+  // recordingS3Bucket/recordingS3Key below.
   s3link: text('s3link'),
+  recordingS3Bucket: text('recording_s3_bucket'),
+  recordingS3Key: text('recording_s3_key'),
   recurringId: integer('recurring_id'),
   status: text('status').default('upcoming'),
   version: varchar('version', { length: 10 }),
@@ -4614,6 +4622,47 @@ export const zuvySessionRecordings = main.table(
     // merging multiple recording instances of the same meeting idempotent.
     ingestedMeetingUuids: jsonb('ingested_meeting_uuids').default([]),
 
+    // Durable S3 copy, written and checksum-verified before the YouTube
+    // upload. Distinct from zuvySessions.s3link (which actually holds the
+    // YouTube playback URL — see that column's comment).
+    s3Bucket: text('s3_bucket'),
+    s3Key: text('s3_key'),
+    s3ChecksumSha256: text('s3_checksum_sha256'),
+    s3UploadedAt: timestamp('s3_uploaded_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    s3Verified: boolean('s3_verified').default(false),
+    // resumable multipart upload bookkeeping
+    s3MultipartUploadId: text('s3_multipart_upload_id'),
+    s3UploadedParts: jsonb('s3_uploaded_parts').default([]),
+    zoomDeletedAt: timestamp('zoom_deleted_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    // Nightly YouTube health-check + Glacier-restore tracking. Only ever
+    // touched for rows already status = 'COMPLETED' whose YouTube copy
+    // later broke — never part of the primary upload pipeline.
+    restoreStatus: varchar('restore_status', { length: 20 }),
+    restoreTier: varchar('restore_tier', { length: 20 }),
+    restoreRequestedAt: timestamp('restore_requested_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    restoreExpiresAt: timestamp('restore_expires_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    youtubeLostDetectedAt: timestamp('youtube_lost_detected_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    youtubeLastCheckedAt: timestamp('youtube_last_checked_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -4686,6 +4735,40 @@ export const zuvyMentorSessionRecordings = main.table(
     isFinalMerged: boolean('is_final_merged').default(false),
 
     ingestedMeetingUuids: jsonb('ingested_meeting_uuids').default([]),
+
+    s3Bucket: text('s3_bucket'),
+    s3Key: text('s3_key'),
+    s3ChecksumSha256: text('s3_checksum_sha256'),
+    s3UploadedAt: timestamp('s3_uploaded_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    s3Verified: boolean('s3_verified').default(false),
+    s3MultipartUploadId: text('s3_multipart_upload_id'),
+    s3UploadedParts: jsonb('s3_uploaded_parts').default([]),
+    zoomDeletedAt: timestamp('zoom_deleted_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    restoreStatus: varchar('restore_status', { length: 20 }),
+    restoreTier: varchar('restore_tier', { length: 20 }),
+    restoreRequestedAt: timestamp('restore_requested_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    restoreExpiresAt: timestamp('restore_expires_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    youtubeLostDetectedAt: timestamp('youtube_lost_detected_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    youtubeLastCheckedAt: timestamp('youtube_last_checked_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
