@@ -1132,7 +1132,7 @@ Team Zuvy`;
           title: moduleAssessment?.ModuleAssessment?.title || null,
           description: moduleAssessment?.ModuleAssessment?.description || null,
           passPercentage: assessmentInfo[0]?.passPercentage || null,
-          totalStudents: Number(totalStudentsCount[0]?.count) || 0,
+          totalStudentsCount: Number(totalStudentsCount[0]?.count) || 0,
           totalSubmitedStudents: totalCount,
           totalQualifiedStudents: totalCountOfQualifiedStudents.length,
           totalPages,
@@ -1689,7 +1689,7 @@ Team Zuvy`;
           ),
         )
         .execute();
-      const totalStudents = Number(totalStudentsResult[0]?.count || 0);
+      const totalStudentsCount = Number(totalStudentsResult[0]?.count || 0);
 
       // Fetch total submitted students (only count submissions from enrolled users)
       interface TotalSubmittedStudentsResult {
@@ -1879,7 +1879,7 @@ Team Zuvy`;
         moduleVideochapter: {
           title: chapterDetails.title,
           description: chapterDetails.description,
-          totalStudents,
+          totalStudentsCount,
           totalSubmittedStudents,
         },
         totalRows,

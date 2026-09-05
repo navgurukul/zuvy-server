@@ -67,7 +67,23 @@ const {
 @Injectable()
 export class SubmissionService {
   constructor(private readonly rbacService: RbacService) {}
-  private readonly logger = new Logger(SubmissionService.name);
+
+  private async getTotalStudentsCount(bootcampId: number, batchId?: number) {
+    const result = await db
+      .select({
+        count: count(zuvyBatchEnrollments.id),
+      })
+      .from(zuvyBatchEnrollments)
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ...(batchId ? [eq(zuvyBatchEnrollments.batchId, batchId)] : []),
+          isNotNull(zuvyBatchEnrollments.batchId),
+        ),
+      );
+
+    return result[0]?.count ?? 0;
+  }
 
   async getSubmissionOfPractiseProblem(
     roleName,
@@ -362,20 +378,10 @@ export class SubmissionService {
         );
       const totalSubmittedStudents = totalSubmittedStudentsRes[0]?.count ?? 0;
 
-      const totalStudentsRes = await db
-        .select({
-          count: count(zuvyBatchEnrollments.id),
-        })
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-            ...(batchId ? [eq(zuvyBatchEnrollments.batchId, batchId)] : []),
-            isNotNull(zuvyBatchEnrollments.batchId),
-          ),
-        );
-
-      const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        bootcampId,
+        batchId,
+      );
 
       const totalPages = safeLimit
         ? Math.ceil(totalSubmittedStudents / safeLimit)
@@ -1364,9 +1370,14 @@ export class SubmissionService {
           ),
         );
 
-      const totalStudentsCount = totalStudentsCountRes[0]?.count ?? 0;
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        bootcampId,
+        safeBatchId,
+      );
+
+      const totalSubmittedStudents = totalStudentsCountRes[0]?.count ?? 0;
       const totalPages = limit
-        ? Math.ceil(totalStudentsCount / (limit || 1))
+        ? Math.ceil(totalSubmittedStudents / (limit || 1))
         : 1;
 
       // Process the project submission data and ensure batchId/submitted_date/createdAt are exposed
@@ -1515,7 +1526,9 @@ export class SubmissionService {
             projectTrackingData: pagedData,
           },
           totalPages: safeLimit > 0 ? totalPages : 1,
-          totalStudents: totalStudentsCount,
+          // totalStudents: totalStudentsCount,
+          totalStudentsCount,
+          totalSubmittedStudents,
         };
       } else {
         return {
@@ -3441,6 +3454,7 @@ Zuvy LMS Team
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
+    bootcampId: number,
     limit?: number,
     offset?: number,
     name?: string,
@@ -3481,7 +3495,15 @@ Zuvy LMS Team
 
       // If a batchName was requested but no batches match, short-circuit to empty
       if (batchName && uniqueBatchFilterIds.length === 0) {
-        return [null, { data: [], totalCount: 0, totalPages: limit ? 0 : 1 }];
+        return [
+          null,
+          {
+            data: [],
+            totalSubmittedStudents: 0,
+            totalStudentsCount: 0,
+            totalPages: limit ? 0 : 1,
+          },
+        ];
       }
 
       const submissions = await db.query.zuvySessions.findMany({
@@ -3588,6 +3610,11 @@ Zuvy LMS Team
         completedTracking.map((ct) => Number(ct.userId)),
       );
 
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        bootcampId,
+        batchId,
+      );
+
       // Process and flatten data
       let allRecords: any[] = [];
       submissions.forEach((session: any) => {
@@ -3672,7 +3699,8 @@ Zuvy LMS Team
         null,
         {
           data: paginatedRecords,
-          totalCount: allRecords.length,
+          totalSubmittedStudents: allRecords.length,
+          totalStudentsCount,
           totalPages,
         },
       ];

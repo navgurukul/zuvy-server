@@ -937,6 +937,12 @@ export class SubmissionController {
     description: 'Limit the number of results',
   })
   @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Filter students by bootcamp id',
+  })
+  @ApiQuery({
     name: 'offset',
     required: false,
     type: String,
@@ -991,6 +997,7 @@ export class SubmissionController {
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
     @Res() res?: any,
+    @Query('bootcampId') bootcampId: number,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('name') name?: string,
@@ -1006,6 +1013,7 @@ export class SubmissionController {
       const [err, result] =
         await this.submissionService.getLiveChapterStudentSubmission(
           moduleChapterId,
+          bootcampId,
           limit,
           offset,
           name,
