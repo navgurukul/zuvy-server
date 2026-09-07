@@ -1,10 +1,8 @@
 import {
   Controller,
   Get,
-  Post,
   Param,
   Query,
-  Body,
   BadRequestException,
   InternalServerErrorException,
   HttpException,
@@ -15,7 +13,6 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
-  ApiBody,
   ApiResponse,
 } from '@nestjs/swagger';
 import { LeaderboardService } from './leaderboard.service';
@@ -25,47 +22,7 @@ import { LeaderboardService } from './leaderboard.service';
 export class LeaderboardController {
   constructor(private readonly leaderboardService: LeaderboardService) {}
 
-  @Post('update')
-  @ApiOperation({
-    summary: 'Update main leaderboard with all point types',
-    description:
-      'Processes all submissions (assessments, coding, quiz, etc.) and updates learner leaderboard with combined points',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Leaderboard updated successfully',
-    schema: {
-      example: {
-        success: true,
-        message: 'Leaderboard updated successfully with all point types',
-        updated: 150,
-      },
-    },
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-  })
-  async updateLeaderboard() {
-    try {
-      const result = await this.leaderboardService.updateLeaderboard();
-
-      if (!result.success) {
-        throw new InternalServerErrorException(result.error || result.message);
-      }
-
-      return {
-        success: result.success,
-        message: result.message,
-        updated: result.updated,
-      };
-    } catch (error) {
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'Failed to update leaderboard',
-      );
-    }
-  }
-
+  // Get leaderboard data for all bootcamps
   @Get('learners/data')
   @ApiOperation({
     summary: 'Get leaderboard across all bootcamps',
@@ -113,6 +70,7 @@ export class LeaderboardController {
     }
   }
 
+  // Get leaderboard data for a specific bootcamp
   @Get('bootcamp/:bootcampId')
   @ApiOperation({
     summary: 'Get bootcamp leaderboard',
@@ -247,6 +205,7 @@ export class LeaderboardController {
     }
   }
 
+  // Get current student's leaderboard and rank
   @Get('student/data')
   @ApiOperation({
     summary: 'Get student leaderboard with current learner',
@@ -317,7 +276,6 @@ export class LeaderboardController {
       if (isNaN(bootcampId) || bootcampId <= 0) {
         throw new BadRequestException('Invalid bootcampId');
       }
-      console.log('BOOTCAMP FILTER:', bootcampId);
 
       const result = await this.leaderboardService.getStudentLeaderboard(
         learnerId,

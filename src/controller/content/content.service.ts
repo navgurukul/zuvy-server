@@ -36,6 +36,8 @@ import {
   zuvySessionRecordViews,
   zuvyBootcamps,
   zuvyBatches,
+  zuvyLearnerLeaderboardChapterPoints,
+  zuvyLearnerLeaderboard,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -95,6 +97,7 @@ let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } =
 import e from 'express';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
+import { text } from 'drizzle-orm/pg-core';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -2490,79 +2493,142 @@ export class ContentService {
         null,
       ];
     }
+
+    // ####################Get chapter points before deleting the chapter in leaderboars chapters points table##############################
     const chapterRecord = chapterInfo[0];
-    if (chapterInfo[0].topicId == 8) {
-      await db
-        .update(zuvySessions)
-        .set({ chapterId: null, moduleId: null })
-        .where(eq(zuvySessions.chapterId, chapterId));
-    }
-    for (const { table, column, name } of cascadeChapterTables) {
-      try {
-        await db.delete(table).where(eq(column, chapterId));
-      } catch (err) {
-        return [
-          {
-            status: 'error',
-            message: `Failed to delete from ${name}: ${err.message}`,
-            code: 500,
-          },
-          null,
-        ];
-      }
-    }
-    // Now delete the chapter itself
-    let spyMan;
     try {
-      spyMan = await db
-        .delete(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId))
-        .returning();
-      if (spyMan.length === 0) {
-        return [
-          { status: 'error', message: 'Chapter not found', code: 404 },
-          null,
-        ];
-      }
+      await db.transaction(async (tx) => {
+        const chapterPoints = await tx
+          .select({
+            learnerId: zuvyLearnerLeaderboardChapterPoints.learnerId,
+            bootcampId: zuvyLearnerLeaderboardChapterPoints.bootcampId,
+            points: zuvyLearnerLeaderboardChapterPoints.points,
+            topicId: zuvyLearnerLeaderboardChapterPoints.topicId,
+          })
+          .from(zuvyLearnerLeaderboardChapterPoints)
+          .where(
+            and(
+              eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
+              eq(zuvyLearnerLeaderboardChapterPoints.bootcampId, bootcampId),
+            ),
+          );
+        // Map chapter topicId to the corresponding leaderboard points column
+        const topicPointsColumn = {
+          1: 'videoPoints',
+          2: 'articlePoints',
+          3: 'codingPoints',
+          4: 'quizPoints',
+          5: 'assignmentPoints',
+          6: 'assessmentPoints',
+          7: 'attendancePoints',
+          8: 'recordingPoints',
+        } as const;
+
+        // Remove the deleted chapter's points from the corresponding
+        // leaderboard category and from totalPoints
+        for (const chapterPoint of chapterPoints) {
+          const points = chapterPoint.points ?? 0;
+
+          if (!points || !chapterPoint.learnerId) {
+            continue;
+          }
+          const pointColumn = topicPointsColumn[chapterPoint.topicId];
+
+          const updateData: any = {
+            totalPoints: sql`
+      GREATEST(
+        ${zuvyLearnerLeaderboard.totalPoints} - ${points},
+        0
+      )
+    `,
+          };
+          if (pointColumn) {
+            updateData[pointColumn] = sql`
+      GREATEST(
+        ${zuvyLearnerLeaderboard[pointColumn]} - ${points},
+        0
+      )
+    `;
+          }
+          await tx
+            .update(zuvyLearnerLeaderboard)
+            .set(updateData)
+            .where(
+              and(
+                eq(zuvyLearnerLeaderboard.learnerId, chapterPoint.learnerId),
+                eq(zuvyLearnerLeaderboard.bootcampId, chapterPoint.bootcampId),
+              ),
+            );
+        }
+
+        // ###############################
+        if (chapterInfo[0].topicId == 8) {
+          await tx
+            .update(zuvySessions)
+            .set({ chapterId: null, moduleId: null })
+            .where(eq(zuvySessions.chapterId, chapterId));
+        }
+        for (const { table, column } of cascadeChapterTables) {
+          await tx.delete(table).where(eq(column, chapterId));
+        }
+        // Now delete the chapter itself
+        let spyMan;
+        try {
+          spyMan = await tx
+            .delete(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.id, chapterId))
+            .returning();
+          if (spyMan.length === 0) {
+            throw new Error('Chapter not found');
+          }
+        } catch (err) {
+          throw new Error(
+            `Failed to delete chapter: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        // Update order of remaining chapters in the module
+        try {
+          await tx
+            .update(zuvyModuleChapter)
+            .set({
+              order: sql`${zuvyModuleChapter.order}::numeric - 1`,
+            })
+            .where(
+              sql`${zuvyModuleChapter.order} > ${spyMan[0].order}
+          and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
+            );
+        } catch (err) {
+          throw new Error(
+            `Failed to update chapter order: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      });
+      return {
+        status: 'success',
+        message: 'Chapter and all related data deleted successfully',
+        code: 200,
+        chapter: chapterRecord,
+        chapterId,
+        moduleId,
+        moduleName: moduleInfo[0]?.name || '',
+        bootcampId,
+        courseName,
+      };
     } catch (err) {
       return [
         {
           status: 'error',
-          message: `Failed to delete chapter: ${err.message}`,
+          message:
+            err instanceof Error ? err.message : 'Failed to delete chapter',
           code: 500,
         },
         null,
       ];
     }
-    // Update order of remaining chapters in the module
-    try {
-      await db
-        .update(zuvyModuleChapter)
-        .set({ order: sql`${zuvyModuleChapter.order}::numeric - 1` })
-        .where(
-          sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
-        );
-    } catch (err) {
-      return [
-        {
-          status: 'error',
-          message: `Failed to update chapter order: ${err.message}`,
-          code: 500,
-        },
-        null,
-      ];
-    }
-    return {
-      status: 'success',
-      message: 'Chapter and all related data deleted successfully',
-      code: 200,
-      chapter: chapterRecord,
-      chapterId,
-      moduleId,
-      moduleName: moduleInfo[0]?.name || '',
-      bootcampId,
-      courseName,
-    };
   }
 
   async getAllQuizQuestions(
