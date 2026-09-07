@@ -4,19 +4,15 @@
 jest.mock('../../db', () => ({ db: { select: jest.fn() } }));
 
 import { db } from '../../db';
-import { zuvyBatches } from '../../../drizzle/schema';
 import { ClassesService } from './classes.service';
 
 // Builds a chainable stand-in for drizzle's query builder. Every method
-// (`from`/`where`/`leftJoin`/`limit`) just returns the same object, which is
-// itself thenable so `await` resolves at whichever point the real code stops
-// chaining — mirrors both call shapes used here (session query ends at
-// `.where()`, instructor lookup ends at `.limit()`).
+// (`from`/`where`) just returns the same object, which is itself thenable so
+// `await` resolves at whichever point the real code stops chaining.
 function makeChain(result: any[]) {
   const chain: any = {};
+  chain.from = jest.fn(() => chain);
   chain.where = jest.fn(() => chain);
-  chain.leftJoin = jest.fn(() => chain);
-  chain.limit = jest.fn(() => Promise.resolve(result));
   chain.then = (resolve: any, reject: any) =>
     Promise.resolve(result).then(resolve, reject);
   return chain;
@@ -85,26 +81,19 @@ describe('ClassesService.updateZoomMeetingInvitees (private) — waiting room re
   });
 });
 
-describe('ClassesService.reaffirmWaitingRoomPolicyForActiveSessions — drift guard', () => {
+describe('ClassesService.reaffirmWaitingRoomPolicyForActiveSessions — fallback drift guard', () => {
   function buildService(
     sessionsResult: any[],
-    batchResult: any[],
-    overrides?: Partial<{ applyLicensedUserSettings: any; updateMeeting: any }>,
+    overrides?: Partial<{ reaffirmMeetingWaitingRoomSettings: any }>,
   ) {
-    (db.select as jest.Mock).mockImplementation(() => ({
-      from: jest.fn((table: any) =>
-        table === zuvyBatches
-          ? makeChain(batchResult)
-          : makeChain(sessionsResult),
-      ),
-    }));
+    (db.select as jest.Mock).mockImplementation(() =>
+      makeChain(sessionsResult),
+    );
 
     const zoomServiceMock = {
-      applyLicensedUserSettings:
-        overrides?.applyLicensedUserSettings ??
-        jest.fn().mockResolvedValue({ success: true }),
-      updateMeeting:
-        overrides?.updateMeeting ?? jest.fn().mockResolvedValue(undefined),
+      reaffirmMeetingWaitingRoomSettings:
+        overrides?.reaffirmMeetingWaitingRoomSettings ??
+        jest.fn().mockResolvedValue(undefined),
     };
 
     const service = new (ClassesService as any)(
@@ -116,84 +105,63 @@ describe('ClassesService.reaffirmWaitingRoomPolicyForActiveSessions — drift gu
     return { service, zoomServiceMock };
   }
 
-  it('re-applies the host policy and meeting-level waiting_room for a session whose Zoom meeting already exists', async () => {
-    const { service, zoomServiceMock } = buildService(
-      [{ id: 1, batchId: 10, meetingId: '999999' }],
-      [
-        {
-          instructorId: 5,
-          instructorEmail: 'instructor@example.com',
-          instructorName: 'Jane',
-        },
-      ],
-    );
+  it('delegates to ZoomService.reaffirmMeetingWaitingRoomSettings for a session whose Zoom meeting already exists', async () => {
+    const { service, zoomServiceMock } = buildService([
+      { id: 1, meetingId: '999999' },
+    ]);
 
     await service.reaffirmWaitingRoomPolicyForActiveSessions();
 
-    expect(zoomServiceMock.applyLicensedUserSettings).toHaveBeenCalledWith(
-      'instructor@example.com',
-    );
-    expect(zoomServiceMock.updateMeeting).toHaveBeenCalledWith('999999', {
-      settings: {
-        waiting_room: true,
-        waiting_room_options: {
-          mode: 'custom',
-          who_goes_to_waiting_room: 'users_not_on_invite',
-        },
-      },
-    });
+    // Regression guard: the old design also called applyLicensedUserSettings
+    // (a large account-wide PATCH) here directly — that's gone. This method
+    // now only delegates the cheap, meeting-scoped, drift-checked correction
+    // to ZoomService; it no longer knows about hosts or user-level settings
+    // at all.
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).toHaveBeenCalledWith('999999');
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('skips sessions whose Zoom meeting has not been created yet (still pending) — activateScheduledZoomSessions owns those', async () => {
-    const { service, zoomServiceMock } = buildService(
-      [{ id: 2, batchId: 10, meetingId: 'pending-zoom-session-abc' }],
-      [
-        {
-          instructorId: 5,
-          instructorEmail: 'instructor@example.com',
-          instructorName: 'Jane',
-        },
-      ],
-    );
+    const { service, zoomServiceMock } = buildService([
+      { id: 2, meetingId: 'pending-zoom-session-abc' },
+    ]);
 
     await service.reaffirmWaitingRoomPolicyForActiveSessions();
 
-    expect(zoomServiceMock.applyLicensedUserSettings).not.toHaveBeenCalled();
-    expect(zoomServiceMock.updateMeeting).not.toHaveBeenCalled();
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).not.toHaveBeenCalled();
   });
 
-  it('does not throw and skips Zoom calls when no instructor is assigned to the batch', async () => {
-    const { service, zoomServiceMock } = buildService(
-      [{ id: 3, batchId: 11, meetingId: '111111' }],
-      [],
-    );
+  it('skips sessions with no meetingId at all', async () => {
+    const { service, zoomServiceMock } = buildService([
+      { id: 3, meetingId: null },
+    ]);
 
     await expect(
       service.reaffirmWaitingRoomPolicyForActiveSessions(),
     ).resolves.not.toThrow();
 
-    expect(zoomServiceMock.applyLicensedUserSettings).not.toHaveBeenCalled();
-    expect(zoomServiceMock.updateMeeting).not.toHaveBeenCalled();
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).not.toHaveBeenCalled();
   });
 
   it('logs and continues if one session fails, so one bad session cannot block the rest', async () => {
     const { service, zoomServiceMock } = buildService(
       [
-        { id: 4, batchId: 10, meetingId: '444444' },
-        { id: 5, batchId: 10, meetingId: '555555' },
-      ],
-      [
-        {
-          instructorId: 5,
-          instructorEmail: 'instructor@example.com',
-          instructorName: 'Jane',
-        },
+        { id: 4, meetingId: '444444' },
+        { id: 5, meetingId: '555555' },
       ],
       {
-        applyLicensedUserSettings: jest
+        reaffirmMeetingWaitingRoomSettings: jest
           .fn()
           .mockRejectedValueOnce(new Error('Zoom rate limited'))
-          .mockResolvedValueOnce({ success: true }),
+          .mockResolvedValueOnce(undefined),
       },
     );
 
@@ -201,17 +169,14 @@ describe('ClassesService.reaffirmWaitingRoomPolicyForActiveSessions — drift gu
       service.reaffirmWaitingRoomPolicyForActiveSessions(),
     ).resolves.not.toThrow();
 
-    expect(zoomServiceMock.applyLicensedUserSettings).toHaveBeenCalledTimes(2);
-    // Only the second (successful) session should reach the meeting patch.
-    expect(zoomServiceMock.updateMeeting).toHaveBeenCalledTimes(1);
-    expect(zoomServiceMock.updateMeeting).toHaveBeenCalledWith('555555', {
-      settings: {
-        waiting_room: true,
-        waiting_room_options: {
-          mode: 'custom',
-          who_goes_to_waiting_room: 'users_not_on_invite',
-        },
-      },
-    });
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).toHaveBeenNthCalledWith(1, '444444');
+    expect(
+      zoomServiceMock.reaffirmMeetingWaitingRoomSettings,
+    ).toHaveBeenNthCalledWith(2, '555555');
   });
 });

@@ -9,6 +9,7 @@ import { db } from '../../db';
 import { RecordingWorkerTriggerService } from '../../services/recording-worker/recording-worker-trigger.service';
 import { RecordingWorkerService } from '../../services/recording-worker/recording-worker.service';
 import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
+import { ZoomService } from '../../services/zoom/zoom.service';
 
 const ATTENDANCE_JOB_INITIAL_DELAY_MS = 3 * 60 * 1000;
 
@@ -63,6 +64,7 @@ export class ZoomWebhookController {
     private readonly recordingWorkerTrigger: RecordingWorkerTriggerService,
     private readonly recordingWorkerService: RecordingWorkerService,
     private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
+    private readonly zoomService: ZoomService,
   ) {}
 
   @Public()
@@ -337,6 +339,65 @@ export class ZoomWebhookController {
           () => this.attendanceWorkerTrigger.triggerNow(),
           ATTENDANCE_JOB_INITIAL_DELAY_MS + 10_000,
         );
+
+        await db.execute(sql`
+        UPDATE zuvy_zoom_webhook_events
+        SET processing_status = 'PROCESSED'
+        WHERE event_id = ${eventId}
+          `);
+
+        return res.status(200).send();
+      }
+
+      // --------------------------------
+      // MEETING UPDATED — reactive waiting-room drift correction.
+      // Cheaper and faster than polling: only re-applies the meeting-level
+      // override when Zoom itself reports this specific meeting changed
+      // (e.g. a host edited it directly in the Zoom portal), instead of a
+      // cron re-checking every active meeting every minute regardless.
+      // --------------------------------
+      if (event === 'meeting.updated') {
+        const payload = body.payload;
+        const { meetingId } = extractMeetingIdentifiers(payload);
+
+        if (meetingId) {
+          const cleanId = String(meetingId).replace(/\D/g, '');
+
+          const session = await db.query.zuvySessions.findFirst({
+            where: (s, { or, eq, sql: dSql }) =>
+              or(
+                eq(s.zoomMeetingId, meetingId),
+                eq(s.meetingId, meetingId),
+                dSql`REPLACE(${s.zoomMeetingId}, ' ', '') = ${cleanId}`,
+                dSql`REPLACE(${s.meetingId}, ' ', '') = ${cleanId}`,
+              ),
+            columns: { id: true },
+          });
+
+          const mentorBooking = await db.query.zuvyMentorSlotBooking.findFirst({
+            where: (b, { or, eq, sql: dSql }) =>
+              or(
+                eq(b.zoomMeetingId, meetingId),
+                dSql`REPLACE(${b.zoomMeetingId}, ' ', '') = ${cleanId}`,
+              ),
+            columns: { id: true },
+          });
+
+          if (session || mentorBooking) {
+            try {
+              await this.zoomService.reaffirmMeetingWaitingRoomSettings(
+                meetingId,
+              );
+              this.logger.log(
+                `Reaffirmed waiting room settings for updated meeting ${meetingId}`,
+              );
+            } catch (correctionErr: any) {
+              this.logger.warn(
+                `Failed to reaffirm waiting room settings for meeting ${meetingId}: ${correctionErr.message}`,
+              );
+            }
+          }
+        }
 
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events

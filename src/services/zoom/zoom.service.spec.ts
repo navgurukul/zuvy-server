@@ -243,6 +243,83 @@ describe('ZoomService — waiting room "invited only" policy', () => {
     });
   });
 
+  describe('reaffirmMeetingWaitingRoomSettings (cheap, meeting-scoped drift correction)', () => {
+    it('skips the PATCH entirely when the meeting is already correct — prevents an infinite webhook loop', async () => {
+      // If Zoom fires meeting.updated on any PATCH (not just human edits),
+      // an unconditional correction would re-trigger meeting.updated ->
+      // our handler -> another PATCH -> forever. This check is what stops
+      // that: read current state first, only write if it's actually wrong.
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          settings: {
+            waiting_room: true,
+            waiting_room_options: {
+              mode: 'custom',
+              who_goes_to_waiting_room: 'users_not_on_invite',
+            },
+          },
+        },
+      } as any);
+
+      await service.reaffirmMeetingWaitingRoomSettings('123456');
+
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      const meetingPatch = findCall(
+        mockedAxios.patch.mock.calls as PatchCall[],
+        '/meetings/123456',
+      );
+      expect(meetingPatch).toBeUndefined();
+    });
+
+    it('PATCHes only the meeting when it has actually drifted — no account-wide user settings call', async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          settings: {
+            waiting_room: false, // drifted — host disabled it
+          },
+        },
+      } as any);
+
+      await service.reaffirmMeetingWaitingRoomSettings('123456');
+
+      const meetingPatch = findCall(
+        mockedAxios.patch.mock.calls as PatchCall[],
+        '/meetings/123456',
+      );
+      expect(meetingPatch![1]).toEqual({
+        settings: {
+          waiting_room: true,
+          waiting_room_options: {
+            mode: 'custom',
+            who_goes_to_waiting_room: 'users_not_on_invite',
+          },
+        },
+      });
+
+      // Regression guard: the old drift-guard design also called
+      // applyLicensedUserSettings (a large account-wide PATCH) here, which
+      // is wasted work once a meeting has mode:'custom' — that meeting's
+      // behavior no longer follows the host's account default at all.
+      const userSettingsPatch = mockedAxios.patch.mock.calls.find(([url]) =>
+        (url as string).includes('/settings'),
+      );
+      expect(userSettingsPatch).toBeUndefined();
+      expect(mockedAxios.patch).toHaveBeenCalledTimes(1);
+    });
+
+    it('PATCHes when the current-state lookup itself fails — fails open toward correction rather than silently giving up', async () => {
+      mockedAxios.get.mockRejectedValue(new Error('Zoom API unreachable'));
+
+      await service.reaffirmMeetingWaitingRoomSettings('123456');
+
+      const meetingPatch = findCall(
+        mockedAxios.patch.mock.calls as PatchCall[],
+        '/meetings/123456',
+      );
+      expect(meetingPatch).toBeDefined();
+    });
+  });
+
   it('always sends waiting_room_options with mode:custom — omitting mode makes Zoom silently ignore who_goes_to_waiting_room', async () => {
     await service.createMeeting({
       topic: 't1',

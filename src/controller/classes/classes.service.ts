@@ -563,23 +563,18 @@ export class ClassesService {
   }
 
   /**
-   * Re-applies the host's waiting-room policy for sessions whose Zoom meeting
-   * already exists and is starting now or started recently.
-   *
-   * `activateZoomSession` only sets this once, at the moment the real Zoom
-   * meeting is created. If a host (or a Zoom account admin) manually flips
-   * their waiting room off any time between that creation and the meeting
-   * actually starting, nothing else re-syncs it — this closes that gap by
-   * re-enforcing it right around start time too.
+   * Fallback safety net for ZoomService.reaffirmMeetingWaitingRoomSettings:
+   * catches drift for sessions whose Zoom `meeting.updated` webhook was
+   * missed or never configured. Scoped to a narrow 2-minute post-start
+   * window so each session is only re-checked once or twice, not repeatedly.
    */
   async reaffirmWaitingRoomPolicyForActiveSessions() {
     const nowIso = new Date().toISOString();
-    const windowStartIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const windowStartIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
 
     const dueSessions = await db
       .select({
         id: zuvySessions.id,
-        batchId: zuvySessions.batchId,
         meetingId: zuvySessions.meetingId,
       })
       .from(zuvySessions)
@@ -603,22 +598,9 @@ export class ClassesService {
       }
 
       try {
-        const instructorResult = await this.getInstructorDetails(
-          session.batchId,
+        await this.zoomService.reaffirmMeetingWaitingRoomSettings(
+          session.meetingId,
         );
-        const hostEmail = instructorResult.instructor?.email;
-        if (!hostEmail) continue;
-
-        await this.zoomService.applyLicensedUserSettings(hostEmail);
-        await this.zoomService.updateMeeting(session.meetingId, {
-          settings: {
-            waiting_room: true,
-            waiting_room_options: {
-              mode: 'custom',
-              who_goes_to_waiting_room: 'users_not_on_invite',
-            },
-          },
-        });
       } catch (error: any) {
         this.logger.warn(
           `Failed to reaffirm waiting room policy for session ${session.id}: ${error.message}`,

@@ -1047,6 +1047,65 @@ export class ZoomService {
   }
 
   /**
+   * Reads back the meeting's CURRENT settings and reports whether they
+   * already match our desired waiting-room policy.
+   */
+  private async isMeetingWaitingRoomPolicyCorrect(
+    meetingId: string,
+  ): Promise<boolean> {
+    const current = await this.getMeeting(meetingId);
+    if (!current.success || !current.data) return false;
+
+    const settings = current.data.settings as any;
+    const desired = this.buildMeetingWaitingRoomSettings();
+
+    return (
+      settings?.waiting_room === desired.waiting_room &&
+      settings?.waiting_room_options?.mode ===
+        desired.waiting_room_options.mode &&
+      settings?.waiting_room_options?.who_goes_to_waiting_room ===
+        desired.waiting_room_options.who_goes_to_waiting_room
+    );
+  }
+
+  /**
+   * Re-applies ONLY the meeting-level waiting-room override for one Zoom
+   * meeting, but ONLY if it has actually drifted — checks the current state
+   * first and skips the PATCH entirely if it's already correct.
+   *
+   * That check isn't just an optimization: without it, this method PATCHing
+   * a meeting would itself trigger a fresh `meeting.updated` webhook event,
+   * which re-invokes this method, which PATCHes again, forever. Checking
+   * first means a correction settles after at most one extra round trip —
+   * the follow-up webhook sees the state already matches and no-ops.
+   *
+   * Deliberately does NOT touch the host's user-level settings: once a
+   * meeting has `waiting_room_options.mode: 'custom'` (set at creation),
+   * its behavior is independent of the host's account/group default, so
+   * re-syncing account settings for an already-created meeting has no
+   * effect on it.
+   *
+   * Called reactively from the Zoom `meeting.updated` webhook when a host
+   * (or account admin) edits a meeting's settings directly, and as a
+   * periodic fallback for sessions whose webhook delivery was missed (see
+   * ClassesService.reaffirmWaitingRoomPolicyForActiveSessions).
+   */
+  async reaffirmMeetingWaitingRoomSettings(meetingId: string) {
+    const alreadyCorrect =
+      await this.isMeetingWaitingRoomPolicyCorrect(meetingId);
+    if (alreadyCorrect) {
+      this.logger.debug(
+        `Waiting room settings for meeting ${meetingId} already correct — skipping PATCH`,
+      );
+      return;
+    }
+
+    await this.updateMeeting(meetingId, {
+      settings: this.buildMeetingWaitingRoomSettings(),
+    });
+  }
+
+  /**
    * Delete a Zoom meeting
    */
   async deleteMeeting(meetingId: string): Promise<void> {
