@@ -783,6 +783,30 @@ export class StudentService {
         ];
       }
 
+      // Check if user is already enrolled before doing any batch work.
+      // The JwtAuthGuard skips auto-enroll for this endpoint, so an
+      // existing record here means the student genuinely enrolled before.
+      const existingEnrollment = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        );
+
+      if (existingEnrollment && existingEnrollment.length > 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Already enrolled in this course.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
       // Find an available batch where capEnrollment > enrollments
       const batches = await db
         .select()
@@ -805,36 +829,26 @@ export class StudentService {
       }
 
       if (!selectedBatchId) {
-        return [
-          {
-            status: 'error',
-            message: 'All batches for this course are currently full.',
-            code: 400,
-          },
-          null,
-        ];
-      }
+        // All existing batches are full — create a new unlimited-capacity overflow batch
+        const bootcampRes = await db
+          .select({ name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, bootcampId))
+          .limit(1);
 
-      // Check if user already enrolled
-      const existingEnrollment = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-          ),
-        );
+        const bootcampName = bootcampRes[0]?.name || 'Bootcamp';
+        const newBatchName = `${bootcampName} - Batch ${batches.length + 1}`;
 
-      if (existingEnrollment && existingEnrollment.length > 0) {
-        return [
-          {
-            status: 'error',
-            message: 'Already enrolled in this course.',
-            code: 400,
-          },
-          null,
-        ];
+        const [newBatch] = await db
+          .insert(zuvyBatches)
+          .values({
+            name: newBatchName,
+            bootcampId,
+            // capEnrollment omitted → null in DB (unlimited enrollment)
+          } as any)
+          .returning();
+
+        selectedBatchId = newBatch.id;
       }
 
       // Create enrollment
