@@ -641,6 +641,13 @@ export class TrackingService {
           .insert(zuvyAssignmentSubmission)
           .values(updatedAssignmentBody)
           .returning();
+
+        return {
+          status: 'success',
+          message: 'Assignment submitted successfully.',
+          code: STATUS_CODES.OK,
+          data: result,
+        };
       } else if (SubmitBody.submitQuiz != undefined) {
         const chapterStatus = await db
           .select()
@@ -2149,7 +2156,10 @@ export class TrackingService {
           };
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      this.logger.error('submitProjectForAUser failed', err);
+      throw err;
+    }
   }
 
   async getProjectDetailsWithStatus(
@@ -2830,7 +2840,10 @@ export class TrackingService {
       // First get the submission with assessment data
       const data: any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
-          eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+          and(
+            eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            eq(zuvyAssessmentSubmission.userId, userId),
+          ),
         with: {
           user: {
             columns: {

@@ -916,3 +916,16 @@ FROM zuvy_assessment_submission
 WHERE assessment_outsourse_id = 1985
 ORDER BY id DESC
 LIMIT 10
+
+
+
+SELECT *
+FROM zuvy_assessment_submission
+WHERE user_id = 36182;
+
+
+
+SELECT *
+FROM zuvy_assessment_submission
+WHERE user_id = 63619
+  AND assessment_id = 1784;
