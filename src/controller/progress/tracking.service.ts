@@ -789,12 +789,14 @@ export class TrackingService {
           const totalChapters = module['moduleChapterData'].length;
           const completedChapters =
             completedChaptersByModule.get(module.id) ?? 0;
-          const calculatedProgress = Math.ceil(
-            (completedChapters / totalChapters) * 100,
-          );
+          const calculatedProgress =
+            totalChapters > 0
+              ? Math.ceil((completedChapters / totalChapters) * 100)
+              : 0;
+
           if (
             module.moduleTracking.length > 0 &&
-            calculatedProgress !== module.moduleTracking[0].progress
+            calculatedProgress !== module.moduleTracking[0].progres
           ) {
             return {
               id: module.moduleTracking[0].id,
@@ -923,7 +925,7 @@ export class TrackingService {
       return modules;
     } catch (err) {
       error(err);
-      return [];
+      throw err;
     }
   }
 
@@ -1168,6 +1170,7 @@ export class TrackingService {
         );
         return pendingAssignment;
       }
+      return [];
     } catch (err) {
       throw err;
     }
@@ -1727,6 +1730,8 @@ export class TrackingService {
                 trackedData,
               };
             }
+          } else {
+            return 'No Quiz found';
           }
         } else if (chapterDetails[0].topicId == 5) {
           if (AssignmentTracking.length != 0) {
