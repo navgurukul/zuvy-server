@@ -1369,12 +1369,7 @@ Team Zuvy`;
       });
 
       if (!assessments || assessments.length === 0) {
-        return [
-          {
-            statusCode: STATUS_CODES.NOT_FOUND,
-            message: 'No assessments found.',
-          },
-        ];
+        throw new NotFoundException('No assessments found.');
       }
 
       const assessmentsByModule = assessments.reduce((acc, assessment: any) => {
@@ -1425,7 +1420,8 @@ Team Zuvy`;
         totalStudents: studentsEnrolled.length,
       };
     } catch (err) {
-      return [{ message: err.message }];
+      this.logger.error('Error in getAssessmentsAndStudents', err);
+      throw err;
     }
   }
 
