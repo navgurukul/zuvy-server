@@ -1541,7 +1541,8 @@ export class LeaderboardService {
             eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for('update');
 
       const previousPoints = existingChapterPoint[0]?.points ?? 0;
       const pointsDelta = points - previousPoints;
@@ -1811,6 +1812,7 @@ export class LeaderboardService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
       const totalLearners = Number(totalLearnersResult[0]?.count || 0);
+
       const allLearners = await db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
@@ -1843,6 +1845,74 @@ export class LeaderboardService {
       const currentLearnerData = learnersWithRanks.find(
         (learner) => Number(learner.learnerId) === normalizedLearnerId,
       );
+
+      // const rankedLearners = db
+      //   .select({
+      //     learnerId: zuvyBatchEnrollments.userId,
+      //     name: users.name,
+      //     totalPoints: sql<number>`
+      //       COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)
+      //     `,
+      //     rank: sql<number>`
+      //       RANK() OVER (
+      //         ORDER BY COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC
+      //       )
+      //     `.as('rank'),
+      //   })
+      //   .from(zuvyBatchEnrollments)
+      //   .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+      //   .leftJoin(
+      //     zuvyLearnerLeaderboard,
+      //     and(
+      //       eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
+      //       eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+      //     ),
+      //   )
+      //   .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+      //   .as('ranked_learners');
+
+      // const topLearnersResult = await db
+      //   .select({
+      //     learnerId: rankedLearners.learnerId,
+      //     name: rankedLearners.name,
+      //     totalPoints: rankedLearners.totalPoints,
+      //     rank: rankedLearners.rank,
+      //   })
+      //   .from(rankedLearners)
+      //   .orderBy(rankedLearners.rank)
+      //   .limit(limit);
+
+      // const topLearners = topLearnersResult.map((learner) => ({
+      //   learnerId: Number(learner.learnerId),
+      //   name: learner.name || '',
+      //   totalPoints: Number(learner.totalPoints),
+      //   rank: Number(learner.rank),
+      // }));
+
+      // const currentLearnerResult = await db
+      //   .select({
+      //     learnerId: rankedLearners.learnerId,
+      //     name: rankedLearners.name,
+      //     totalPoints: rankedLearners.totalPoints,
+      //     rank: rankedLearners.rank,
+      //   })
+      //   .from(rankedLearners)
+      //   .where(
+      //     eq(
+      //       rankedLearners.learnerId,
+      //       BigInt(normalizedLearnerId),
+      //     ),
+      //   )
+      //   .limit(1);
+
+      // const currentLearnerData = currentLearnerResult[0]
+      //   ? {
+      //       learnerId: Number(currentLearnerResult[0].learnerId),
+      //       name: currentLearnerResult[0].name || '',
+      //       totalPoints: Number(currentLearnerResult[0].totalPoints),
+      //       rank: Number(currentLearnerResult[0].rank),
+      //     }
+      //   : null;
 
       if (currentLearnerData) {
         return {

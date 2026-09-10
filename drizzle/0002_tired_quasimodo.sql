@@ -916,3 +916,18 @@ FROM zuvy_assessment_submission
 WHERE assessment_outsourse_id = 1985
 ORDER BY id DESC
 LIMIT 10
+
+
+
+SELECT *
+FROM zuvy_learner_leaderboard_chapter_points
+WHERE learner_id = 36182
+  AND bootcamp_id = 1047
+  AND chapter_id = 8431
+
+
+
+  SELECT *
+FROM zuvy_learner_leaderboard
+WHERE learner_id = 36182
+  AND bootcamp_id = 1047;
