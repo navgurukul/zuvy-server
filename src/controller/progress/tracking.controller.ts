@@ -13,6 +13,8 @@ import {
   Req,
   Res,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -45,6 +47,13 @@ import { helperVariable } from 'src/constants/helper';
 
 @SkipOrgCheck()
 @Controller('tracking')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }),
+)
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
