@@ -641,6 +641,13 @@ export class TrackingService {
           .insert(zuvyAssignmentSubmission)
           .values(updatedAssignmentBody)
           .returning();
+
+        return {
+          status: 'success',
+          message: 'Assignment submitted successfully.',
+          code: STATUS_CODES.OK,
+          data: result,
+        };
       } else if (SubmitBody.submitQuiz != undefined) {
         const chapterStatus = await db
           .select()
@@ -782,12 +789,14 @@ export class TrackingService {
           const totalChapters = module['moduleChapterData'].length;
           const completedChapters =
             completedChaptersByModule.get(module.id) ?? 0;
-          const calculatedProgress = Math.ceil(
-            (completedChapters / totalChapters) * 100,
-          );
+          const calculatedProgress =
+            totalChapters > 0
+              ? Math.ceil((completedChapters / totalChapters) * 100)
+              : 0;
+
           if (
             module.moduleTracking.length > 0 &&
-            calculatedProgress !== module.moduleTracking[0].progress
+            calculatedProgress !== module.moduleTracking[0].progres
           ) {
             return {
               id: module.moduleTracking[0].id,
@@ -916,7 +925,7 @@ export class TrackingService {
       return modules;
     } catch (err) {
       error(err);
-      return [];
+      throw err;
     }
   }
 
@@ -1161,6 +1170,7 @@ export class TrackingService {
         );
         return pendingAssignment;
       }
+      return [];
     } catch (err) {
       throw err;
     }
@@ -1720,6 +1730,8 @@ export class TrackingService {
                 trackedData,
               };
             }
+          } else {
+            return 'No Quiz found';
           }
         } else if (chapterDetails[0].topicId == 5) {
           if (AssignmentTracking.length != 0) {
@@ -2149,7 +2161,10 @@ export class TrackingService {
           };
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      this.logger.error('submitProjectForAUser failed', err);
+      throw err;
+    }
   }
 
   async getProjectDetailsWithStatus(
@@ -2830,7 +2845,10 @@ export class TrackingService {
       // First get the submission with assessment data
       const data: any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
-          eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+          and(
+            eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            eq(zuvyAssessmentSubmission.userId, userId),
+          ),
         with: {
           user: {
             columns: {
