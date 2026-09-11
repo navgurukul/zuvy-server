@@ -15,9 +15,7 @@ function getDrizzleDir(): string {
   return path.resolve(process.cwd(), 'drizzle');
 }
 
-/**
- * Scan existing .sql files in drizzle/
- */
+//  Scan existing .sql files in drizzle/
 function getAllExistingSqlContent(): string {
   const drizzleDir = getDrizzleDir();
   if (!fs.existsSync(drizzleDir)) return '';
