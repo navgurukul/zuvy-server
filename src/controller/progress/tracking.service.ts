@@ -1672,7 +1672,6 @@ export class TrackingService {
                     Object.values(chapterDetails[0].quizQuestions),
                   ),
                 );
-
               questions['status'] =
                 QuizTracking.length != 0 ? 'Completed' : 'Pending';
 
@@ -1713,7 +1712,6 @@ export class TrackingService {
 
               trackedData['status'] =
                 QuizTracking.length != 0 ? 'Completed' : 'Pending';
-
               return {
                 status: 'success',
                 code: 200,
