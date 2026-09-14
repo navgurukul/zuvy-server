@@ -108,6 +108,12 @@ export class SubmissionController {
   @Get('/practiseProblemStatus/:moduleId')
   @ApiOperation({ summary: 'Get the status of practise Problems' })
   @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Bootcamp id',
+  })
+  @ApiQuery({
     name: 'chapterId',
     required: true,
     type: Number,
@@ -159,6 +165,7 @@ export class SubmissionController {
   })
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
     @Query('chapterId') chapterId: number,
     @Query('questionId') questionId: number,
     @Query('batchId') batchId?: number,
@@ -173,6 +180,7 @@ export class SubmissionController {
       chapterId,
       moduleId,
       batchId,
+      bootcampId,
       limit,
       offset,
       searchStudent,
@@ -955,6 +963,12 @@ export class SubmissionController {
     description: 'Limit the number of results',
   })
   @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Filter students by bootcamp id',
+  })
+  @ApiQuery({
     name: 'offset',
     required: false,
     type: String,
@@ -1009,6 +1023,7 @@ export class SubmissionController {
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
     @Res() res?: any,
+    @Query('bootcampId') bootcampId: number,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('name') name?: string,
@@ -1024,6 +1039,7 @@ export class SubmissionController {
       const [err, result] =
         await this.submissionService.getLiveChapterStudentSubmission(
           moduleChapterId,
+          bootcampId,
           limit,
           offset,
           name,
