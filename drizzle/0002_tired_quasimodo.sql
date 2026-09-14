@@ -959,3 +959,46 @@ SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+
+
+
+SELECT id, title
+FROM zuvy_coding_questions
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+
+
+UPDATE zuvy_coding_questions
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+
+SELECT id, title
+FROM zuvy_module_quiz
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+
+SELECT id, question
+FROM "zuvy_openEnded_questions"
+WHERE question IS NOT NULL
+  AND question <> ''
+  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));
+
+
+
+UPDATE "zuvy_openEnded_questions"
+SET question = UPPER(LEFT(question, 1)) || SUBSTRING(question FROM 2)
+WHERE question IS NOT NULL
+  AND question <> ''
+  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));

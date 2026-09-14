@@ -532,7 +532,8 @@ export class ContentService {
 
       if (validationErrors.length === 0) {
         const quizzesData = quizzes.map((quiz) => ({
-          title: quiz.title, // Optional
+          // title: quiz.title, // Optional
+          title: quiz.title?.charAt(0).toUpperCase() + quiz.title?.slice(1),
           difficulty: quiz.difficulty,
           tagId: quiz.tagId,
           content: quiz.content, // Optional
@@ -553,7 +554,10 @@ export class ContentService {
           const variants = quizzes[quizIndex].variantMCQs?.map(
             (variant, index) => ({
               quizId,
-              question: variant.question,
+              // question: variant.question,
+              question:
+                variant.question?.charAt(0).toUpperCase() +
+                variant.question?.slice(1),
               options: variant.options,
               correctOption: variant.correctOption,
               variantNumber: index + 1,
@@ -618,6 +622,11 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto, orgId: number) {
     try {
       const questionsWithOrg = { ...questions, orgId };
+
+      questionsWithOrg.question =
+        questionsWithOrg.question?.charAt(0).toUpperCase() +
+        questionsWithOrg.question?.slice(1);
+
       const openEndedQuestions = await db
         .insert(zuvyOpenEndedQuestions)
         .values(questionsWithOrg)
