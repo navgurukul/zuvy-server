@@ -940,3 +940,22 @@ SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+
+
+SELECT id, name
+FROM zuvy_course_modules
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+
+
+
+UPDATE zuvy_course_modules
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));

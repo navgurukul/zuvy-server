@@ -200,6 +200,9 @@ export class ContentService {
     typeId: number,
   ) {
     try {
+      module.name =
+        module.name?.charAt(0).toUpperCase() + module.name?.slice(1);
+
       const noOfModuleOfBootcamp = await db
         .select({ count: count(zuvyCourseModules.id) })
         .from(zuvyCourseModules)
