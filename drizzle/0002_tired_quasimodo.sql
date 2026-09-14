@@ -916,3 +916,27 @@ FROM zuvy_assessment_submission
 WHERE assessment_outsourse_id = 1985
 ORDER BY id DESC
 LIMIT 10
+
+
+
+SELECT id, name
+FROM zuvy_bootcamps
+WHERE name IS NOT NULL;
+
+
+
+
+SELECT id, name
+FROM zuvy_bootcamps
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+
+
+  UPDATE zuvy_bootcamps
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
