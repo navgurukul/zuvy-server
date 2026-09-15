@@ -403,8 +403,6 @@ export class BatchesService {
 
   async updateBatch(id: number, batch: PatchBatchDto) {
     try {
-      console.log('Updating batch with data:', batch);
-
       // Fetch existing batch including enrolled students
       let batchOld: any = await db.query.zuvyBatches.findMany({
         where: sql`${zuvyBatches.id} = ${id}`,
@@ -554,13 +552,11 @@ export class BatchesService {
       // If instructorEmail wasn't provided, keep existing instructorId unchanged by not including it in batchValue
 
       // perform
-      console.log('Performing update with data:', batchValue);
       let updateData = await db
         .update(zuvyBatches)
         .set(batchValue)
         .where(eq(zuvyBatches.id, id))
         .returning();
-      console.log('Update result:', updateData);
       if (!updateData || updateData.length === 0) {
         return [
           { status: 'error', message: 'Batch not found', code: 404 },

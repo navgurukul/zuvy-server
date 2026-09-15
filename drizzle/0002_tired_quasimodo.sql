@@ -1072,3 +1072,21 @@ UPDATE users
 SET name = 'Priya Shukla'
 WHERE id = 63407
   AND email = 'priyashukla@navgurukul.org';
+
+
+SELECT id, name
+FROM zuvy_user_roles
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE zuvy_user_roles
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+SELECT id, name
+FROM zuvy_user_roles
+ORDER BY id;
