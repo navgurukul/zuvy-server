@@ -1027,4 +1027,48 @@ GROUP BY bootcamp_id
 ORDER BY available_students DESC;
 
 
+SELECT id, name
+FROM zuvy_batches
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
 
+
+
+UPDATE zuvy_batches
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+
+SELECT 
+    be.id,
+    be.user_id,
+    u.name
+FROM zuvy_batch_enrollments be
+JOIN users u ON u.id = be.user_id
+WHERE u.name IS NOT NULL
+  AND u.name <> ''
+  AND LEFT(u.name, 1) <> UPPER(LEFT(u.name, 1));
+
+
+
+
+UPDATE users u
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1))
+  AND EXISTS (
+    SELECT 1
+    FROM zuvy_batch_enrollments be
+    WHERE be.user_id = u.id
+
+
+
+UPDATE users
+SET name = 'Priya Shukla'
+WHERE id = 63407
+  AND email = 'priyashukla@navgurukul.org';

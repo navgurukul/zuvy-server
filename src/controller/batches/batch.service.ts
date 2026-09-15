@@ -22,8 +22,6 @@ import { STATUS_CODES } from 'http';
 export class BatchesService {
   async createBatch(batch: BatchDto) {
     try {
-      console.log('Creating batch with data:', batch);
-
       // Basic validation
       if (!batch.name) {
         return [
@@ -35,6 +33,8 @@ export class BatchesService {
           null,
         ];
       }
+      batch.name = batch.name.charAt(0).toUpperCase() + batch.name.slice(1);
+
       if (!batch.bootcampId) {
         return [
           {
@@ -168,7 +168,7 @@ export class BatchesService {
         console.error('Failed to assign instructor role:', err);
       }
 
-      batch.name = batch.name.charAt(0).toUpperCase() + batch.name.slice(1);
+      // batch.name = batch.name.charAt(0).toUpperCase() + batch.name.slice(1);
 
       // Build batch object
       const batchValue: any = {
