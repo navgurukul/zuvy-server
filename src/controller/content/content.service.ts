@@ -717,13 +717,6 @@ export class ContentService {
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId));
 
-      // const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-      //   where: (outsourseAssessments, { eq }) =>
-      //     eq(outsourseAssessments.moduleId, module[0].id),
-      //   with: {
-      //     ModuleAssessment: true
-      //   },
-      // })
       if (module.length == 0) {
         throw new NotFoundException('Module not found!');
       }
@@ -1690,6 +1683,11 @@ export class ContentService {
           }
           if (editData.formQuestions.length == 0) {
             editData.formQuestions = null;
+          }
+
+          if (editData.title) {
+            editData.title =
+              editData.title.charAt(0).toUpperCase() + editData.title.slice(1);
           }
         }
         await db

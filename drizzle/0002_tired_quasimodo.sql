@@ -1001,4 +1001,30 @@ UPDATE "zuvy_openEnded_questions"
 SET question = UPPER(LEFT(question, 1)) || SUBSTRING(question FROM 2)
 WHERE question IS NOT NULL
   AND question <> ''
-  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));
+
+
+  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));SELECT id, title
+FROM zuvy_module_chapter
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+
+
+  UPDATE zuvy_module_chapter
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+
+SELECT bootcamp_id, COUNT(*) AS available_students
+FROM zuvy_batch_enrollments
+WHERE batch_id IS NULL
+GROUP BY bootcamp_id
+ORDER BY available_students DESC;
+
+
+

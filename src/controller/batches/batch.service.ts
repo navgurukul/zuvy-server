@@ -168,6 +168,8 @@ export class BatchesService {
         console.error('Failed to assign instructor role:', err);
       }
 
+      batch.name = batch.name.charAt(0).toUpperCase() + batch.name.slice(1);
+
       // Build batch object
       const batchValue: any = {
         name: batch.name,
