@@ -63,7 +63,8 @@ let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class TrackingService {
-  logger: any;
+  // logger: any;
+  private readonly logger = new Logger(TrackingService.name);
   constructor(
     private contentService: ContentService,
     private classesService: ClassesService,
@@ -796,7 +797,7 @@ export class TrackingService {
 
           if (
             module.moduleTracking.length > 0 &&
-            calculatedProgress !== module.moduleTracking[0].progres
+            calculatedProgress !== module.moduleTracking[0].progress
           ) {
             return {
               id: module.moduleTracking[0].id,
