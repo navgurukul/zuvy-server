@@ -3117,10 +3117,11 @@ export class TrackingService {
     }
   }
 
-  async getProperting(assessmentSubmissionId): Promise<any> {
+  async getProperting(assessmentSubmissionId, userId, roles): Promise<any> {
     try {
       let assessmentProperting = await db
         .select({
+          userId: zuvyAssessmentSubmission.userId,
           eyeMomentCount: zuvyAssessmentSubmission.eyeMomentCount,
           fullScreenExit: zuvyAssessmentSubmission.fullScreenExit,
           copyPaste: zuvyAssessmentSubmission.copyPaste,
@@ -3138,10 +3139,23 @@ export class TrackingService {
           },
         ];
       }
+
+      const submission = assessmentProperting[0];
+      const isAdmin = roles?.includes('admin');
+      if (!isAdmin && submission.userId !== userId) {
+        return [
+          {
+            message: 'You are not authorized to access this submission',
+            statusCode: STATUS_CODES.FORBIDDEN,
+          },
+          null,
+        ];
+      }
+
       return [
         null,
         {
-          message: 'Get Assignment properting',
+          message: 'Get Assessment properting',
           statusCode: STATUS_CODES.OK,
           data: assessmentProperting[0],
         },

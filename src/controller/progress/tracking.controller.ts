@@ -489,11 +489,14 @@ export class TrackingController {
   @ApiBearerAuth('JWT-auth')
   async getProperting(
     @Param('assessment_submission_id') assessmentSubmissionId: number,
+    @Req() req,
     @Res() res,
   ) {
     try {
       let [err, success] = await this.TrackingService.getProperting(
         assessmentSubmissionId,
+        req.user[0].id,
+        req.user[0].roles,
       );
       if (err) {
         return ErrorResponse.BadRequestException(

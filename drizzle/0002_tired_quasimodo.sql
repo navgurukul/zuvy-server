@@ -931,3 +931,15 @@ WHERE learner_id = 36182
 FROM zuvy_learner_leaderboard
 WHERE learner_id = 36182
   AND bootcamp_id = 1047;
+
+
+
+
+
+SELECT
+  id,
+  user_id,
+  assessment_outsourse_id
+FROM zuvy_assessment_submission
+ORDER BY id DESC
+LIMIT 20;
