@@ -65,11 +65,6 @@ export class OrgService {
       { name: 'instructor', description: 'Instructor role' },
     ];
 
-    // First letter capitalize
-    defaultRoles.forEach((role) => {
-      role.name = role.name.charAt(0).toUpperCase() + role.name.slice(1);
-    });
-
     const createdRoles = await tx
       .insert(zuvyUserRoles)
       .values(
@@ -81,6 +76,7 @@ export class OrgService {
       .returning();
 
     const adminRole = createdRoles.find((r) => r.name === 'admin');
+
     // Assign all permissions to the admin role
     const allPermissions = await tx.select().from(zuvyPermissions);
     if (allPermissions.length > 0 && adminRole) {
