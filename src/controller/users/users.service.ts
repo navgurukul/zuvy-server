@@ -31,7 +31,8 @@ import {
   UpdateUserDto,
 } from './dto/user-role.dto';
 import { STATUS_CODES } from 'src/helpers';
-import { ResourceList } from 'src/rbac/utility';
+// import { ResourceList } from 'src/rbac/utility';
+import { ResourceList, capitalizeFirstLetter } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { AuthService } from 'src/auth/auth.service';
@@ -261,60 +262,123 @@ export class UsersService {
     }
   }
 
+  // async getAllUserRoles(
+  //   orgId: number,
+  //   roleName: string,
+  //   duplicate?: boolean,
+  // ): Promise<any> {
+  //   orgId = Number(orgId);
+  //   try {
+  //     if (duplicate) {
+  //       try {
+  //         const result = await db
+  //           .select()
+  //           .from(zuvyUserRoles)
+  //           .where(eq(zuvyUserRoles.orgId, orgId));
+
+  //         const formattedResult = result.map((role) => ({
+  //           ...role,
+  //           name: role.name ? capitalizeFirstLetter(role.name) : role.name,
+  //         }));
+
+  //         return {
+  //           status: 'success',
+  //           message: 'User roles retrieved successfully',
+  //           code: 200,
+  //           data: formattedResult,
+  //         };
+  //       } catch (err) {
+  //         throw err;
+  //       }
+  //     }
+  //     let result;
+
+  //     if (roleName[0] === 'super admin') {
+  //       result = await db
+  //         .select()
+  //         .from(zuvyUserRoles)
+  //         .where(
+  //           and(
+  //             not(eq(zuvyUserRoles.name, 'super_admin')),
+  //             eq(zuvyUserRoles.orgId, orgId),
+  //           ),
+  //         );
+  //     } else {
+  //       result = await db
+  //         .select()
+  //         .from(zuvyUserRoles)
+  //         .where(
+  //           and(
+  //             not(inArray(zuvyUserRoles.name, ['admin', 'super_admin'])),
+  //             eq(zuvyUserRoles.orgId, orgId),
+  //           ),
+  //         );
+  //     }
+  //     const formattedResult = result.map((role) => ({
+  //       ...role,
+  //       name: role.name ? capitalizeFirstLetter(role.name) : role.name,
+  //     }));
+  //     return {
+  //       status: 'success',
+  //       message: 'User roles retrieved successfully',
+  //       code: 200,
+  //       // data: result,
+  //       data: formattedResult,
+  //     };
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
+
   async getAllUserRoles(
     orgId: number,
     roleName: string,
     duplicate?: boolean,
   ): Promise<any> {
     orgId = Number(orgId);
+
     try {
+      let result;
+
       if (duplicate) {
-        try {
-          const result = await db
+        result = await db
+          .select()
+          .from(zuvyUserRoles)
+          .where(eq(zuvyUserRoles.orgId, orgId));
+      } else {
+        if (roleName[0] === 'super admin') {
+          result = await db
             .select()
             .from(zuvyUserRoles)
-            .where(eq(zuvyUserRoles.orgId, orgId));
-
-          return {
-            status: 'success',
-            message: 'User roles retrieved successfully',
-            code: 200,
-            data: result,
-          };
-        } catch (err) {
-          throw err;
+            .where(
+              and(
+                not(eq(zuvyUserRoles.name, 'super_admin')),
+                eq(zuvyUserRoles.orgId, orgId),
+              ),
+            );
+        } else {
+          result = await db
+            .select()
+            .from(zuvyUserRoles)
+            .where(
+              and(
+                not(inArray(zuvyUserRoles.name, ['admin', 'super_admin'])),
+                eq(zuvyUserRoles.orgId, orgId),
+              ),
+            );
         }
       }
 
-      let result;
-
-      if (roleName[0] === 'super admin') {
-        result = await db
-          .select()
-          .from(zuvyUserRoles)
-          .where(
-            and(
-              not(eq(zuvyUserRoles.name, 'super_admin')),
-              eq(zuvyUserRoles.orgId, orgId),
-            ),
-          );
-      } else {
-        result = await db
-          .select()
-          .from(zuvyUserRoles)
-          .where(
-            and(
-              not(inArray(zuvyUserRoles.name, ['admin', 'super_admin'])),
-              eq(zuvyUserRoles.orgId, orgId),
-            ),
-          );
-      }
+      const formattedResult = result.map((role) => ({
+        ...role,
+        name: role.name ? capitalizeFirstLetter(role.name) : role.name,
+      }));
 
       return {
         status: 'success',
         message: 'User roles retrieved successfully',
         code: 200,
-        data: result,
+        data: formattedResult,
       };
     } catch (err) {
       throw err;

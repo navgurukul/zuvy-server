@@ -1090,3 +1090,22 @@ WHERE name IS NOT NULL
 SELECT id, name
 FROM zuvy_user_roles
 ORDER BY id;
+
+
+
+
+
+UPDATE zuvy_user_roles
+SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LOWER(name) = 'super_admin';
+
+
+
+
+UPDATE zuvy_user_roles
+SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> LOWER(LEFT(name, 1));

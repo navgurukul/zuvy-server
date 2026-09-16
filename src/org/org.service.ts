@@ -80,11 +80,7 @@ export class OrgService {
       )
       .returning();
 
-    // const adminRole = createdRoles.find((r) => r.name === 'admin');
-    const adminRole = createdRoles.find(
-      (r) => r.name?.toLowerCase() === 'admin',
-    );
-
+    const adminRole = createdRoles.find((r) => r.name === 'admin');
     // Assign all permissions to the admin role
     const allPermissions = await tx.select().from(zuvyPermissions);
     if (allPermissions.length > 0 && adminRole) {
