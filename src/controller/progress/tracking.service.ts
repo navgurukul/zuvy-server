@@ -3142,7 +3142,8 @@ export class TrackingService {
 
       const submission = assessmentProperting[0];
       const isAdmin = roles?.includes('admin');
-      if (!isAdmin && submission.userId !== userId) {
+      // if (!isAdmin && submission.userId !== userId) {
+      if (!isAdmin && Number(submission.userId) !== Number(userId)) {
         return [
           {
             message: 'You are not authorized to access this submission',
@@ -3157,7 +3158,13 @@ export class TrackingService {
         {
           message: 'Get Assessment properting',
           statusCode: STATUS_CODES.OK,
-          data: assessmentProperting[0],
+          // data: assessmentProperting[0],
+          data: {
+            eyeMomentCount: submission.eyeMomentCount,
+            fullScreenExit: submission.fullScreenExit,
+            copyPaste: submission.copyPaste,
+            tabChange: submission.tabChange,
+          },
         },
       ];
     } catch (error) {
