@@ -438,8 +438,19 @@ export class TrackingController {
     @Req() req,
     @Query('studentId') userId: number,
   ) {
-    if (!userId) {
-      userId = req.user[0].id;
+    // if (!userId) {
+    //   userId = req.user[0].id;
+    // }
+
+    const loggedInUserId = req.user[0].id;
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
+      userId = loggedInUserId;
+    } else if (userId && !Number.isNaN(Number(userId))) {
+      userId = Number(userId);
+    } else {
+      userId = undefined;
     }
     const res = await this.TrackingService.getAssessmentSubmission(
       submissionId,
