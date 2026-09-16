@@ -105,9 +105,12 @@ export class TrackingController {
   })
   @ApiBearerAuth('JWT-auth')
   async recomputeAttendance(@Param('batchId') batchId: number, @Req() req) {
-    if (req.user.role !== 'admin') {
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
       throw new ForbiddenException('Only admin can perform this action');
     }
+
     const res = await this.TrackingService.recomputeBatchAttendancePercentages(
       Number(batchId),
     );
