@@ -881,3 +881,67 @@ WHERE a.id < b.id
 ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_user_id_bootcamp_id_uniq" UNIQUE ("user_id", "bootcamp_id");
 
 
+
+
+
+
+  UPDATE zuvy_bootcamps
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE zuvy_course_modules
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE zuvy_coding_questions
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+UPDATE "zuvy_openEnded_questions"
+SET question = UPPER(LEFT(question, 1)) || SUBSTRING(question FROM 2)
+WHERE question IS NOT NULL
+  AND question <> ''
+
+
+
+  UPDATE zuvy_module_chapter
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+UPDATE zuvy_batches
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE users u
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1))
+  AND EXISTS (
+    SELECT 1
+    FROM zuvy_batch_enrollments be
+    WHERE be.user_id = u.id
+
+
+
+
+UPDATE zuvy_user_roles
+SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> LOWER(LEFT(name, 1));
