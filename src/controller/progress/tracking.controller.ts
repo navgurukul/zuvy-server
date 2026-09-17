@@ -13,6 +13,8 @@ import {
   Req,
   Res,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -45,6 +47,13 @@ import { helperVariable } from 'src/constants/helper';
 
 @SkipOrgCheck()
 @Controller('tracking')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }),
+)
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
@@ -95,7 +104,10 @@ export class TrackingController {
     summary: 'Recompute attendance percentage for a batch (testing)',
   })
   @ApiBearerAuth('JWT-auth')
-  async recomputeAttendance(@Param('batchId') batchId: number) {
+  async recomputeAttendance(@Param('batchId') batchId: number, @Req() req) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Only admin can perform this action');
+    }
     const res = await this.TrackingService.recomputeBatchAttendancePercentages(
       Number(batchId),
     );
