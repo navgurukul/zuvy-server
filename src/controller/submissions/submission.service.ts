@@ -68,19 +68,37 @@ const {
 export class SubmissionService {
   constructor(private readonly rbacService: RbacService) {}
 
-  private async getTotalStudentsCount(bootcampId: number, batchId?: number) {
+  private async getTotalStudentsCount(bootcampId?: number, batchId?: number) {
+    const cleanBootcampId =
+      bootcampId !== undefined &&
+      bootcampId !== null &&
+      !isNaN(Number(bootcampId))
+        ? Number(bootcampId)
+        : undefined;
+
+    const cleanBatchId =
+      batchId !== undefined && batchId !== null && !isNaN(Number(batchId))
+        ? Number(batchId)
+        : undefined;
+
+    if (!cleanBootcampId) {
+      return 0;
+    }
+
+    const conditions: any[] = [
+      eq(zuvyBatchEnrollments.bootcampId, cleanBootcampId),
+      isNotNull(zuvyBatchEnrollments.batchId),
+    ];
+    if (cleanBatchId) {
+      conditions.push(eq(zuvyBatchEnrollments.batchId, cleanBatchId));
+    }
+
     const result = await db
       .select({
         count: count(zuvyBatchEnrollments.id),
       })
       .from(zuvyBatchEnrollments)
-      .where(
-        and(
-          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-          ...(batchId ? [eq(zuvyBatchEnrollments.batchId, batchId)] : []),
-          isNotNull(zuvyBatchEnrollments.batchId),
-        ),
-      );
+      .where(and(...conditions));
 
     return result[0]?.count ?? 0;
   }
@@ -3350,33 +3368,33 @@ Zuvy LMS Team
     orgId?: number,
   ): Promise<[any, any]> {
     try {
-      // Validate ordering inputs
-      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
-        return [
-          {
-            message: 'Both orderBy and orderDirection are required together',
-            statusCode: STATUS_CODES.BAD_REQUEST,
-          },
-          null,
-        ];
-      }
+      const cleanBootcampId =
+        bootcampId !== undefined &&
+        bootcampId !== null &&
+        !isNaN(Number(bootcampId))
+          ? Number(bootcampId)
+          : undefined;
 
-      // ORDER BY chapter title only
-      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
-        helpers.asc(moduleChapter.title);
-
-      if (orderBy === 'title') {
-        chapterOrderClause = (moduleChapter: any, helpers: any) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
-          return dir(moduleChapter.title);
-        };
-      }
+      // Default to ascending order by chapter title unless desc is specified
+      const dir =
+        orderDirection && orderDirection.toLowerCase() === 'desc'
+          ? 'desc'
+          : 'asc';
+      const chapterOrderClause = (moduleChapter: any, helpers: any) => {
+        return dir === 'desc'
+          ? helpers.desc(moduleChapter.title)
+          : helpers.asc(moduleChapter.title);
+      };
 
       // Query modules mapped to bootcampId
       const topicId = 8; // or as per your schema for chapters
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq, and }) =>
-          and(eq(courseModules.bootcampId, bootcampId)),
+          and(
+            cleanBootcampId
+              ? eq(courseModules.bootcampId, cleanBootcampId)
+              : undefined,
+          ),
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
           moduleChapterData: {
@@ -3438,17 +3456,19 @@ Zuvy LMS Team
         offset,
       });
       // Get total students for bootcamp
-      const zuvyBatchEnrollmentsCount = await db
-        .select({
-          count: count(zuvyBatchEnrollments.id),
-        })
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-            isNotNull(zuvyBatchEnrollments.batchId),
-          ),
-        );
+      const zuvyBatchEnrollmentsCount = cleanBootcampId
+        ? await db
+            .select({
+              count: count(zuvyBatchEnrollments.id),
+            })
+            .from(zuvyBatchEnrollments)
+            .where(
+              and(
+                eq(zuvyBatchEnrollments.bootcampId, cleanBootcampId),
+                isNotNull(zuvyBatchEnrollments.batchId),
+              ),
+            )
+        : [{ count: 0 }];
       // Add submitStudents field and expose submissions for each chapter
       trackingData.forEach((course: any) => {
         course.moduleChapterData.forEach((chapterTracking: any) => {
@@ -3463,6 +3483,7 @@ Zuvy LMS Team
             name: d.user?.name ?? null,
             email: d.user?.email ?? null,
             completedAt: d.completedAt ?? null,
+            status: 'Viewed',
           }));
         });
       });
@@ -3501,21 +3522,39 @@ Zuvy LMS Team
     offset?: number,
     name?: string,
     email?: string,
-    status?: 'present' | 'absent',
+    status?: 'present' | 'absent' | string,
     orderBy?: 'name' | 'email' | 'status' | 'batchId' | 'batchName',
     orderDirection?: 'asc' | 'desc',
     batchId?: number,
     batchName?: string,
   ): Promise<[any, any]> {
     try {
-      // Resolve batch filters up-front so we can filter sessions at the DB layer
-      const batchFilterIds: number[] = [];
-      const normalizedBatchId =
-        Number.isFinite(Number(batchId)) && Number(batchId) > 0
+      const cleanModuleChapterId = Number(moduleChapterId);
+      const cleanBootcampId =
+        bootcampId !== undefined &&
+        bootcampId !== null &&
+        !isNaN(Number(bootcampId))
+          ? Number(bootcampId)
+          : undefined;
+      const cleanBatchId =
+        batchId !== undefined && batchId !== null && !isNaN(Number(batchId))
           ? Number(batchId)
           : undefined;
-      if (normalizedBatchId) {
-        batchFilterIds.push(normalizedBatchId);
+
+      if (isNaN(cleanModuleChapterId)) {
+        return [
+          {
+            message: 'Invalid module chapter id',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // Resolve batch filters up-front so we can filter sessions at the DB layer
+      const batchFilterIds: number[] = [];
+      if (cleanBatchId && cleanBatchId > 0) {
+        batchFilterIds.push(cleanBatchId);
       }
 
       // If batchName is provided, fetch matching ids and merge into filter set
@@ -3550,7 +3589,9 @@ Zuvy LMS Team
 
       const submissions = await db.query.zuvySessions.findMany({
         where: (session, { and, eq, or, inArray }) => {
-          const conditions: any[] = [eq(session.chapterId, moduleChapterId)];
+          const conditions: any[] = [
+            eq(session.chapterId, cleanModuleChapterId),
+          ];
           if (uniqueBatchFilterIds.length > 0) {
             conditions.push(
               or(
@@ -3594,7 +3635,6 @@ Zuvy LMS Team
                         ),
                     )
                   : undefined,
-                status ? eq(record.status, status) : undefined,
               ),
             columns: {
               userId: true,
@@ -3638,60 +3678,138 @@ Zuvy LMS Team
         });
       }
 
-      // Fetch all completed student tracking records for this chapter to compute submission status dynamically
+      // Fetch all completed student tracking records for this chapter to compute recording view status
       const completedTracking = await db
-        .select({ userId: zuvyChapterTracking.userId })
+        .select({
+          userId: zuvyChapterTracking.userId,
+          completedAt: zuvyChapterTracking.completedAt,
+        })
         .from(zuvyChapterTracking)
         .where(
           and(
-            eq(zuvyChapterTracking.chapterId, moduleChapterId),
+            eq(zuvyChapterTracking.chapterId, cleanModuleChapterId),
             isNotNull(zuvyChapterTracking.completedAt),
           ),
         );
-      const completedUserIdsSet = new Set(
-        completedTracking.map((ct) => Number(ct.userId)),
-      );
+
+      const completedTrackingMap = new Map<number, any>();
+      completedTracking.forEach((ct) => {
+        completedTrackingMap.set(Number(ct.userId), ct);
+      });
 
       const totalStudentsCount = await this.getTotalStudentsCount(
-        bootcampId,
-        batchId,
+        cleanBootcampId,
+        cleanBatchId,
       );
 
       // Process and flatten data
       let allRecords: any[] = [];
+      const processedUserIds = new Set<number>();
+
       submissions.forEach((session: any) => {
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
+            const uId = Number(record.userId);
+            processedUserIds.add(uId);
+
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? [session.batchId, session.secondBatchId].find((id: any) =>
+              ? ([session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null
-              : session.batchId ?? session.secondBatchId ?? null;
+                null)
+              : (session.batchId ?? session.secondBatchId ?? null);
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? batchMap[Number(resolvedBatchId)] ?? null
+                ? (batchMap[Number(resolvedBatchId)] ?? null)
                 : null;
-            const isCompleted = completedUserIdsSet.has(Number(record.userId));
+
+            const trackingInfo = completedTrackingMap.get(uId);
+            const isCompleted = !!trackingInfo;
+            const recordStatus = isCompleted ? 'Viewed' : 'Not Viewed';
+
             allRecords.push({
               ...record,
+              status: recordStatus,
+              submissionStatus: isCompleted ? 1 : 0,
+              completedAt: trackingInfo?.completedAt ?? null,
               sessionId: session.id,
               sessionTitle: session.title,
               meetingId: session.meetingId,
               hangoutLink: session.hangoutLink,
               batchId: resolvedBatchId,
               batchName: resolvedBatchName,
-              submissionStatus: isCompleted ? 1 : 0,
             });
           });
         }
       });
 
-      // Sorting (unchanged)
+      // Also include any students in completedTracking who were not in studentAttendanceRecords
+      for (const [uId, trackingInfo] of completedTrackingMap.entries()) {
+        if (!processedUserIds.has(uId)) {
+          if (!uId || isNaN(uId)) continue;
+          const userRes = await db
+            .select({ name: users.name, email: users.email })
+            .from(users)
+            .where(eq(users.id, BigInt(uId)));
+
+          if (userRes.length > 0) {
+            if (
+              (name &&
+                !userRes[0].name?.toLowerCase().includes(name.toLowerCase())) ||
+              (email &&
+                !userRes[0].email?.toLowerCase().includes(email.toLowerCase()))
+            ) {
+              continue;
+            }
+
+            allRecords.push({
+              userId: uId,
+              status: 'Viewed',
+              submissionStatus: 1,
+              completedAt: trackingInfo.completedAt ?? null,
+              duration: null,
+              user: {
+                name: userRes[0].name,
+                email: userRes[0].email,
+              },
+              sessionId: submissions[0]?.id ?? null,
+              sessionTitle: submissions[0]?.title ?? null,
+              meetingId: submissions[0]?.meetingId ?? null,
+              hangoutLink: submissions[0]?.hangoutLink ?? null,
+              batchId: cleanBatchId ?? null,
+              batchName:
+                batchName ??
+                (cleanBatchId
+                  ? (batchMap[Number(cleanBatchId)] ?? null)
+                  : null),
+            });
+          }
+        }
+      }
+
+      // Filter by status if requested
+      if (status) {
+        const lowerStatus = status.toLowerCase();
+        if (lowerStatus === 'viewed') {
+          allRecords = allRecords.filter((r) => r.status === 'Viewed');
+        } else if (lowerStatus === 'not viewed' || lowerStatus === 'absent') {
+          allRecords = allRecords.filter((r) => r.status === 'Not Viewed');
+        } else {
+          allRecords = allRecords.filter((r) =>
+            (r.status || '').toLowerCase().includes(lowerStatus),
+          );
+        }
+      }
+
+      const totalSubmittedStudents = allRecords.filter(
+        (r) => r.status === 'Viewed',
+      ).length;
+
+      // Sorting
       if (orderBy) {
         const dir =
           orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
@@ -3727,9 +3845,23 @@ Zuvy LMS Team
       }
 
       // Pagination
+      const parsedLimit =
+        limit !== undefined && limit !== null ? Number(limit) : undefined;
+      const parsedOffset =
+        offset !== undefined && offset !== null ? Number(offset) : 0;
+
       const safeLim =
-        typeof limit === 'number' && limit > 0 ? limit : undefined;
-      const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
+        typeof parsedLimit === 'number' &&
+        !isNaN(parsedLimit) &&
+        parsedLimit > 0
+          ? parsedLimit
+          : undefined;
+      const safeOff =
+        typeof parsedOffset === 'number' &&
+        !isNaN(parsedOffset) &&
+        parsedOffset >= 0
+          ? parsedOffset
+          : 0;
 
       const paginatedRecords = safeLim
         ? allRecords.slice(safeOff, safeOff + safeLim)
@@ -3741,7 +3873,7 @@ Zuvy LMS Team
         null,
         {
           data: paginatedRecords,
-          totalSubmittedStudents: allRecords.length,
+          totalSubmittedStudents,
           totalStudentsCount,
           totalPages,
         },
