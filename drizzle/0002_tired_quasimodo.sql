@@ -883,56 +883,6 @@ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollmen
 
 
 
-SELECT *
-FROM zuvy_open_ended_question_submission
-WHERE id = 123;
-
-
-SELECT id, user_id
-FROM zuvy_open_ended_question_submission
-ORDER BY id DESC
-LIMIT 10;
-
-
-
-
-SELECT id, user_id
-FROM zuvy_open_ended_question_submission
-WHERE user_id = 63619
-ORDER BY id DESC;
-
-
-
-
-SELECT id
-FROM zuvy_outsourse_assessments
-ORDER BY id DESC
-LIMIT 10;
-
-
-
-SELECT id, user_id, assessment_outsourse_id
-FROM zuvy_assessment_submission
-WHERE assessment_outsourse_id = 1985
-ORDER BY id DESC
-LIMIT 10
-
-
-
-SELECT id, name
-FROM zuvy_bootcamps
-WHERE name IS NOT NULL;
-
-
-
-
-SELECT id, name
-FROM zuvy_bootcamps
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
 
 
   UPDATE zuvy_bootcamps
@@ -942,35 +892,11 @@ WHERE name IS NOT NULL
   AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
 
 
-
-
-SELECT id, name
-FROM zuvy_course_modules
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
-
-
-
 UPDATE zuvy_course_modules
 SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
-
-
-
-SELECT id, title
-FROM zuvy_coding_questions
-WHERE title IS NOT NULL
-  AND title <> ''
-  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
-
-
 
 
 UPDATE zuvy_coding_questions
@@ -980,35 +906,10 @@ WHERE title IS NOT NULL
   AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
 
 
-
-SELECT id, title
-FROM zuvy_module_quiz
-WHERE title IS NOT NULL
-  AND title <> ''
-  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
-
-
-
-SELECT id, question
-FROM "zuvy_openEnded_questions"
-WHERE question IS NOT NULL
-  AND question <> ''
-  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));
-
-
-
 UPDATE "zuvy_openEnded_questions"
 SET question = UPPER(LEFT(question, 1)) || SUBSTRING(question FROM 2)
 WHERE question IS NOT NULL
   AND question <> ''
-
-
-  AND LEFT(question, 1) <> UPPER(LEFT(question, 1));SELECT id, title
-FROM zuvy_module_chapter
-WHERE title IS NOT NULL
-  AND title <> ''
-  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
-
 
 
 
@@ -1019,41 +920,11 @@ WHERE title IS NOT NULL
   AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
 
 
-
-SELECT bootcamp_id, COUNT(*) AS available_students
-FROM zuvy_batch_enrollments
-WHERE batch_id IS NULL
-GROUP BY bootcamp_id
-ORDER BY available_students DESC;
-
-
-SELECT id, name
-FROM zuvy_batches
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
-
 UPDATE zuvy_batches
 SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
-
-SELECT 
-    be.id,
-    be.user_id,
-    u.name
-FROM zuvy_batch_enrollments be
-JOIN users u ON u.id = be.user_id
-WHERE u.name IS NOT NULL
-  AND u.name <> ''
-  AND LEFT(u.name, 1) <> UPPER(LEFT(u.name, 1));
-
-
 
 
 UPDATE users u
@@ -1065,41 +936,6 @@ WHERE name IS NOT NULL
     SELECT 1
     FROM zuvy_batch_enrollments be
     WHERE be.user_id = u.id
-
-
-
-UPDATE users
-SET name = 'Priya Shukla'
-WHERE id = 63407
-  AND email = 'priyashukla@navgurukul.org';
-
-
-SELECT id, name
-FROM zuvy_user_roles
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-
-UPDATE zuvy_user_roles
-SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
-
-SELECT id, name
-FROM zuvy_user_roles
-ORDER BY id;
-
-
-
-
-
-UPDATE zuvy_user_roles
-SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
-WHERE name IS NOT NULL
-  AND name <> ''
-  AND LOWER(name) = 'super_admin';
 
 
 
