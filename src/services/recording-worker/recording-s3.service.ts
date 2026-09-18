@@ -32,8 +32,7 @@ export class RecordingS3Service {
 
   constructor() {
     this.region = process.env.S3_REGION || 'ap-south-1';
-    this.bucket =
-      process.env.S3_RECORDINGS_BUCKET_NAME || process.env.S3_BUCKET_NAME;
+    this.bucket = process.env.S3_RECORDINGS_BUCKET_NAME;
     this.s3 = new S3Client({
       region: this.region,
       credentials: {

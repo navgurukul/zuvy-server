@@ -212,14 +212,14 @@ export class RecordingWorkerService implements OnModuleInit {
         SELECT bootcamp_id, module_id, chapter_id FROM zuvy_sessions WHERE id = ${job.session_id}
       `);
       const { bootcamp_id, module_id, chapter_id } = sessionRow.rows[0] as any;
-      return `bootcamps/${bootcamp_id}/modules/${module_id}/chapters/${chapter_id}/recordings/${job.id}.mp4`;
+      return `Course Recordings/bootcamps/${bootcamp_id}/modules/${module_id}/chapters/${chapter_id}/recordings/${job.id}.mp4`;
     }
 
     const bookingRow = await db.execute(sql`
       SELECT organization_id FROM zuvy_mentor_slot_booking WHERE id = ${job.mentor_booking_id}
     `);
     const { organization_id } = bookingRow.rows[0] as any;
-    return `mentor-sessions/${organization_id}/${job.mentor_booking_id}/recordings/${job.id}.mp4`;
+    return `Mentors-Recordings/mentor-sessions/${organization_id}/${job.mentor_booking_id}/recordings/${job.id}.mp4`;
   }
 
   private getTypePriority(type = ''): number {
@@ -628,6 +628,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
       this.logJob('log', job, 'Processing recording job');
 
+      console.log(`Status: ${status}`);
       switch (status) {
         case 'PROCESSING_METADATA':
           await this.fetchZoomMetadata(job);
@@ -1624,10 +1625,15 @@ export class RecordingWorkerService implements OnModuleInit {
   private async uploadToS3(job: any) {
     if (!S3_DUAL_UPLOAD_ENABLED) {
       // Feature not turned on for this environment — behave exactly as
-      // before and go straight to the YouTube leg.
+      // before and go straight to the YouTube leg. Must land on a status
+      // pickJob() can still select ('S3_UPLOADED', not
+      // 'PROCESSING_YOUTUBE_UPLOAD' directly) — pickJob()'s WHERE only
+      // matches its allowlisted non-PROCESSING_* statuses and atomically
+      // advances them, so a row written straight into a PROCESSING_*
+      // status here would never be picked up again and would stall forever.
       await db.execute(sql`
         UPDATE ${sql.raw(this.getTableName(job))}
-        SET status = 'PROCESSING_YOUTUBE_UPLOAD', updated_at = NOW()
+        SET status = 'S3_UPLOADED', updated_at = NOW()
         WHERE id = ${job.id}
       `);
       return;
