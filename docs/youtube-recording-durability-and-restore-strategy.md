@@ -113,20 +113,25 @@ objects without a restore; only `GetObject` (body retrieval) requires one.
 ### 4.2 Key structure
 
 Recordings are organized to mirror the LMS hierarchy, by ID (not name —
-names change):
+names change), under two human-readable top-level prefixes matching the
+`zuvy-prod` bucket's console folders:
 
 ```
-bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4
-mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4
+Course Recordings/bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4
+Mentors-Recordings/mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4
 ```
 
+The `Course Recordings/` / `Mentors-Recordings/` prefixes are purely
+cosmetic (S3 has no real folders — these are just key prefixes matching
+what's visible in the console); the ID-based hierarchy underneath them is
+what actually matters and what the restore lookup uses.
 `zuvySessions.bootcampId`/`.moduleId`/`.chapterId` are `NOT NULL` — every
 class-session recording always has a home in the hierarchy. Mentor
 recordings have no bootcamp/module/chapter link at all
 (`zuvyMentorSlotBooking` only ties to `organizationId`), so they get their
-own top-level namespace instead of being forced into a hierarchy that
-doesn't apply to them. `recordingId` is the recording job's own row ID —
-already unique, already used for idempotency, no new ID scheme needed.
+own namespace instead of being forced into a hierarchy that doesn't apply
+to them. `recordingId` is the recording job's own row ID — already unique,
+already used for idempotency, no new ID scheme needed.
 
 This isn't just tidiness: a chapter ID is exactly what a restore request
 starts from (`LMS → Chapter ID → Recording ID → Glacier → Restore →
