@@ -107,3 +107,36 @@ export function generateMcqPrompt(
   """
   `.trim();
 }
+
+export function generateMcqPromptFromSpec(
+  spec: {
+    topic: string;
+    count: number;
+    topicDescription?: string;
+    subtopics?: string[];
+    learningObjectives?: string;
+    targetAudience?: string;
+    focusAreas?: string;
+    bloomsLevel?: string;
+    questionStyle?: string;
+    difficultyDistribution?: { easy?: number; medium?: number; hard?: number };
+    questionCounts?: { easy?: number; medium?: number; hard?: number };
+    batchQuestionCounts?: { easy?: number; medium?: number; hard?: number };
+  },
+  existingQuestionTexts: string[] = [],
+) {
+  return `Generate exactly ${spec.count} multiple-choice questions about "${spec.topic}".
+Topic description: ${spec.topicDescription ?? ''}
+Subtopics: ${JSON.stringify(spec.subtopics ?? [])}
+Learning objectives: ${spec.learningObjectives ?? ''}
+Target audience: ${spec.targetAudience ?? ''}
+Focus areas: ${spec.focusAreas ?? ''}
+Bloom's level: ${spec.bloomsLevel ?? ''}
+Question style: ${spec.questionStyle ?? ''}
+Difficulty distribution: ${JSON.stringify(spec.batchQuestionCounts ?? spec.questionCounts ?? spec.difficultyDistribution ?? {})}
+Avoid duplicating these existing questions: ${JSON.stringify(existingQuestionTexts)}
+
+Return JSON only in this exact shape:
+{"evaluations":[{"question":"...","topic":"${spec.topic}","difficulty":"easy|medium|hard","options":{"1":"...","2":"...","3":"...","4":"..."},"correctOption":1,"language":"..."}]}
+Rules: exactly ${spec.count} items, exactly four options per item, and correctOption must be 1, 2, 3, or 4.`.trim();
+}

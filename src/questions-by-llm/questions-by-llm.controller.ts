@@ -3,11 +3,11 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
-  Delete,
   ParseIntPipe,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,15 +16,94 @@ import {
   ApiBody,
   ApiParam,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { QuestionsByLlmService } from './questions-by-llm.service';
-import { CreateQuestionsByLlmDto } from './dto/create-questions-by-llm.dto';
-import { UpdateQuestionsByLlmDto } from './dto/update-questions-by-llm.dto';
+import {
+  CreateQuestionsByLlmDto,
+  GenerateQuestionsDto,
+} from './dto/create-questions-by-llm.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 
 @ApiTags('questions-by-llm')
-@Controller('questions-by-llm')
+@Controller('questions')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 export class QuestionsByLlmController {
   constructor(private readonly questionsByLlmService: QuestionsByLlmService) {}
+
+  @Post(':orgId/generate')
+  @ApiOperation({
+    summary: 'Enqueue question generation jobs for an org-aware topic set',
+  })
+  @TrackAction({
+    action: 'create_mcq',
+    resourceType: 'mcq',
+    permissionName: 'createMcq',
+    displayType: 'a generated question set',
+    getResourceName: (result, params) => {
+      const topicConfigurations = params?.topicConfigurations;
+      const firstTopic = Array.isArray(topicConfigurations)
+        ? topicConfigurations[0]?.topicName ||
+          topicConfigurations[0]?.topic ||
+          'Question set'
+        : 'Question set';
+      return result?.data?.topicName || firstTopic;
+    },
+  })
+  @ApiBody({
+    type: GenerateQuestionsDto,
+    examples: {
+      restApis: {
+        summary: 'REST APIs question generation sample',
+        value: {
+          topicName: 'REST APIs',
+          topicDescription: 'Async and Await calls',
+          subtopics: ['Async/Await', 'Error Handling'],
+          numberOfQuestions: 5,
+          learningObjectives: 'To understand asynchronous API calls',
+          targetAudience: 'Beginner students',
+          focusAreas: 'Focus on calling REST APIs',
+          bloomsLevel: 'apply',
+          questionStyle: 'practical',
+          difficultyDistribution: { easy: 11, medium: 44, hard: 45 },
+          questionCounts: { easy: 1, medium: 2, hard: 2 },
+          topics: { node: 5 },
+          topicConfigurations: [
+            {
+              topicName: 'REST APIs',
+              topicDescription: 'Async and Await calls',
+              subtopics: ['Async/Await', 'Error Handling'],
+              totalQuestions: 5,
+              questionCounts: { easy: 1, medium: 2, hard: 2 },
+            },
+          ],
+          levelId: null,
+        },
+      },
+    },
+  })
+  @ApiParam({
+    name: 'orgId',
+    type: Number,
+    description: 'Organization that owns the generated questions',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Question generation jobs enqueued. You are not blocked.',
+  })
+  generateQuestions(
+    @Param('orgId', ParseIntPipe) orgId: number,
+    @Body() payload: GenerateQuestionsDto,
+    @Req() req,
+  ) {
+    const userId = req.user?.[0]?.id ?? req.user?.id;
+    return this.questionsByLlmService.generateQuestions(payload, orgId, userId);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a QuestionsByLlm entry' })

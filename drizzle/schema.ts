@@ -4435,6 +4435,41 @@ export const aiAssessment = main.table("ai_assessment", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
 });
 
+export const zuvyQuestions = main.table('zuvy_questions', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('orgId').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  domainName: varchar('domain_name', { length: 255 }),
+  topicName: varchar('topic_name', { length: 255 }).notNull(),
+  topicDescription: text('topic_description').notNull(),
+  subtopics: jsonb('subtopics'),
+  learningObjectives: text('learning_objectives'),
+  targetAudience: varchar('target_audience', { length: 255 }),
+  focusAreas: text('focus_areas'),
+  bloomsLevel: varchar('blooms_level', { length: 50 }),
+  questionStyle: varchar('question_style', { length: 50 }),
+  question: text('question').notNull(),
+  difficulty: varchar('difficulty', { length: 50 }),
+  language: varchar('language', { length: 255 }),
+  options: jsonb('options').notNull(),
+  correctOption: integer('correct_option').notNull(),
+  difficultyDistribution: jsonb('difficulty_distribution'),
+  questionCounts: jsonb('question_counts'),
+  levelId: varchar('level_id', { length: 8 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const questionIndexOutbox = main.table('question_index_outbox', {
+  id: serial('id').primaryKey().notNull(),
+  questionId: integer('question_id').notNull(),
+  requestedByUserId: varchar('requested_by_user_id', { length: 255 }),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
 export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),

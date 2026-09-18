@@ -49,6 +49,7 @@ import { NewNotificationModule } from './controller/notification/notification.mo
 import { ZoomLicenseModule } from './controller/zoom-license/zoom-license.module';
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
+import { BullModule } from '@nestjs/bullmq';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -64,6 +65,13 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
       signOptions: { expiresIn: '24h' },
     }),
     ConfigModule.forRoot({ isGlobal: true }),
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_PORT || 6379),
+      },
+      prefix: process.env.BULLMQ_PREFIX || 'zuvy',
+    }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
