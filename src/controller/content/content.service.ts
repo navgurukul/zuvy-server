@@ -200,6 +200,9 @@ export class ContentService {
     typeId: number,
   ) {
     try {
+      module.name =
+        module.name?.charAt(0).toUpperCase() + module.name?.slice(1);
+
       const noOfModuleOfBootcamp = await db
         .select({ count: count(zuvyCourseModules.id) })
         .from(zuvyCourseModules)
@@ -529,7 +532,8 @@ export class ContentService {
 
       if (validationErrors.length === 0) {
         const quizzesData = quizzes.map((quiz) => ({
-          title: quiz.title, // Optional
+          // title: quiz.title, // Optional
+          title: quiz.title?.charAt(0).toUpperCase() + quiz.title?.slice(1),
           difficulty: quiz.difficulty,
           tagId: quiz.tagId,
           content: quiz.content, // Optional
@@ -550,7 +554,10 @@ export class ContentService {
           const variants = quizzes[quizIndex].variantMCQs?.map(
             (variant, index) => ({
               quizId,
-              question: variant.question,
+              // question: variant.question,
+              question:
+                variant.question?.charAt(0).toUpperCase() +
+                variant.question?.slice(1),
               options: variant.options,
               correctOption: variant.correctOption,
               variantNumber: index + 1,
@@ -615,6 +622,11 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto, orgId: number) {
     try {
       const questionsWithOrg = { ...questions, orgId };
+
+      questionsWithOrg.question =
+        questionsWithOrg.question?.charAt(0).toUpperCase() +
+        questionsWithOrg.question?.slice(1);
+
       const openEndedQuestions = await db
         .insert(zuvyOpenEndedQuestions)
         .values(questionsWithOrg)
@@ -705,13 +717,6 @@ export class ContentService {
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId));
 
-      // const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-      //   where: (outsourseAssessments, { eq }) =>
-      //     eq(outsourseAssessments.moduleId, module[0].id),
-      //   with: {
-      //     ModuleAssessment: true
-      //   },
-      // })
       if (module.length == 0) {
         throw new NotFoundException('Module not found!');
       }
@@ -1678,6 +1683,11 @@ export class ContentService {
           }
           if (editData.formQuestions.length == 0) {
             editData.formQuestions = null;
+          }
+
+          if (editData.title) {
+            editData.title =
+              editData.title.charAt(0).toUpperCase() + editData.title.slice(1);
           }
         }
         await db

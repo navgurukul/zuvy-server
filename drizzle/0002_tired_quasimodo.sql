@@ -883,36 +883,65 @@ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollmen
 
 
 
-SELECT *
-FROM zuvy_open_ended_question_submission
-WHERE id = 123;
 
 
-SELECT id, user_id
-FROM zuvy_open_ended_question_submission
-ORDER BY id DESC
-LIMIT 10;
+  UPDATE zuvy_bootcamps
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE zuvy_course_modules
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE zuvy_coding_questions
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+UPDATE "zuvy_openEnded_questions"
+SET question = UPPER(LEFT(question, 1)) || SUBSTRING(question FROM 2)
+WHERE question IS NOT NULL
+  AND question <> ''
+
+
+
+  UPDATE zuvy_module_chapter
+SET title = UPPER(LEFT(title, 1)) || SUBSTRING(title FROM 2)
+WHERE title IS NOT NULL
+  AND title <> ''
+  AND LEFT(title, 1) <> UPPER(LEFT(title, 1));
+
+
+UPDATE zuvy_batches
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1));
+
+
+UPDATE users u
+SET name = UPPER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> UPPER(LEFT(name, 1))
+  AND EXISTS (
+    SELECT 1
+    FROM zuvy_batch_enrollments be
+    WHERE be.user_id = u.id
 
 
 
 
-SELECT id, user_id
-FROM zuvy_open_ended_question_submission
-WHERE user_id = 63619
-ORDER BY id DESC;
-
-
-
-
-SELECT id
-FROM zuvy_outsourse_assessments
-ORDER BY id DESC
-LIMIT 10;
-
-
-
-SELECT id, user_id, assessment_outsourse_id
-FROM zuvy_assessment_submission
-WHERE assessment_outsourse_id = 1985
-ORDER BY id DESC
-LIMIT 10
+UPDATE zuvy_user_roles
+SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
+WHERE name IS NOT NULL
+  AND name <> ''
+  AND LEFT(name, 1) <> LOWER(LEFT(name, 1));
