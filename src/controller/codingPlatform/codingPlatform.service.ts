@@ -542,6 +542,11 @@ export class CodingPlatformService {
     const { testCases, ...questionData } = createCodingQuestionDto;
     questionData['usage'] = 0;
     questionData['orgId'] = orgId;
+
+    questionData.title =
+      questionData.title?.charAt(0).toUpperCase() +
+      questionData.title?.slice(1);
+
     try {
       const question: any = await db
         .insert(zuvyCodingQuestions)

@@ -910,7 +910,8 @@ export class SubmissionController {
     summary: 'Get chapter tracking data for Live sessions inside modules',
   })
   async getLiveChapterSubmissions(
-    @Query('bootcamp_id') bootcampId: number,
+    @Query('bootcamp_id') bootcamp_id: number,
+    @Query('bootcampId') bootcampId: number,
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -921,12 +922,13 @@ export class SubmissionController {
   ) {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
+      const effectiveBootcampId = bootcamp_id ?? bootcampId;
       const roleName = req.user[0]?.roles;
       const orgId = req.user[0]?.orgId;
       const [err, result] =
         await this.submissionService.getLiveChapterSubmissions(
           roleName,
-          bootcampId,
+          effectiveBootcampId,
           searchTerm,
           limit,
           offset,
@@ -964,7 +966,7 @@ export class SubmissionController {
   })
   @ApiQuery({
     name: 'bootcampId',
-    required: true,
+    required: false,
     type: Number,
     description: 'Filter students by bootcamp id',
   })
@@ -990,7 +992,7 @@ export class SubmissionController {
     name: 'status',
     required: false,
     type: String,
-    description: 'Filter by attendance status (present or absent)',
+    description: 'Filter by recording view status (Viewed or Not Viewed)',
   })
   @ApiQuery({
     name: 'batchId',
@@ -1022,8 +1024,9 @@ export class SubmissionController {
   })
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
-    @Res() res?: any,
-    @Query('bootcampId') bootcampId: number,
+    @Res() res: any,
+    @Query('bootcampId') bootcampId?: number,
+    @Query('bootcamp_id') bootcamp_id?: number,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('name') name?: string,
@@ -1036,10 +1039,11 @@ export class SubmissionController {
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
     try {
+      const effectiveBootcampId = bootcampId ?? bootcamp_id;
       const [err, result] =
         await this.submissionService.getLiveChapterStudentSubmission(
           moduleChapterId,
-          bootcampId,
+          effectiveBootcampId,
           limit,
           offset,
           name,

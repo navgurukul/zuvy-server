@@ -7,6 +7,8 @@ import {
   users,
   zuvyStudentAttendance,
   zuvyOutsourseAssessments,
+  zuvyMentorSlotBooking,
+  zuvyMentorSlotAvailability,
 } from '../../drizzle/schema';
 import { db } from '../db/index';
 import {
@@ -74,6 +76,80 @@ export class ScheduleService {
       this.logger.error(
         `Failed to activate due Zoom sessions: ${error.message}`,
       );
+    }
+  }
+
+  // Fallback safety net only — the primary correction is reactive, via the
+  // Zoom `meeting.updated` webhook (see ZoomWebhookController), which fires
+  // when a host edits a meeting's settings directly. This cron only catches
+  // sessions whose webhook delivery was missed, scoped to a narrow 2-minute
+  // post-start window (see reaffirmWaitingRoomPolicyForActiveSessions) so it
+  // re-checks each session once or twice, not on every tick for its
+  // duration, and only re-applies the cheap meeting-level setting — never
+  // the host's account-wide settings.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async reaffirmZoomWaitingRoomPolicy() {
+    try {
+      await this.classesService.reaffirmWaitingRoomPolicyForActiveSessions();
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to reaffirm Zoom waiting room policy: ${error.message}`,
+      );
+    }
+    try {
+      await this.reaffirmMentorSessionWaitingRoomPolicy();
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to reaffirm Zoom waiting room policy for mentor sessions: ${error.message}`,
+      );
+    }
+  }
+
+  // Mentor-slot meetings, unlike classes, are created immediately at booking
+  // time rather than deferred to a "pending" placeholder until start —
+  // meaning they can sit for hours/days with whatever settings Zoom actually
+  // applied at creation before anyone touches them. If that initial state was
+  // ever wrong (an account-side lock, a transient API issue, etc.), no
+  // `meeting.updated` webhook would ever fire to trigger a correction, since
+  // nothing "changed" — this periodic check doesn't depend on a change event,
+  // it just reads current state and corrects if needed.
+  private async reaffirmMentorSessionWaitingRoomPolicy() {
+    const nowIso = new Date().toISOString();
+    const windowStartIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+
+    const dueBookings = await db
+      .select({
+        id: zuvyMentorSlotBooking.id,
+        zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .innerJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotBooking.slotAvailabilityId,
+          zuvyMentorSlotAvailability.id,
+        ),
+      )
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.isZoomMeet, true),
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} <= ${nowIso}`,
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > ${windowStartIso}`,
+          sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${nowIso}`,
+        ),
+      );
+
+    for (const booking of dueBookings) {
+      if (!booking.zoomMeetingId) continue;
+      try {
+        await this.zoomService.reaffirmMeetingWaitingRoomSettings(
+          booking.zoomMeetingId,
+        );
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to reaffirm waiting room policy for mentor booking ${booking.id}: ${error.message}`,
+        );
+      }
     }
   }
 
