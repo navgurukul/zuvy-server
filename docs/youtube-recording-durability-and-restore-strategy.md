@@ -88,6 +88,70 @@ Implemented in `recording-worker.service.ts` / `recording-s3.service.ts`
 - `auditS3Coverage()` runs hourly, flags any `COMPLETED` recording missing a
   verified S3 copy — closes the "silent backup failure" gap.
 
+**Bug found and fixed during `zuvy-prod` connection testing (2026-09-18):**
+`uploadMultipart()` in `recording-s3.service.ts` created the multipart upload
+with `ChecksumAlgorithm: 'SHA256'`, which makes S3 require a per-part
+`ChecksumSHA256` on every entry passed to `CompleteMultipartUploadCommand` —
+but `UploadedPart` only tracked `{PartNumber, ETag}`, so completion always
+failed with `InvalidRequest: ... missing for part 1`. This meant **every
+recording large enough to need multipart upload (any merged file ≥ 100MB —
+the common case) would fail its S3 leg every single time**, silently retried
+via `markFailed()` and never actually succeeding. Confirmed live: failed
+against `zuvy-prod` before the fix, passed a real 3-part multipart upload
+after it. Fixed by capturing `ChecksumSHA256` from both `UploadPartCommand`'s
+response and, for a resumed upload, `ListPartsCommand`'s per-part results —
+a part missing its checksum is now treated as not-yet-usable and re-sent
+rather than resumed.
+
+**Second bug found and fixed the same way (2026-09-21):** once `S3_DUAL_UPLOAD_ENABLED`
+was actually live against a real recording (session 2217 / job 2096), every job hit:
+
+```
+error: new row for relation "zuvy_session_recordings" violates check constraint "chk_recording_status"
+```
+
+`chk_recording_status` (`main.zuvy_session_recordings`) was defined before this feature
+existed and only allowed the original state list; the S3 pipeline introduces three new
+`status` values (`S3_UPLOADED`, `PROCESSING_YOUTUBE_UPLOAD`, `YOUTUBE_PROCESSING`) that
+migration `0041` never added to it — migration `0041`/`0042` only ever ran
+`ALTER TABLE ... ADD COLUMN`, never touched this constraint. **Every job would have hit
+this the moment it reached the S3 leg**, regardless of anything else being configured
+correctly. Fixed via migration `0043_fix_recording_status_check_constraint.sql`
+(drop + recreate the constraint with the three values added — additive only, no data
+touched). Confirmed via `SHOW search_path` that only the `main` schema copy of this table
+is live for this app; `stage_template.zuvy_session_recordings` carries the same stale
+constraint but is on a schema this app never queries, so it was left alone.
+`zuvy_mentor_session_recordings` has no equivalent CHECK constraint at all, so mentor
+recordings were never affected by this specific bug.
+
+**Third and fourth bugs, same day:** migration `0043` above missed a fourth new status
+value — `PROCESSING_S3_UPLOAD`, the transient state `pickJob()` sets while moving a
+`MERGED` row forward — so the identical constraint violation recurred on the very next
+test (session 2218 / job 2097), immediately after "Merge completed and verified."
+Fixed via migration `0044_add_missing_processing_s3_upload_status.sql`. Separately,
+`auditS3Coverage()` unconditionally selected both `session_id` and `mentor_booking_id`
+from whichever table it was auditing, but those columns are mutually exclusive between
+`zuvy_session_recordings` and `zuvy_mentor_session_recordings` — it failed every run
+with `column "mentor_booking_id" does not exist`. Fixed by selecting only the owner
+column that actually exists on each table.
+
+**Fifth bug, same investigation — the one that actually explains the inconsistent
+per-job behavior:** `RecordingWorkerService` and `RecordingWorkerTriggerService` were
+listed directly in `AppModule`'s own `providers` array _in addition to_ being provided
+and exported by `RecordingWorkerModule`, which `AppModule` also imports. NestJS doesn't
+deduplicate a class across module boundaries just because one module already exports
+it — redeclaring it in a second module's `providers` creates a second, independent
+singleton instance. Since `RecordingWorkerService` has an `onModuleInit()` with real
+side effects (subscribing to the trigger observable, and — as of this investigation —
+logging startup config), this meant **two separate instances of the worker's polling
+loop were running concurrently inside the same single process**, both hitting
+`pickJob()`'s `FOR UPDATE SKIP LOCKED` query independently. This is a strong candidate
+for why individual jobs behaved inconsistently even after every other fix landed and a
+single clean process was confirmed running (confirmed via a literal duplicate
+`Recording worker config: ...` log line at the identical timestamp). Fixed by removing
+the redundant `providers` entries from `app.module.ts` — `RecordingWorkerModule`'s
+export is now the only source of these two services.
+
 This already satisfies the core principle end to end for the upload path.
 Everything below is about (a) making the S3 copy cheaper to hold at scale,
 and (b) closing the loop when YouTube later loses a video that was fine at
@@ -113,18 +177,22 @@ objects without a restore; only `GetObject` (body retrieval) requires one.
 ### 4.2 Key structure
 
 Recordings are organized to mirror the LMS hierarchy, by ID (not name —
-names change), under two human-readable top-level prefixes matching the
-`zuvy-prod` bucket's console folders:
+names change):
 
 ```
-Course Recordings/bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4
-Mentors-Recordings/mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4
+bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4
+mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4
 ```
 
-The `Course Recordings/` / `Mentors-Recordings/` prefixes are purely
-cosmetic (S3 has no real folders — these are just key prefixes matching
-what's visible in the console); the ID-based hierarchy underneath them is
-what actually matters and what the restore lookup uses.
+(An earlier revision of this key structure nested these under top-level
+`Course Recordings/` / `Mentors-Recordings/` prefixes to match folders
+manually created in the `zuvy-prod` console. That's been reverted — the
+code now writes the plain, unprefixed paths above. S3 has no real folders
+regardless — a "folder" in the console is just a key prefix — so this is a
+naming choice, not a structural one; if the two console folders from that
+earlier attempt are still sitting in the bucket, they're empty and unused
+and can be deleted.)
+
 `zuvySessions.bootcampId`/`.moduleId`/`.chapterId` are `NOT NULL` — every
 class-session recording always has a home in the hierarchy. Mentor
 recordings have no bootcamp/module/chapter link at all

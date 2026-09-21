@@ -21,7 +21,16 @@ import {
 const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024; // 100MB
 const MULTIPART_PART_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
 
-export type UploadedPart = { PartNumber: number; ETag: string };
+// ChecksumSHA256 is required, not optional: CreateMultipartUploadCommand is
+// called with ChecksumAlgorithm: 'SHA256' below, which makes S3 reject
+// CompleteMultipartUploadCommand unless every part in its Parts array carries
+// its own ChecksumSHA256 (confirmed live: "InvalidRequest - ... missing for
+// part 1" otherwise).
+export type UploadedPart = {
+  PartNumber: number;
+  ETag: string;
+  ChecksumSHA256: string;
+};
 
 @Injectable()
 export class RecordingS3Service {
@@ -121,10 +130,15 @@ export class RecordingS3Service {
           }),
         );
         for (const p of listed.Parts || []) {
-          if (p.PartNumber != null && p.ETag) {
+          // A part listed without its own checksum can't be completed later
+          // (see the type comment above) — treat it as not-yet-usable so the
+          // upload loop below re-sends it rather than resuming with a part
+          // CompleteMultipartUpload would reject.
+          if (p.PartNumber != null && p.ETag && p.ChecksumSHA256) {
             completedParts.set(p.PartNumber, {
               PartNumber: p.PartNumber,
               ETag: p.ETag,
+              ChecksumSHA256: p.ChecksumSHA256,
             });
           }
         }
@@ -182,6 +196,7 @@ export class RecordingS3Service {
       completedParts.set(partNumber, {
         PartNumber: partNumber,
         ETag: uploaded.ETag,
+        ChecksumSHA256: uploaded.ChecksumSHA256 || partChecksum,
       });
 
       if (onProgress) {

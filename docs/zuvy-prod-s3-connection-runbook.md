@@ -165,10 +165,10 @@ Once `S3_DUAL_UPLOAD_ENABLED=true` and the process has been rebuilt/restarted:
    ORDER BY id DESC LIMIT 5;
    ```
    Expect: `s3_verified = TRUE`, `s3_bucket = 'zuvy-prod'`, `s3_key` starting with
-   `Course Recordings/bootcamps/...` (or `Mentors-Recordings/mentor-sessions/...` for a mentor
+   `bootcamps/...` (or `mentor-sessions/...` for a mentor
    booking), and `status` eventually reaching `COMPLETED` once the YouTube leg also finishes.
 3. Confirm in the **S3 console**: the object actually appears under
-   `Course Recordings/bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{id}.mp4`
+   `bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{id}.mp4`
    with **Storage class = Glacier Flexible Retrieval**.
 4. Confirm YouTube still received the video as before (`drive_link` populated, plays back in the
    LMS) — this pipeline shouldn't change YouTube-side behavior at all, only add the S3 leg ahead of

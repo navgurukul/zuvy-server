@@ -256,8 +256,11 @@ Once `S3_DUAL_UPLOAD_ENABLED="true"` and the app has been restarted:
    ```
    You want to see `s3_verified = TRUE` and `s3_bucket = 'zuvy-prod'` for the new recording.
 3. Check the **S3 console** → `zuvy-prod` → you should see the actual file appear under
-   `Course Recordings/bootcamps/.../recordings/....mp4` (or `Mentors-Recordings/...` for a mentor
-   session), with **Storage class** showing as **Glacier Flexible Retrieval**.
+   `bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4`
+   (or `mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4` for a mentor
+   session), with **Storage class** showing as **Glacier Flexible Retrieval**. The exact path is
+   also readable straight from the database — `SELECT s3_key FROM zuvy_session_recordings WHERE id = <job id>`
+   — no need to guess or click through folders.
 4. Double-check the recording still plays normally in the LMS through YouTube — this feature should
    only _add_ the S3 backup step, never change how playback works.
 

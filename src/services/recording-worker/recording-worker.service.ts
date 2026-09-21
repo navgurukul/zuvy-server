@@ -78,6 +78,15 @@ export class RecordingWorkerService implements OnModuleInit {
   private isWorkerRunning = false;
 
   onModuleInit() {
+    // Flags below are read into module-level consts once, at process start —
+    // NOT re-read per job. Editing .env has no effect on an already-running
+    // process; this line exists so that fact is visible in startup logs
+    // instead of silently causing a job to skip a step with no error (see
+    // the durability-strategy doc's investigation of session 2215 / job
+    // 2094, where exactly this caused the S3 leg to be silently skipped).
+    this.logger.log(
+      `Recording worker config: RECORDING_WORKER_ENABLED=${RECORDING_WORKER_ENABLED} YOUTUBE_UPLOAD_ENABLED=${YOUTUBE_UPLOAD_ENABLED} S3_DUAL_UPLOAD_ENABLED=${S3_DUAL_UPLOAD_ENABLED} ZOOM_DELETE_AFTER_S3_ENABLED=${ZOOM_DELETE_AFTER_S3_ENABLED} RECORDING_HEALTH_CHECK_ENABLED=${RECORDING_HEALTH_CHECK_ENABLED}`,
+    );
     this.trigger.onTrigger().subscribe(async () => {
       try {
         this.logger.log('⚡ Immediate worker execution triggered by webhook');
@@ -212,14 +221,14 @@ export class RecordingWorkerService implements OnModuleInit {
         SELECT bootcamp_id, module_id, chapter_id FROM zuvy_sessions WHERE id = ${job.session_id}
       `);
       const { bootcamp_id, module_id, chapter_id } = sessionRow.rows[0] as any;
-      return `Course Recordings/bootcamps/${bootcamp_id}/modules/${module_id}/chapters/${chapter_id}/recordings/${job.id}.mp4`;
+      return `bootcamps/${bootcamp_id}/modules/${module_id}/chapters/${chapter_id}/recordings/${job.id}.mp4`;
     }
 
     const bookingRow = await db.execute(sql`
       SELECT organization_id FROM zuvy_mentor_slot_booking WHERE id = ${job.mentor_booking_id}
     `);
     const { organization_id } = bookingRow.rows[0] as any;
-    return `Mentors-Recordings/mentor-sessions/${organization_id}/${job.mentor_booking_id}/recordings/${job.id}.mp4`;
+    return `mentor-sessions/${organization_id}/${job.mentor_booking_id}/recordings/${job.id}.mp4`;
   }
 
   private getTypePriority(type = ''): number {
@@ -545,7 +554,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
     // First try session recordings
-    console.log('pickJob:-Picking a recording job');
+    // console.log('pickJob:-Picking a recording job');
     let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
@@ -2154,12 +2163,20 @@ export class RecordingWorkerService implements OnModuleInit {
   // PERIODIC AUDIT: confirm every COMPLETED job has a verified S3 copy
   // =====================================================
   private async auditS3Coverage() {
-    for (const tableName of [
-      'zuvy_session_recordings',
-      'zuvy_mentor_session_recordings',
+    // session_id and mentor_booking_id are mutually exclusive between these
+    // two tables (each only has its own owner column) — selecting both
+    // unconditionally on either table fails with "column ... does not
+    // exist" (confirmed live, 2026-09-21). Select only the column that
+    // actually exists on each table.
+    for (const { tableName, ownerColumn } of [
+      { tableName: 'zuvy_session_recordings', ownerColumn: 'session_id' },
+      {
+        tableName: 'zuvy_mentor_session_recordings',
+        ownerColumn: 'mentor_booking_id',
+      },
     ]) {
       const missing = await db.execute(sql`
-        SELECT id, session_id, mentor_booking_id, s3_key
+        SELECT id, ${sql.raw(ownerColumn)} AS owner_id, s3_key
         FROM ${sql.raw(tableName)}
         WHERE status = 'COMPLETED' AND (s3_verified IS NOT TRUE)
         LIMIT 500
