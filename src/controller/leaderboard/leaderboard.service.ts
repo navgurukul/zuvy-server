@@ -1814,46 +1814,13 @@ export class LeaderboardService {
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
       const totalLearners = Number(totalLearnersResult[0]?.count || 0);
 
-      // const allLearners = await db
-      //   .select({
-      //     learnerId: zuvyBatchEnrollments.userId,
-      //     name: users.name,
-      //     totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
-      //   })
-      //   .from(zuvyBatchEnrollments)
-      //   .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
-      //   .leftJoin(
-      //     zuvyLearnerLeaderboard,
-      //     and(
-      //       eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
-      //       eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
-      //     ),
-      //   )
-      //   .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
-      //   .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
-
-      // const learnersWithRanks = allLearners.map((learner, index) => ({
-      //   learnerId: Number(learner.learnerId),
-      //   name: learner.name,
-      //   totalPoints: learner.totalPoints,
-      //   rank: index + 1,
-      // }));
-
-      // // Get top learners based on limit
-      // const topLearners = learnersWithRanks.slice(0, limit);
-
-      // // Find current learner in all learners
-      // const currentLearnerData = learnersWithRanks.find(
-      //   (learner) => Number(learner.learnerId) === normalizedLearnerId,
-      // );
-
       const rankedLearners = db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
           totalPoints: sql<number>`
-  COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)
-`.as('total_points'),
+         COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)
+        `.as('total_points'),
           rank: sql<number>`
             ROW_NUMBER() OVER (
               ORDER BY COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC

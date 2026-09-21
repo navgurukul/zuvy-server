@@ -920,48 +920,6 @@ Team Zuvy`;
         )
         .groupBy(zuvyAssessmentSubmission.userId);
 
-      // const batchEnrollConditions: SQL[] = [
-      //   eq(zuvyBatchEnrollments.userId, zuvyAssessmentSubmission.userId),
-      //   eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-      //   isNotNull(zuvyBatchEnrollments.batchId),
-      // ];
-      // if (batchId && !isNaN(batchId)) {
-      //   batchEnrollConditions.push(eq(zuvyBatchEnrollments.batchId, batchId));
-      // }
-      // const totalCountQualifiedCondition =
-      //   qualified === 'true'
-      //     ? eq(zuvyAssessmentSubmission.isPassed, true)
-      //     : qualified === 'false'
-      //       ? or(
-      //           eq(zuvyAssessmentSubmission.isPassed, false),
-      //           isNull(zuvyAssessmentSubmission.isPassed),
-      //         )
-      //       : undefined;
-
-      // const totalCountResult = await db
-      //   .select({ value: count() })
-      //   .from(zuvyAssessmentSubmission)
-      //   .where(
-      //     and(
-      //       eq(zuvyAssessmentSubmission.assessmentOutsourseId, assessmentID),
-      //       exists(
-      //         db
-      //           .select({ _: zuvyBatchEnrollments.userId })
-      //           .from(zuvyBatchEnrollments)
-      //           .where(and(...batchEnrollConditions)),
-      //       ),
-      //       ...(totalCountQualifiedCondition
-      //         ? [totalCountQualifiedCondition]
-      //         : []),
-      //       eq(
-      //         zuvyAssessmentSubmission.id,
-      //         sql`(SELECT MAX(id) FROM ${zuvyAssessmentSubmission} WHERE assessment_outsourse_id = ${assessmentID} AND user_id = ${zuvyAssessmentSubmission.userId})`,
-      //       ),
-      //     ),
-      //   );
-      // totalCountResult holds count from DB if needed; we'll compute final totalCount from combinedData below
-      // const totalCount = totalCountResult[0]?.value;
-
       const reattemptCountMap = new Map(
         userReattemptCounts.map((entry) => [
           Number(entry.userId),
