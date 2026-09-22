@@ -218,18 +218,29 @@ export class ScheduleService {
         if (sessionsMissingAttendance.length) {
           for (const session of sessionsMissingAttendance) {
             if (!session.zoomMeetingId) continue;
-            await db.execute(sql`
-              INSERT INTO zuvy_session_attendance_jobs (
-                session_id, zoom_meeting_id, batch_id, bootcamp_id
-              )
-              SELECT ${session.id}, ${session.zoomMeetingId}, ${session.batchId}, ${session.bootcampId}
-              WHERE NOT EXISTS (
-                SELECT 1
-                FROM zuvy_session_attendance_jobs
-                WHERE session_id = ${session.id}
-                  AND zoom_meeting_id = ${session.zoomMeetingId}
-              )
-            `);
+            try {
+              // session_id is derived from a live subquery (not the JS-held
+              // literal) so this becomes a no-op instead of a FK violation
+              // if the session was deleted between the SELECT above and here.
+              await db.execute(sql`
+                INSERT INTO zuvy_session_attendance_jobs (
+                  session_id, zoom_meeting_id, batch_id, bootcamp_id
+                )
+                SELECT s.id, ${session.zoomMeetingId}, ${session.batchId}, ${session.bootcampId}
+                FROM zuvy_sessions s
+                WHERE s.id = ${session.id}
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM zuvy_session_attendance_jobs
+                    WHERE session_id = s.id
+                      AND zoom_meeting_id = ${session.zoomMeetingId}
+                  )
+              `);
+            } catch (error: any) {
+              this.logger.warn(
+                `Failed to discover attendance job for session ${session.id}: ${error.message}`,
+              );
+            }
           }
           this.attendanceWorkerTrigger.triggerNow();
           this.logger.log(
@@ -275,16 +286,27 @@ export class ScheduleService {
           );
           if (!session?.zoomMeetingId) continue;
 
-          await db.execute(sql`
-            INSERT INTO zuvy_session_recordings (session_id, zoom_meeting_id)
-            SELECT ${session.id}, ${session.zoomMeetingId}
-            WHERE NOT EXISTS (
-              SELECT 1
-              FROM zuvy_session_recordings
-              WHERE session_id = ${session.id}
-                AND zoom_meeting_id = ${session.zoomMeetingId}
-            )
-          `);
+          try {
+            // session_id is derived from a live subquery (not the JS-held
+            // literal) so this becomes a no-op instead of a FK violation
+            // if the session was deleted between the SELECT above and here.
+            await db.execute(sql`
+              INSERT INTO zuvy_session_recordings (session_id, zoom_meeting_id)
+              SELECT s.id, ${session.zoomMeetingId}
+              FROM zuvy_sessions s
+              WHERE s.id = ${session.id}
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM zuvy_session_recordings
+                  WHERE session_id = s.id
+                    AND zoom_meeting_id = ${session.zoomMeetingId}
+                )
+            `);
+          } catch (error: any) {
+            this.logger.warn(
+              `Failed to discover recording job for session ${session.id}: ${error.message}`,
+            );
+          }
         }
         this.logger.log(
           `Discovered ${sessionS3linkNullArray.length} recording jobs`,
