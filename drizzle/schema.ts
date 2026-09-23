@@ -4470,6 +4470,16 @@ export const questionIndexOutbox = main.table('question_index_outbox', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+export const topic = main.table('topic', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  subtopic: jsonb('subtopic'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
 export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),

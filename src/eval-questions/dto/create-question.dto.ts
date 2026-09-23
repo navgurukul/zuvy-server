@@ -1,0 +1,85 @@
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+
+export class CreateQuestionDto {
+  @IsOptional()
+  @IsInt()
+  orgId?: number;
+
+  @IsString()
+  topicName: string;
+
+  @IsString()
+  topicDescription: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  subtopics?: string[];
+
+  @IsString()
+  question: string;
+
+  @IsOptional()
+  @IsString()
+  difficulty?: string;
+
+  @IsOptional()
+  @IsString()
+  language?: string;
+
+  @IsObject()
+  options: Record<string, string>;
+
+  @IsInt()
+  @Min(1)
+  correctOption: number;
+
+  @IsOptional()
+  @IsString()
+  learningObjectives?: string;
+
+  @IsOptional()
+  @IsString()
+  targetAudience?: string;
+
+  @IsOptional()
+  @IsString()
+  focusAreas?: string;
+
+  @IsOptional()
+  @IsString()
+  bloomsLevel?: string;
+
+  @IsOptional()
+  @IsString()
+  questionStyle?: string;
+
+  @IsOptional()
+  @IsObject()
+  difficultyDistribution?: {
+    easy?: number;
+    medium?: number;
+    hard?: number;
+  };
+
+  @IsOptional()
+  @IsObject()
+  questionCounts?: {
+    easy?: number;
+    medium?: number;
+    hard?: number;
+  };
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['A+', 'A', 'B', 'C', 'D', 'E'])
+  levelId?: 'A+' | 'A' | 'B' | 'C' | 'D' | 'E' | null;
+}

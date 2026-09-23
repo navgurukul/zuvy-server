@@ -8,7 +8,6 @@ import { QuestionEvaluationService } from './question-evaluation.service';
 import { QuestionsEvaluationController } from './question-evaluation.controller';
 import { RbacModule } from 'src/rbac/rbac.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
-import { QuestionsGenerationProcessor } from './questions-generation.processor';
 import { QuestionIndexProcessor } from './question-index.processor';
 
 @Module({
@@ -25,7 +24,6 @@ import { QuestionIndexProcessor } from './question-index.processor';
   controllers: [QuestionsByLlmController, QuestionsEvaluationController],
   providers: [
     QuestionsByLlmService,
-    QuestionsGenerationProcessor,
     QuestionIndexProcessor,
     QuestionEvaluationService,
   ],
