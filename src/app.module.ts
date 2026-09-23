@@ -30,6 +30,7 @@ import { RolesModule } from './roles/roles.module';
 import { UserTokensModule } from './user-tokens/user-tokens.module';
 import { LlmModule } from './llm/llm.module';
 import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
+import { QuestionsModule } from './eval-questions/questions.module';
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
 import { OrgModule } from './org/org.module';
@@ -92,6 +93,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     UserTokensModule,
     LlmModule,
     QuestionsByLlmModule,
+    QuestionsModule,
     LevelModule,
     AiAssessmentModule,
     OrgModule,
