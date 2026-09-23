@@ -105,9 +105,12 @@ export class TrackingController {
   })
   @ApiBearerAuth('JWT-auth')
   async recomputeAttendance(@Param('batchId') batchId: number, @Req() req) {
-    if (req.user.role !== 'admin') {
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
       throw new ForbiddenException('Only admin can perform this action');
     }
+
     const res = await this.TrackingService.recomputeBatchAttendancePercentages(
       Number(batchId),
     );
@@ -438,8 +441,19 @@ export class TrackingController {
     @Req() req,
     @Query('studentId') userId: number,
   ) {
-    if (!userId) {
-      userId = req.user[0].id;
+    // if (!userId) {
+    //   userId = req.user[0].id;
+    // }
+
+    const loggedInUserId = req.user[0].id;
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
+      userId = loggedInUserId;
+    } else if (userId && !Number.isNaN(Number(userId))) {
+      userId = Number(userId);
+    } else {
+      userId = undefined;
     }
     const res = await this.TrackingService.getAssessmentSubmission(
       submissionId,
@@ -489,11 +503,14 @@ export class TrackingController {
   @ApiBearerAuth('JWT-auth')
   async getProperting(
     @Param('assessment_submission_id') assessmentSubmissionId: number,
+    @Req() req,
     @Res() res,
   ) {
     try {
       let [err, success] = await this.TrackingService.getProperting(
         assessmentSubmissionId,
+        req.user[0].id,
+        req.user[0].roles,
       );
       if (err) {
         return ErrorResponse.BadRequestException(

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   HttpException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
@@ -1541,7 +1542,8 @@ export class LeaderboardService {
             eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for('update');
 
       const previousPoints = existingChapterPoint[0]?.points ?? 0;
       const pointsDelta = points - previousPoints;
@@ -1811,11 +1813,19 @@ export class LeaderboardService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
       const totalLearners = Number(totalLearnersResult[0]?.count || 0);
-      const allLearners = await db
+
+      const rankedLearners = db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
-          totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
+          totalPoints: sql<number>`
+         COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)
+        `.as('total_points'),
+          rank: sql<number>`
+            ROW_NUMBER() OVER (
+              ORDER BY COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC
+            )
+          `.as('rank'),
         })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
@@ -1827,22 +1837,45 @@ export class LeaderboardService {
           ),
         )
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
-        .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
+        .as('ranked_learners');
 
-      const learnersWithRanks = allLearners.map((learner, index) => ({
+      const topLearnersResult = await db
+        .select({
+          learnerId: rankedLearners.learnerId,
+          name: rankedLearners.name,
+          totalPoints: rankedLearners.totalPoints,
+          rank: rankedLearners.rank,
+        })
+        .from(rankedLearners)
+        .orderBy(rankedLearners.rank)
+        .limit(limit);
+
+      const topLearners = topLearnersResult.map((learner) => ({
         learnerId: Number(learner.learnerId),
-        name: learner.name,
-        totalPoints: learner.totalPoints,
-        rank: index + 1,
+        name: learner.name || '',
+        totalPoints: Number(learner.totalPoints),
+        rank: Number(learner.rank),
       }));
 
-      // Get top learners based on limit
-      const topLearners = learnersWithRanks.slice(0, limit);
+      const currentLearnerResult = await db
+        .select({
+          learnerId: rankedLearners.learnerId,
+          name: rankedLearners.name,
+          totalPoints: rankedLearners.totalPoints,
+          rank: rankedLearners.rank,
+        })
+        .from(rankedLearners)
+        .where(eq(rankedLearners.learnerId, BigInt(normalizedLearnerId)))
+        .limit(1);
 
-      // Find current learner in all learners
-      const currentLearnerData = learnersWithRanks.find(
-        (learner) => Number(learner.learnerId) === normalizedLearnerId,
-      );
+      const currentLearnerData = currentLearnerResult[0]
+        ? {
+            learnerId: Number(currentLearnerResult[0].learnerId),
+            name: currentLearnerResult[0].name || '',
+            totalPoints: Number(currentLearnerResult[0].totalPoints),
+            rank: Number(currentLearnerResult[0].rank),
+          }
+        : null;
 
       if (currentLearnerData) {
         return {
@@ -1866,11 +1899,9 @@ export class LeaderboardService {
       if (error instanceof HttpException) {
         throw error;
       }
-      return {
-        leaderboard: [],
-        currentLearner: null,
-        totalLearners: 0,
-      };
+      throw new InternalServerErrorException(
+        'Failed to fetch student leaderboard',
+      );
     }
   }
 }

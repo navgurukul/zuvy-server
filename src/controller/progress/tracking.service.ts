@@ -63,7 +63,8 @@ let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class TrackingService {
-  logger: any;
+  // logger: any;
+  private readonly logger = new Logger(TrackingService.name);
   constructor(
     private contentService: ContentService,
     private classesService: ClassesService,
@@ -796,7 +797,7 @@ export class TrackingService {
 
           if (
             module.moduleTracking.length > 0 &&
-            calculatedProgress !== module.moduleTracking[0].progres
+            calculatedProgress !== module.moduleTracking[0].progress
           ) {
             return {
               id: module.moduleTracking[0].id,
@@ -1682,7 +1683,6 @@ export class TrackingService {
                     Object.values(chapterDetails[0].quizQuestions),
                   ),
                 );
-
               questions['status'] =
                 QuizTracking.length != 0 ? 'Completed' : 'Pending';
 
@@ -1723,7 +1723,6 @@ export class TrackingService {
 
               trackedData['status'] =
                 QuizTracking.length != 0 ? 'Completed' : 'Pending';
-
               return {
                 status: 'success',
                 code: 200,
@@ -3119,10 +3118,11 @@ export class TrackingService {
     }
   }
 
-  async getProperting(assessmentSubmissionId): Promise<any> {
+  async getProperting(assessmentSubmissionId, userId, roles): Promise<any> {
     try {
       let assessmentProperting = await db
         .select({
+          userId: zuvyAssessmentSubmission.userId,
           eyeMomentCount: zuvyAssessmentSubmission.eyeMomentCount,
           fullScreenExit: zuvyAssessmentSubmission.fullScreenExit,
           copyPaste: zuvyAssessmentSubmission.copyPaste,
@@ -3140,12 +3140,32 @@ export class TrackingService {
           },
         ];
       }
+
+      const submission = assessmentProperting[0];
+      const isAdmin = roles?.includes('admin');
+      // if (!isAdmin && submission.userId !== userId) {
+      if (!isAdmin && Number(submission.userId) !== Number(userId)) {
+        return [
+          {
+            message: 'You are not authorized to access this submission',
+            statusCode: STATUS_CODES.FORBIDDEN,
+          },
+          null,
+        ];
+      }
+
       return [
         null,
         {
-          message: 'Get Assignment properting',
+          message: 'Get Assessment properting',
           statusCode: STATUS_CODES.OK,
-          data: assessmentProperting[0],
+          // data: assessmentProperting[0],
+          data: {
+            eyeMomentCount: submission.eyeMomentCount,
+            fullScreenExit: submission.fullScreenExit,
+            copyPaste: submission.copyPaste,
+            tabChange: submission.tabChange,
+          },
         },
       ];
     } catch (error) {
