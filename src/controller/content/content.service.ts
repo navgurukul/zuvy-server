@@ -652,9 +652,18 @@ export class ContentService {
           order: module.order,
           projectId: module.projectId,
           timeAlloted: module.timeAlloted,
+          // Chapter orders can have gaps (e.g. start at 2 after deletes or
+          // bulk edits), so fall back to the lowest-ordered chapter instead of
+          // returning null.
           ChapterId:
-            module.moduleChapterData.find((chapter) => chapter.order === 1)
-              ?.id || null,
+            (
+              module.moduleChapterData.find((chapter) => chapter.order === 1) ??
+              module.moduleChapterData.reduce(
+                (first, chapter) =>
+                  !first || chapter.order < first.order ? chapter : first,
+                null,
+              )
+            )?.id || null,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
