@@ -28,16 +28,20 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import {
-  createAiAssessment,
+  createAiAssessmentBootcamp,
   submitAssessmentExample,
 } from './swagger_examples/examples';
+import { AiAssessmentCrudService } from './ai-assessment.crud.service';
 
 @ApiTags('AI Assessment')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('ai-assessment')
 export class AiAssessmentController {
-  constructor(private readonly aiAssessmentService: AiAssessmentService) {}
+  constructor(
+    private readonly aiAssessmentService: AiAssessmentService,
+    private readonly aiAssessmentCrudService: AiAssessmentCrudService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new AI assessment' })
@@ -45,8 +49,8 @@ export class AiAssessmentController {
     type: CreateAiAssessmentDto,
     examples: {
       basicExample: {
-        summary: 'Payload for creating ai assessment.',
-        value: createAiAssessment,
+        summary: 'Create assessment with poolTopics and moduleId',
+        value: createAiAssessmentBootcamp,
       },
     },
   })
@@ -56,8 +60,8 @@ export class AiAssessmentController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data.' })
   create(@Body() createAiAssessmentDto: CreateAiAssessmentDto, @Req() req) {
-    const userId = req.user[0]?.id;
-    return this.aiAssessmentService.create(userId, createAiAssessmentDto);
+    const userId = req.user?.sub;
+    return this.aiAssessmentCrudService.create(userId, createAiAssessmentDto);
   }
 
   @Post('/generate/all')

@@ -42,15 +42,18 @@ export class AiAssessmentService {
     private readonly questionEvaluationService: QuestionEvaluationService,
     private readonly questionByLlmService: QuestionsByLlmService,
   ) {}
-  async create(userId, createAiAssessmentDto: CreateAiAssessmentDto) {
+  async create(userId, createAiAssessmentDto: any) {
     try {
       const { inserted, enrolledStudentsCount } = await db.transaction(
         async (tx) => {
           const payload = {
             bootcampId: createAiAssessmentDto.bootcampId,
+            chapterId: createAiAssessmentDto.chapterId,
             title: createAiAssessmentDto.title,
             description: createAiAssessmentDto.description ?? null,
-            topics: createAiAssessmentDto.topics,
+            objective: createAiAssessmentDto.objective,
+            chapterIds: createAiAssessmentDto.chapterIds ?? [],
+            poolTopics: createAiAssessmentDto.poolTopics ?? [],
             // audience: createAiAssessmentDto.audience ?? null,
             totalNumberOfQuestions:
               createAiAssessmentDto.totalNumberOfQuestions,
@@ -63,7 +66,7 @@ export class AiAssessmentService {
 
           const [aiRow] = await tx
             .insert(aiAssessment)
-            .values(payload)
+            .values(payload as any)
             .returning();
 
           const enrolledStudents = await tx
@@ -436,7 +439,7 @@ export class AiAssessmentService {
         bootcampId: aiAssessment.bootcampId,
         title: aiAssessment.title,
         description: aiAssessment.description,
-        topics: aiAssessment.topics,
+        topics: aiAssessment.poolTopics,
         audience: aiAssessment.audience,
         totalNumberOfQuestions: aiAssessment.totalNumberOfQuestions,
         totalQuestionsWithBuffer: aiAssessment.totalQuestionsWithBuffer,
@@ -479,7 +482,7 @@ export class AiAssessmentService {
       const topicsData = await db
         .select({
           id: aiAssessment.id,
-          topics: aiAssessment.topics,
+          topics: aiAssessment.poolTopics,
         })
         .from(aiAssessment)
         .where(inArray(aiAssessment.id, assessmentIds));
