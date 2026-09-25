@@ -1,41 +1,50 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { QdrantClient } from '@qdrant/js-client-rest';
-
-export interface QuestionVectorPoint {
-  id: number;
-  vector: number[];
-  payload: Record<string, unknown>;
-}
+import { Inject, Injectable } from '@nestjs/common';
+import { SearchVectorsDto } from './dto/search-vector.dto';
+import { IVectorStore } from './interfaces/vector-store.interface';
+import { VECTOR_STORE } from './constants';
 
 @Injectable()
 export class VectorService {
-  private readonly client: QdrantClient;
-
-  constructor(config: ConfigService) {
-    const url =
-      config.get<string>('QDRANT_URL') ||
-      config.get<string>('VECTOR_QDRANT_URL') ||
-      process.env.QDRANT_URL ||
-      process.env.VECTOR_QDRANT_URL ||
-      'http://127.0.0.1:6333';
-    const apiKey =
-      config.get<string>('QDRANT_ADMIN_KEY') || process.env.QDRANT_ADMIN_KEY;
-    this.client = new QdrantClient({ url, apiKey });
-  }
+  constructor(
+    @Inject(VECTOR_STORE)
+    private readonly store: IVectorStore,
+  ) {}
 
   async ensureCollection(collectionName: string, vectorSize: number) {
-    if (await this.client.collectionExists(collectionName)) return;
-    await this.client.createCollection(collectionName, {
-      vectors: { size: vectorSize, distance: 'Cosine' },
+    return this.store.ensureCollection(collectionName, vectorSize);
+  }
+
+  async upsert(
+    collectionName: string,
+    points: {
+      id: string;
+      vector: number[];
+      payload?: Record<string, string | number | boolean | null | string[]>;
+    }[],
+  ) {
+    return this.store.upsert(collectionName, points);
+  }
+
+  async search(dto: SearchVectorsDto) {
+    return this.store.search(dto.collectionName, dto.queryVector, {
+      limit: dto.limit,
+      filter: dto.filter,
     });
   }
 
-  async upsert(collectionName: string, points: QuestionVectorPoint[]) {
-    if (!points.length) return;
-    await this.client.upsert(collectionName, {
-      wait: true,
-      points,
-    });
+  async delete(collectionName: string, ids: string[]) {
+    return this.store.delete(collectionName, ids);
+  }
+
+  async createPayloadIndex(
+    collectionName: string,
+    fieldName: string,
+    fieldSchema: 'keyword' | 'integer' | 'float' | 'bool',
+  ) {
+    return this.store.createPayloadIndex(
+      collectionName,
+      fieldName,
+      fieldSchema,
+    );
   }
 }
