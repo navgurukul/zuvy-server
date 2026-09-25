@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  Max,
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -67,6 +68,7 @@ export class QueryTrackinglogDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
+  @Max(500)
   limit?: number;
 
   @ApiPropertyOptional({
