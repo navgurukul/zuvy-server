@@ -1,8 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from 'src/db';
 import { topic, zuvyQuestions } from 'drizzle/schema';
 import { CreateTopicDto } from './dto/create-topic.dto';
+import { AddSubtopicDto } from './dto/add-subtopic.dto';
 import { topicNamesMatch } from './topic-name.util';
 
 @Injectable()
@@ -43,6 +48,54 @@ export class TopicService {
       .from(topic)
       .where(eq(topic.orgId, scopedOrgId));
     return topics.map((row) => this.withNormalizedSubtopics(row));
+  }
+
+  async findOne(orgId: number, id: number) {
+    const scopedOrgId = this.requireOrgId(orgId);
+    const [row] = await db
+      .select({
+        id: topic.id,
+        orgId: topic.orgId,
+        name: topic.name,
+        description: topic.description,
+        subtopic: topic.subtopic,
+        createdAt: topic.createdAt,
+        updatedAt: topic.updatedAt,
+      })
+      .from(topic)
+      .where(and(eq(topic.id, id), eq(topic.orgId, scopedOrgId)))
+      .limit(1);
+    if (!row) throw new NotFoundException(`Topic with id=${id} not found`);
+    return this.withNormalizedSubtopics(row);
+  }
+
+  async addSubtopic(orgId: number, id: number, addSubtopicDto: AddSubtopicDto) {
+    const scopedOrgId = this.requireOrgId(orgId);
+    const name = addSubtopicDto.subtopic.trim();
+    if (!name) {
+      throw new BadRequestException('Subtopic name cannot be empty');
+    }
+
+    const existingTopic = await this.findOne(scopedOrgId, id);
+    const existingSubtopics = this.normalizeSubtopics(existingTopic.subtopic);
+    const duplicate = existingSubtopics.some(
+      (subtopicName) =>
+        subtopicName.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    );
+    if (duplicate) {
+      throw new BadRequestException(`Subtopic \"${name}\" already exists`);
+    }
+
+    const [updated] = await db
+      .update(topic)
+      .set({
+        subtopic: [...existingSubtopics, name],
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(eq(topic.id, id), eq(topic.orgId, scopedOrgId)))
+      .returning();
+    if (!updated) throw new NotFoundException(`Topic with id=${id} not found`);
+    return this.withNormalizedSubtopics(updated);
   }
 
   async getAllTopicsWithDifficultyLevels(

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Req,
@@ -18,6 +19,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { resolveOrgId } from 'src/auth/resolve-org-id';
 import { CreateTopicDto } from './dto/create-topic.dto';
+import { AddSubtopicDto } from './dto/add-subtopic.dto';
 import { createTopicExample } from './swagger_examples/examples';
 import { TopicService } from './topic.service';
 
@@ -78,6 +80,31 @@ export class TopicController {
       id != null && id !== '' ? Number(id) : undefined,
       limit != null && limit !== '' ? Number(limit) : undefined,
       offset != null && offset !== '' ? Number(offset) : undefined,
+    );
+  }
+
+  @Post(':id/subtopics')
+  @ApiOperation({ summary: 'Add a subtopic to an existing topic' })
+  @ApiBody({
+    type: AddSubtopicDto,
+    examples: {
+      addSubtopic: {
+        summary: 'Add one subtopic',
+        value: {
+          subtopic: 'Investment Planning',
+        },
+      },
+    },
+  })
+  addSubtopic(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+    @Body() addSubtopicDto: AddSubtopicDto,
+  ) {
+    return this.topicService.addSubtopic(
+      this.getOrgId(req),
+      +id,
+      addSubtopicDto,
     );
   }
 
