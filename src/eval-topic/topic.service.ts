@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from 'src/db';
-import { topic } from 'drizzle/schema';
+import { topic, zuvyQuestions } from 'drizzle/schema';
 import { CreateTopicDto } from './dto/create-topic.dto';
+import { topicNamesMatch } from './topic-name.util';
 
 @Injectable()
 export class TopicService {
@@ -42,6 +43,86 @@ export class TopicService {
       .from(topic)
       .where(eq(topic.orgId, scopedOrgId));
     return topics.map((row) => this.withNormalizedSubtopics(row));
+  }
+
+  async getAllTopicsWithDifficultyLevels(
+    orgId: number,
+    search?: string,
+    id?: number,
+    limit?: number,
+    offset?: number,
+  ) {
+    const scopedOrgId = this.requireOrgId(orgId);
+    const conditions: any[] = [eq(topic.orgId, scopedOrgId)];
+    const hasSearch = !!(search && search.trim());
+    const trimmed = hasSearch ? search!.trim() : '';
+    const pattern = hasSearch ? `%${trimmed.toLowerCase()}%` : null;
+
+    if (id != null && !Number.isNaN(Number(id))) {
+      if (hasSearch) {
+        conditions.push(
+          sql`(LOWER(${topic.name}) LIKE ${pattern} OR ${topic.id} = ${id})`,
+        );
+      } else {
+        conditions.push(eq(topic.id, id));
+      }
+    } else if (hasSearch) {
+      conditions.push(sql`LOWER(${topic.name}) LIKE ${pattern}`);
+    }
+
+    const topicQuestions = await db
+      .select({
+        id: topic.id,
+        name: topic.name,
+        difficulty: zuvyQuestions.difficulty,
+      })
+      .from(topic)
+      .leftJoin(
+        zuvyQuestions,
+        and(
+          topicNamesMatch(topic.name, zuvyQuestions.topicName),
+          eq(zuvyQuestions.orgId, scopedOrgId),
+        ),
+      )
+      .where(and(...conditions));
+
+    const topicsById = new Map<
+      number,
+      {
+        id: number;
+        name: string;
+        difficultyLevel: { easy: number; medium: number; hard: number };
+      }
+    >();
+
+    for (const { id, name, difficulty } of topicQuestions) {
+      const topicWithDifficulty = topicsById.get(id) ?? {
+        id,
+        name,
+        difficultyLevel: { easy: 0, medium: 0, hard: 0 },
+      };
+      const normalizedDifficulty = difficulty?.trim().toLowerCase();
+
+      if (normalizedDifficulty === 'easy')
+        topicWithDifficulty.difficultyLevel.easy += 1;
+      if (normalizedDifficulty === 'medium')
+        topicWithDifficulty.difficultyLevel.medium += 1;
+      if (normalizedDifficulty === 'hard')
+        topicWithDifficulty.difficultyLevel.hard += 1;
+
+      topicsById.set(id, topicWithDifficulty);
+    }
+
+    let results = [...topicsById.values()];
+
+    if (typeof offset === 'number' && offset > 0) {
+      results = results.slice(offset);
+    }
+    if (typeof limit === 'number' && limit >= 0) {
+      results = results.slice(0, limit);
+    }
+
+    return results;
   }
 
   private normalizeSubtopics(value: unknown): string[] {

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -49,6 +57,28 @@ export class TopicController {
   @ApiOperation({ summary: 'List topics' })
   findAll(@Req() req: Request & { user?: { orgId?: number | string } }) {
     return this.topicService.findAll(this.getOrgId(req));
+  }
+
+  @Get('with-difficulty-levels')
+  @ApiOperation({ summary: 'Get topics with difficulty levels' })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'id', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  getAllTopicsWithDifficultyLevels(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Query('search') search?: string,
+    @Query('id') id?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.topicService.getAllTopicsWithDifficultyLevels(
+      this.getOrgId(req),
+      search,
+      id != null && id !== '' ? Number(id) : undefined,
+      limit != null && limit !== '' ? Number(limit) : undefined,
+      offset != null && offset !== '' ? Number(offset) : undefined,
+    );
   }
 
   private getOrgId(
