@@ -8,17 +8,22 @@ import { AiAssessmentCrudService } from './ai-assessment.crud.service';
 import { VectorModule } from 'src/vector/vector.module';
 import { AiAssessmentMappingService } from './ai-assessment.mapping.service';
 import { AiAssessmentMappingHelpers } from './ai-assessment.mapping.helpers';
-import { TopicService } from 'src/eval-topic/topic.service';
+import { TopicModule } from 'src/eval-topic/topic.module';
 
 @Module({
-  imports: [AuthModule, LlmModule, QuestionsByLlmModule, VectorModule],
+  imports: [
+    AuthModule,
+    LlmModule,
+    QuestionsByLlmModule,
+    VectorModule,
+    TopicModule,
+  ],
   controllers: [AiAssessmentController],
   providers: [
     AiAssessmentService,
     AiAssessmentCrudService,
     AiAssessmentMappingHelpers,
     AiAssessmentMappingService,
-    TopicService,
   ],
 })
 export class AiAssessmentModule {}

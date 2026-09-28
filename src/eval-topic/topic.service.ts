@@ -1,4 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { db } from 'src/db';
+import { topic } from 'drizzle/schema';
+import { CreateTopicDto } from './dto/create-topic.dto';
 
 @Injectable()
 export class TopicService {
@@ -7,6 +11,68 @@ export class TopicService {
       throw new BadRequestException('orgId is required');
     }
     return orgId;
+  }
+
+  async create(orgId: number, createTopicDto: CreateTopicDto) {
+    const scopedOrgId = this.requireOrgId(orgId);
+    const [created] = await db
+      .insert(topic)
+      .values({
+        orgId: scopedOrgId,
+        name: createTopicDto.name,
+        description: createTopicDto.description ?? null,
+        subtopic: createTopicDto.subtopic ?? null,
+      })
+      .returning();
+    return this.withNormalizedSubtopics(created);
+  }
+
+  async findAll(orgId: number) {
+    const scopedOrgId = this.requireOrgId(orgId);
+    const topics = await db
+      .select({
+        id: topic.id,
+        orgId: topic.orgId,
+        name: topic.name,
+        description: topic.description,
+        subtopic: topic.subtopic,
+        createdAt: topic.createdAt,
+        updatedAt: topic.updatedAt,
+      })
+      .from(topic)
+      .where(eq(topic.orgId, scopedOrgId));
+    return topics.map((row) => this.withNormalizedSubtopics(row));
+  }
+
+  private normalizeSubtopics(value: unknown): string[] {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+      return value.reduce<string[]>((subtopics, subtopic) => {
+        if (typeof subtopic === 'string' && subtopic.trim()) {
+          subtopics.push(subtopic.trim());
+        }
+        return subtopics;
+      }, []);
+    }
+
+    if (typeof value === 'object') {
+      return Object.keys(value as Record<string, unknown>).reduce<string[]>(
+        (subtopics, name) => {
+          if (name.trim()) {
+            subtopics.push(name.trim());
+          }
+          return subtopics;
+        },
+        [],
+      );
+    }
+
+    return [];
+  }
+
+  private withNormalizedSubtopics<T extends { subtopic: unknown }>(row: T) {
+    return { ...row, subtopic: this.normalizeSubtopics(row.subtopic) };
   }
 
   async resolveTagsFromChapterIds(
