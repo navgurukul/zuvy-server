@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -20,7 +22,12 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { resolveOrgId } from 'src/auth/resolve-org-id';
 import { CreateTopicDto } from './dto/create-topic.dto';
 import { AddSubtopicDto } from './dto/add-subtopic.dto';
-import { createTopicExample } from './swagger_examples/examples';
+import { GetTopicDto } from './dto/get-topic.dto';
+import { UpdateTopicDto } from './dto/update-topic.dto';
+import {
+  createTopicExample,
+  updateTopicExample,
+} from './swagger_examples/examples';
 import { TopicService } from './topic.service';
 
 @ApiTags('Eval Topic')
@@ -83,6 +90,43 @@ export class TopicController {
     );
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a single topic' })
+  findOne(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+  ) {
+    return this.topicService.findOne(this.getOrgId(req), +id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a topic' })
+  @ApiBody({
+    type: UpdateTopicDto,
+    examples: {
+      renameTopic: {
+        summary: 'Update topic title/description',
+        value: updateTopicExample,
+      },
+    },
+  })
+  update(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+    @Body() updateTopicDto: UpdateTopicDto,
+  ) {
+    return this.topicService.update(this.getOrgId(req), +id, updateTopicDto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a topic' })
+  remove(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+  ) {
+    return this.topicService.remove(this.getOrgId(req), +id);
+  }
+
   @Post(':id/subtopics')
   @ApiOperation({ summary: 'Add a subtopic to an existing topic' })
   @ApiBody({
@@ -105,6 +149,33 @@ export class TopicController {
       this.getOrgId(req),
       +id,
       addSubtopicDto,
+    );
+  }
+
+  @Post('resolve-tags-from-chapter-ids')
+  @ApiOperation({ summary: 'Resolve tags from chapter IDs' })
+  @ApiBody({
+    description: 'Provide chapter IDs to resolve associated tags',
+    type: GetTopicDto,
+    examples: {
+      resolveTagsFromChapterIds: {
+        summary: 'Resolve tags from chapter IDs',
+        value: {
+          chapterIds: [6157, 6158, 6159],
+          bootcampId: 873,
+          moduleId: 806,
+        },
+      },
+    },
+  })
+  resolveTagsFromChapterIds(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Body() body: GetTopicDto,
+  ) {
+    return this.topicService.resolveTagsFromChapterIds(
+      this.getOrgId(req),
+      body,
+      req.headers.authorization,
     );
   }
 

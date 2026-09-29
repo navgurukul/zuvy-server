@@ -4427,7 +4427,7 @@ export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ on
 }));
 
 //llm related tables
-export const aiAssessment = main.table("ai_assessment", {
+export const aiAssessment = main.table("zuvy_ai_assessment", {
   id: serial("id").primaryKey().notNull(),
   bootcampId: integer("bootcamp_id")
     .notNull()
@@ -4456,7 +4456,7 @@ export const aiAssessment = main.table("ai_assessment", {
 
 
 export const aiAssessmentQuestionSets = main.table(
-  'ai_assessment_question_sets',
+  'zuvy_ai_assessment_question_sets',
   {
     id: serial('id').primaryKey().notNull(),
     aiAssessmentId: integer('ai_assessment_id')
@@ -4508,7 +4508,7 @@ export const zuvyQuestions = main.table('zuvy_questions', {
 });
 
 export const aiAssessmentQuestions = main.table(
-  'ai_assessment_questions',
+  'zuvy_ai_assessment_questions',
   {
     id: serial('id').primaryKey().notNull(),
     questionSetId: integer('question_set_id')

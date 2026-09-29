@@ -7,7 +7,7 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 import { QuestionsCrudService } from './questions.crud.service';
 
-@ApiTags('Questions')
+@ApiTags('Eval Questions')
 @ApiBearerAuth('JWT-auth')
 @ApiQuery({
   name: 'orgId',

@@ -7,7 +7,7 @@ import { GenerateQuestionsDto } from './dto/generate-questions.dto';
 import { QuestionsService } from './questions.service';
 import { generateQuestionsExample } from './swagger_examples/examples';
 
-@ApiTags('Questions')
+@ApiTags('Eval Questions')
 @ApiBearerAuth('JWT-auth')
 @Controller('questions')
 export class QuestionsGenerateController {
