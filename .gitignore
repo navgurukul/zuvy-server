@@ -5,6 +5,10 @@
 # env
 .env
 /src/service-account.json
+
+# recording worker scratch space (bind-mounted into the container so
+# in-flight downloads/merges survive a redeploy — see compose*.yml)
+/temp-recordings
 # Logs
 logs
 *.log

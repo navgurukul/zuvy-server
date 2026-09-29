@@ -7,6 +7,8 @@ import { OnModuleInit } from '@nestjs/common';
 import { RecordingWorkerTriggerService } from './recording-worker-trigger.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { google } from 'googleapis';
 import { Subject } from 'rxjs';
@@ -38,6 +40,17 @@ const RECORDING_HEALTH_CHECK_ENABLED =
 const GLACIER_RESTORE_DAYS = Number(process.env.GLACIER_RESTORE_DAYS) || 7;
 
 const MAX_RETRIES = 5;
+
+// download/merge/upload steps read and write local temp-recordings/ files —
+// they only work on the machine that produced them. pickJob() pins a job to
+// the worker instance (dev machine or deployed container) that first claims
+// it via worker_instance_id, so a second instance polling the same shared
+// DB can't steal a job mid-pipeline and fail with "file not found" (confirmed
+// live: the same job's merged_file_path pointed at three different
+// filesystems across its own retry history). Stale after this many minutes
+// with no activity, so a closed laptop / crashed instance doesn't strand a
+// job forever — any instance may then reclaim it.
+const WORKER_AFFINITY_STALE_MINUTES = 30;
 
 type RecordingJob = {
   id: number;
@@ -77,6 +90,11 @@ export class RecordingWorkerService implements OnModuleInit {
   private youtube: any;
   private isWorkerRunning = false;
 
+  // Identifies this process for worker_instance_id affinity (see
+  // WORKER_AFFINITY_STALE_MINUTES) — stable for the process's lifetime,
+  // distinct across restarts and across different machines.
+  private readonly instanceId = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
+
   onModuleInit() {
     // Flags below are read into module-level consts once, at process start —
     // NOT re-read per job. Editing .env has no effect on an already-running
@@ -85,7 +103,7 @@ export class RecordingWorkerService implements OnModuleInit {
     // the durability-strategy doc's investigation of session 2215 / job
     // 2094, where exactly this caused the S3 leg to be silently skipped).
     this.logger.log(
-      `Recording worker config: RECORDING_WORKER_ENABLED=${RECORDING_WORKER_ENABLED} YOUTUBE_UPLOAD_ENABLED=${YOUTUBE_UPLOAD_ENABLED} S3_DUAL_UPLOAD_ENABLED=${S3_DUAL_UPLOAD_ENABLED} ZOOM_DELETE_AFTER_S3_ENABLED=${ZOOM_DELETE_AFTER_S3_ENABLED} RECORDING_HEALTH_CHECK_ENABLED=${RECORDING_HEALTH_CHECK_ENABLED}`,
+      `Recording worker config: instanceId=${this.instanceId} RECORDING_WORKER_ENABLED=${RECORDING_WORKER_ENABLED} YOUTUBE_UPLOAD_ENABLED=${YOUTUBE_UPLOAD_ENABLED} S3_DUAL_UPLOAD_ENABLED=${S3_DUAL_UPLOAD_ENABLED} ZOOM_DELETE_AFTER_S3_ENABLED=${ZOOM_DELETE_AFTER_S3_ENABLED} RECORDING_HEALTH_CHECK_ENABLED=${RECORDING_HEALTH_CHECK_ENABLED}`,
     );
     this.trigger.onTrigger().subscribe(async () => {
       try {
@@ -567,6 +585,7 @@ export class RecordingWorkerService implements OnModuleInit {
         WHEN status = 'S3_UPLOADED' THEN 'PROCESSING_YOUTUBE_UPLOAD'
         ELSE status
       END,
+      worker_instance_id = ${this.instanceId},
       updated_at = NOW()
     WHERE id = (
       SELECT id
@@ -577,6 +596,11 @@ export class RecordingWorkerService implements OnModuleInit {
         AND (drive_link IS NULL OR status = 'YOUTUBE_PROCESSING')
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        AND (
+          worker_instance_id IS NULL
+          OR worker_instance_id = ${this.instanceId}
+          OR updated_at < NOW() - (${WORKER_AFFINITY_STALE_MINUTES} || ' minutes')::interval
+        )
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -601,6 +625,7 @@ export class RecordingWorkerService implements OnModuleInit {
         WHEN status = 'S3_UPLOADED' THEN 'PROCESSING_YOUTUBE_UPLOAD'
         ELSE status
       END,
+      worker_instance_id = ${this.instanceId},
       updated_at = NOW()
     WHERE id = (
       SELECT id
@@ -611,6 +636,11 @@ export class RecordingWorkerService implements OnModuleInit {
         AND (drive_link IS NULL OR status = 'YOUTUBE_PROCESSING')
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        AND (
+          worker_instance_id IS NULL
+          OR worker_instance_id = ${this.instanceId}
+          OR updated_at < NOW() - (${WORKER_AFFINITY_STALE_MINUTES} || ' minutes')::interval
+        )
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -1337,7 +1367,28 @@ export class RecordingWorkerService implements OnModuleInit {
       (inputPath) => !fs.existsSync(inputPath),
     );
     if (missingPath) {
-      throw new Error(`Recording segment missing for merge: ${missingPath}`);
+      // Most likely this job's download step ran on a different worker
+      // instance (another dev machine, or the deployed container) than the
+      // one now picking up the merge step — its local disk simply doesn't
+      // have this segment. pickJob()'s instance-affinity pinning stops this
+      // going forward, but for a job that already changed hands, hard-
+      // failing wastes a retry for no reason: fall back to redoing the
+      // download here instead. PROCESSING_DOWNLOAD is idempotent (only
+      // fetches segments not already present on disk), so this self-heals
+      // in one extra pass rather than burning through MAX_RETRIES.
+      this.logJob(
+        'warn',
+        job,
+        'Recording segment missing for merge; forcing a fresh download pass on this instance',
+        { missingPath },
+      );
+
+      await db.execute(sql`
+        UPDATE ${table}
+        SET status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+      return;
     }
 
     const mergedPath = path.join(tempDir, this.getMergedFileName(job));
@@ -1686,9 +1737,30 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    const filePath = this.resolveMergedFilePath(job, freshRow);
-    const fileSize = fs.statSync(filePath).size;
     const tableName = this.getTableName(job);
+
+    let filePath: string;
+    try {
+      filePath = this.resolveMergedFilePath(job, freshRow);
+    } catch (err: any) {
+      // Same cross-instance hand-off as mergeRecording()'s missing-segment
+      // case: the merge most likely ran on a different worker instance, so
+      // this instance's disk never had the file. Fall back to re-merging
+      // here instead of hard-failing the S3 leg.
+      this.logJob(
+        'warn',
+        job,
+        'Merged file missing for S3 upload; forcing a re-merge on this instance',
+        { error: err?.message ?? String(err) },
+      );
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET status = 'DOWNLOADED', is_final_merged = FALSE, merged_file_path = NULL
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
+    const fileSize = fs.statSync(filePath).size;
 
     const key = job.s3_key || (await this.buildRecordingS3Key(job));
 
@@ -1917,7 +1989,27 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    const filePath = this.resolveMergedFilePath(job, rec.rows?.[0]);
+    let filePath: string;
+    try {
+      filePath = this.resolveMergedFilePath(job, rec.rows?.[0]);
+    } catch (err: any) {
+      // Same cross-instance hand-off as mergeRecording()'s missing-segment
+      // case: the merge most likely ran on a different worker instance, so
+      // this instance's disk never had the file. Fall back to re-merging
+      // here instead of hard-failing the YouTube leg.
+      this.logJob(
+        'warn',
+        job,
+        'Merged file missing for YouTube upload; forcing a re-merge on this instance',
+        { error: err?.message ?? String(err) },
+      );
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET status = 'DOWNLOADED', is_final_merged = FALSE, merged_file_path = NULL
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
 
     const fileSize = fs.statSync(filePath).size;
 
@@ -2129,8 +2221,13 @@ export class RecordingWorkerService implements OnModuleInit {
     }
 
     if (processingStatus === 'succeeded' && uploadStatus === 'processed') {
-      const filePath = this.resolveMergedFilePath(job, freshRow);
-
+      // YouTube has already confirmed the upload — completion no longer
+      // depends on this instance's local disk at all. The merged file
+      // cleanup below is best-effort only: resolveMergedFilePath() can
+      // legitimately fail to find it here (verification can run on a
+      // different worker instance than the one that actually uploaded it —
+      // that's fine, since nothing past this point needs the file), and
+      // must never block marking the job COMPLETED.
       await db.execute(sql`
         UPDATE ${sql.raw(this.getTableName(job))}
         SET status = 'COMPLETED'
@@ -2138,10 +2235,11 @@ export class RecordingWorkerService implements OnModuleInit {
       `);
 
       try {
+        const filePath = this.resolveMergedFilePath(job, freshRow);
         fs.unlinkSync(filePath);
       } catch (err: any) {
         this.logger.warn(
-          `Unable to delete merged file ${filePath}: ${err?.message ?? String(err)}`,
+          `Unable to delete merged file for job ${job.id}: ${err?.message ?? String(err)}`,
         );
       }
 
@@ -2549,6 +2647,20 @@ export class RecordingWorkerService implements OnModuleInit {
       }
     }
 
+    // pickJob() only re-selects a 'FAILED' row when drive_link IS NULL (its
+    // WHERE clause is `drive_link IS NULL OR status = 'YOUTUBE_PROCESSING'`,
+    // meant to stop it from re-touching a job that already finished
+    // uploading). A job that fails *after* the YouTube upload already
+    // succeeded (e.g. verifyYoutubeProcessing() hits a transient API error)
+    // already has drive_link set, so collapsing it to plain 'FAILED' here
+    // made it permanently unpickable — stuck forever, never retried, despite
+    // retry_count being nowhere near MAX_RETRIES (confirmed live: jobs 2110/
+    // 2111, "Insufficient Permission" during verification, retry_count 1 and
+    // 3, drive_link populated, orphaned in FAILED). Route it back to
+    // 'YOUTUBE_PROCESSING' instead so pickJob()'s special-case keeps
+    // selecting it for re-verification.
+    const retryStatus = job.drive_link ? 'YOUTUBE_PROCESSING' : 'FAILED';
+
     if (job.table === 'mentor') {
       await db.execute(
         isTerminal
@@ -2564,7 +2676,7 @@ export class RecordingWorkerService implements OnModuleInit {
           : sql`
               UPDATE zuvy_mentor_session_recordings
               SET
-                status = 'FAILED',
+                status = ${retryStatus},
                 retry_count = ${nextRetryCount},
                 next_retry_at = ${nextRetry},
                 last_error = ${error.message}
@@ -2586,7 +2698,7 @@ export class RecordingWorkerService implements OnModuleInit {
           : sql`
               UPDATE zuvy_session_recordings
               SET
-                status = 'FAILED',
+                status = ${retryStatus},
                 retry_count = ${nextRetryCount},
                 next_retry_at = ${nextRetry},
                 last_error = ${error.message}

@@ -1,12 +1,14 @@
-version: "3.7"
+version: '3.7'
 services:
   zuvy_stage:
     build:
       context: .
       dockerfile: Dockerfile
-    image : zuvy_stage
+    image: zuvy_stage
     container_name: zuvy_container_stage
     ports:
-      - "4778:5000"
+      - '4778:5000'
     env_file:
       - .env
+    volumes:
+      - ./temp-recordings:/app/temp-recordings

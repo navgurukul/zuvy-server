@@ -4663,6 +4663,12 @@ export const zuvySessionRecordings = main.table(
       mode: 'string',
     }),
 
+    // Pins a job to the worker instance (dev machine or deployed container)
+    // that first touched it, once local temp-recordings files are in play —
+    // pickJob() only lets a different instance take it over after 30 minutes
+    // of inactivity. See migration 0045.
+    workerInstanceId: text('worker_instance_id'),
+
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -4769,6 +4775,12 @@ export const zuvyMentorSessionRecordings = main.table(
       withTimezone: true,
       mode: 'string',
     }),
+
+    // Pins a job to the worker instance (dev machine or deployed container)
+    // that first touched it, once local temp-recordings files are in play —
+    // pickJob() only lets a different instance take it over after 30 minutes
+    // of inactivity. See migration 0045.
+    workerInstanceId: text('worker_instance_id'),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
