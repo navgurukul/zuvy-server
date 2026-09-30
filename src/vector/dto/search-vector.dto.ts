@@ -23,3 +23,12 @@ export class SearchVectorsDto {
   @IsObject()
   filter?: Record<string, string | number | boolean | null>;
 }
+
+export class DeleteVectorsDto {
+  @IsString()
+  collectionName: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  ids: string[];
+}

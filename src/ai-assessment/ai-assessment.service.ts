@@ -250,8 +250,13 @@ export class AiAssessmentService {
   async countScore(submitAssessmentDto: SubmitAssessmentDto) {
     const { answers } = submitAssessmentDto;
     let score = 0;
+    const correctByQuestionId = new Map<string, boolean>();
 
     for (const q of answers) {
+      if (!q.selectedAnswerByStudent) {
+        correctByQuestionId.set(String(q.id), false);
+        continue;
+      }
       const correct = await db
         .select()
         .from(correctAnswers)
@@ -263,11 +268,13 @@ export class AiAssessmentService {
         )
         .limit(1);
 
-      if (correct.length > 0) {
+      const isCorrect = correct.length > 0;
+      correctByQuestionId.set(String(q.id), isCorrect);
+      if (isCorrect) {
         score++;
       }
     }
-    return { score, totalQuestions: answers.length };
+    return { score, totalQuestions: answers.length, correctByQuestionId };
   }
 
   async submitLlmAssessment(
@@ -279,7 +286,7 @@ export class AiAssessmentService {
         const { answers, aiAssessmentId } = submitAssessmentDto;
 
         // const totalQuestions = answers.length;
-        const { score, totalQuestions } =
+        const { score, totalQuestions, correctByQuestionId } =
           await this.countScore(submitAssessmentDto);
         const totalScore = (score / totalQuestions) * 100;
 
@@ -359,6 +366,14 @@ export class AiAssessmentService {
           }
         } else {
           parseError = 'Empty LLM response.';
+        }
+
+        if (Array.isArray(parsedEvaluation?.evaluations)) {
+          for (const item of parsedEvaluation.evaluations) {
+            item.status = correctByQuestionId.get(String(item.id))
+              ? 'correct'
+              : 'incorrect';
+          }
         }
 
         // Optionally: persist parsedEvaluation to DB here if successful

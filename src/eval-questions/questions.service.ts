@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from 'src/db';
 import { questionIndexOutbox, topic, zuvyQuestions } from 'drizzle/schema';
 import {
@@ -375,5 +375,80 @@ export class QuestionsService {
       .where(and(...conditions))
       .limit(limit);
     return rows.map((r) => r.question).filter(Boolean);
+  }
+
+  async getQuestionTextsByIds(
+    ids: number[],
+    orgId?: number,
+  ): Promise<string[]> {
+    if (!ids.length) return [];
+
+    const conditions = [inArray(zuvyQuestions.id, ids)];
+    if (orgId) {
+      conditions.push(eq(zuvyQuestions.orgId, orgId));
+    }
+
+    const rows = await db
+      .select({ id: zuvyQuestions.id, question: zuvyQuestions.question })
+      .from(zuvyQuestions)
+      .where(and(...conditions));
+
+    const byId = new Map(rows.map((row) => [row.id, row.question]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter(
+        (question): question is string =>
+          typeof question === 'string' && question.length > 0,
+      );
+  }
+
+  async getRecentQuestionTextsByTopic(
+    topicName: string,
+    orgId?: number,
+    limit = 60,
+  ): Promise<string[]> {
+    const rows = await this.getRecentQuestionsByTopic(topicName, orgId, limit);
+    return rows.map((row) => row.question).filter(Boolean);
+  }
+
+  async getRecentQuestionsByTopic(
+    topicName: string,
+    orgId?: number,
+    limit = 60,
+  ): Promise<
+    Array<{
+      question: string;
+      options: Record<string, string> | null;
+      correctOption: number | null;
+    }>
+  > {
+    const normalizedTopic = normalizeTopicName(topicName);
+    if (!normalizedTopic) return [];
+
+    const conditions = [
+      topicNameEquals(zuvyQuestions.topicName, normalizedTopic),
+    ];
+    if (orgId) {
+      conditions.push(eq(zuvyQuestions.orgId, orgId));
+    }
+
+    const rows = await db
+      .select({
+        question: zuvyQuestions.question,
+        options: zuvyQuestions.options,
+        correctOption: zuvyQuestions.correctOption,
+      })
+      .from(zuvyQuestions)
+      .where(and(...conditions))
+      .orderBy(desc(zuvyQuestions.id))
+      .limit(limit);
+
+    return rows
+      .filter((row) => row.question)
+      .map((row) => ({
+        question: row.question,
+        options: (row.options ?? null) as Record<string, string> | null,
+        correctOption: (row.correctOption ?? null) as number | null,
+      }));
   }
 }

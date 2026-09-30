@@ -34,11 +34,7 @@ export class OpenAIProvider implements LLMProvider {
       };
     } catch (error) {
       this.logger.error('Error generating openai response.', error);
-      return {
-        text: '',
-        usage: '',
-        latencyMs: Date.now(),
-      };
+      throw error;
     }
   }
   async generateSpeech(inputText: string, language = 'hi') {

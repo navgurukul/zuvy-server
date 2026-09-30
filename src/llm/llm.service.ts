@@ -1,126 +1,123 @@
 import {
-  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { GenerateResponseDto } from './dto/generate-response.dto';
-import { GoogleGenAI } from '@google/genai';
-import { deepseekResponse } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
+import { GenAIProvider } from './providers/genai';
 import { CircuitBreaker } from './utils/circuit-breaker';
 
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly ai: GoogleGenAI;
   private primary: OpenAIProvider;
+  private fallback: GenAIProvider;
   private primaryBreaker: CircuitBreaker;
   private fallbackBreaker: CircuitBreaker;
 
   constructor() {
     this.primary = new OpenAIProvider();
+    this.fallback = new GenAIProvider();
+
+    // Circuit breaker: 5 failures in 60s = open for 30s
     this.primaryBreaker = new CircuitBreaker('OpenAI', {
       failureThreshold: 5,
       resetTimeout: 30000,
       monitorWindow: 60000,
     });
+
     this.fallbackBreaker = new CircuitBreaker('GenAI', {
       failureThreshold: 3,
       resetTimeout: 45000,
       monitorWindow: 60000,
     });
-
-    const key = process.env.GOOGLE_GENAI_API_KEY;
-    if (!key)
-      throw new InternalServerErrorException(
-        'Missing GOOGLE_GENAI_API_KEY for Llm module',
-      );
-    this.ai = new GoogleGenAI({ apiKey: key });
   }
 
-  async generate(generateResponseDto: GenerateResponseDto) {
-    const prompt = generateResponseDto.systemPrompt.trim();
-    if (!prompt) {
-      this.logger.error('systemPrompt is empty', prompt);
-      throw new BadRequestException('systemPrompt must be a non-empty string');
+  /**
+   * Shape returned when no provider could serve the request. Callers read
+   * .text, so returning undefined here would throw at several call sites, two
+   * of them inside database transactions. Empty text keeps their existing
+   * behaviour; "failed" lets a caller tell a real empty answer from an outage.
+   */
+  private failedCompletion() {
+    return {
+      text: '',
+      usage: null,
+      latencyMs: 0,
+      provider: null,
+      failed: true,
+    };
+  }
+
+  /**
+   * One attempt at one provider, with that provider's breaker and retry policy.
+   * Returns null when it could not serve the request, so the caller can move on
+   * to the next provider in its order.
+   */
+  private async tryProvider(which: 'openai' | 'genai', prompt: string) {
+    const isPrimary = which === 'openai';
+    const breaker = isPrimary ? this.primaryBreaker : this.fallbackBreaker;
+    const provider = isPrimary ? this.primary : this.fallback;
+
+    if (breaker.isOpen()) {
+      this.logger.warn(`${which} circuit breaker is OPEN, skipping it`);
+      return null;
     }
+
     try {
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt,
-      });
-
-      return (
-        (response as any).text ??
-        (response as any).outputs?.[0]?.content?.text ??
-        ''
+      const result = await this.executeWithRetry(
+        () => provider.completion(prompt),
+        isPrimary ? 'primary' : 'fallback',
       );
-    } catch (err) {
-      this.logger.error(
-        'Google genai failed, falling back to DeepSeek:',
-        err.message,
-      );
-
-      try {
-        const fallback = await deepseekResponse(prompt);
-        return fallback;
-      } catch (fallbackErr) {
-        this.logger.error('DeepSeek fallback also failed:', fallbackErr);
-        throw new InternalServerErrorException(
-          `Both Gemini and DeepSeek failed. Gemini error: ${
-            err instanceof Error ? err.message : String(err)
-          }, DeepSeek error: ${
-            fallbackErr instanceof Error
-              ? fallbackErr.message
-              : String(fallbackErr)
-          }`,
-        );
-      }
+      breaker.recordSuccess();
+      return { ...result, provider: which };
+    } catch (error) {
+      breaker.recordFailure();
+      this.logger.warn(`${which} provider failed: ${error.message}`);
+      return null;
     }
+  }
+
+  private async completionInOrder(
+    order: Array<'openai' | 'genai'>,
+    prompt: string,
+  ) {
+    for (const which of order) {
+      const result = await this.tryProvider(which, prompt);
+      if (result) return result;
+    }
+    this.logger.error(
+      `All LLM providers are unavailable (tried: ${order.join(' then ')})`,
+    );
+    return this.failedCompletion();
   }
 
   async generateCompletion(prompt: string) {
-    try {
-      if (!this.primaryBreaker.isOpen()) {
-        try {
-          const result = await this.executeWithRetry(
-            () => this.primary.completion(prompt),
-            'primary',
-          );
-          this.primaryBreaker.recordSuccess();
-          return { ...result, provider: 'openai' };
-        } catch (error) {
-          this.primaryBreaker.recordFailure();
-          this.logger.warn(`Primary provider failed: ${error.message}`);
-        }
-      } else {
-        this.logger.warn(
-          'Primary circuit breaker is OPEN, skipping to fallback',
-        );
-      }
+    return this.completionInOrder(['openai', 'genai'], prompt);
+  }
 
-      if (!this.fallbackBreaker.isOpen()) {
-        try {
-          const text = await this.generate({ systemPrompt: prompt });
-          this.fallbackBreaker.recordSuccess();
-          return {
-            text,
-            usage: null,
-            latencyMs: 0,
-            provider: 'genai',
-          };
-        } catch (error) {
-          this.fallbackBreaker.recordFailure();
-          this.logger.error(`Fallback provider failed: ${error.message}`);
-          throw new Error('All LLM providers are unavailable');
-        }
-      }
-
-      throw new Error('All providers circuit breakers are open');
-    } catch (error) {
-      this.logger.error('Error generating response from llm: ', error);
-    }
+  /**
+   * Same providers and same fallback behaviour, but tries the named one first.
+   *
+   * This exists so a check can run on a different model from the one whose
+   * work it is checking. Asking the model that wrote a question to re-check it
+   * shares its blind spots: a permutation question keyed 288 whose answer is
+   * 144 is wrong because of one specific mistake (treating repeated letters as
+   * distinguishable), and the model that made that mistake tends to make it
+   * again. A different model family fails differently, which is the whole
+   * value of a second opinion.
+   *
+   * Still falls back to the other provider, so preferring a model that is
+   * unconfigured or down degrades to single-model checking rather than to no
+   * checking at all.
+   */
+  async generateCompletionPreferring(
+    preferred: 'openai' | 'genai',
+    prompt: string,
+  ) {
+    const order: Array<'openai' | 'genai'> =
+      preferred === 'genai' ? ['genai', 'openai'] : ['openai', 'genai'];
+    return this.completionInOrder(order, prompt);
   }
 
   private async executeWithRetry(
@@ -128,7 +125,7 @@ export class LlmService {
     providerType: 'primary' | 'fallback',
   ) {
     const maxRetries = providerType === 'primary' ? 2 : 1;
-    let lastError: Error;
+    let lastError: unknown;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -136,17 +133,20 @@ export class LlmService {
       } catch (error) {
         lastError = error;
 
-        if (attempt < maxRetries && this.isRetryable(error)) {
-          const delay = this.getBackoffDelay(attempt);
-          this.logger.debug(
-            `Retry ${attempt + 1}/${maxRetries} after ${delay}ms`,
-          );
-          await this.sleep(delay);
-          continue;
-        }
-        throw lastError;
+        // The throw used to sit here unconditionally, so the loop slept for the
+        // backoff and then threw on the first failure: maxRetries never applied.
+        const canRetry = attempt < maxRetries && this.isRetryable(error);
+        if (!canRetry) throw lastError;
+
+        const delay = this.getBackoffDelay(attempt);
+        this.logger.debug(
+          `${providerType} retry ${attempt + 1}/${maxRetries} after ${delay}ms`,
+        );
+        await this.sleep(delay);
       }
     }
+
+    throw lastError;
   }
 
   private isRetryable(error: any): boolean {
@@ -162,5 +162,19 @@ export class LlmService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async generateAudioSummary(text: string, language: string) {
+    try {
+      const audioBuffer = await this.primary.generateSpeech(text, language);
+
+      return audioBuffer;
+    } catch (error) {
+      this.logger.error(`Audio generation failed`, error.stack);
+
+      throw new InternalServerErrorException(
+        'Failed to generate audio. Please try again later.',
+      );
+    }
   }
 }
