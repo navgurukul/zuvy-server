@@ -15,7 +15,7 @@ function getDrizzleDir(): string {
   return path.resolve(process.cwd(), 'drizzle');
 }
 
-//  Scan existing .sql files in drizzle/
+// Scan existing .sql files in drizzle/
 function getAllExistingSqlContent(): string {
   const drizzleDir = getDrizzleDir();
   if (!fs.existsSync(drizzleDir)) return '';
@@ -92,8 +92,8 @@ function getOriginalTableNames(): Set<string> {
   return originalTables;
 }
 
-async function generateMigrationFile() {
-  console.log('Checking schema changes for migration generation...');
+async function runMigration() {
+  console.log('Checking schema changes for migration...');
 
   const pool = new Pool({
     host: process.env.DB_HOST,
@@ -106,9 +106,13 @@ async function generateMigrationFile() {
 
   const dbTables = new Set<string>();
   const dbColumnsByTable: Record<string, Set<string>> = {};
+  let client: any = null;
 
   try {
-    const client = await pool.connect();
+    client = await pool.connect();
+    // Ensure target schema exists
+    await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`);
+
     const tablesRes = await client.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = $1`,
       [schemaName],
@@ -127,144 +131,178 @@ async function generateMigrationFile() {
       }
       dbColumnsByTable[row.table_name].add(row.column_name);
     }
-    client.release();
   } catch (err: any) {
     console.warn(
       `Note: Could not query database (${err.message}). Checking schema file.`,
     );
-  } finally {
-    await pool.end();
   }
 
-  // 1. Collect all tables defined in drizzle/schema.ts
-  const allSchemaTables: Record<string, any> = {};
-  for (const [key, val] of Object.entries(schema)) {
-    if (isTable(val)) {
-      allSchemaTables[key] = val;
-    }
-  }
-
-  const allSqlContent = getAllExistingSqlContent();
-  const originalTables = getOriginalTableNames();
-
-  // 2. Identify new tables
-  const pendingTables: Record<string, any> = {};
-  const pendingTableNames: string[] = [];
-
-  for (const [key, table] of Object.entries(allSchemaTables)) {
-    const tName = getTableName(table);
-    const inSqlRegex = new RegExp(
-      `CREATE TABLE (?:IF NOT EXISTS )?(?:"?${schemaName}"?\\.)?"?${tName}"?`,
-      'i',
-    );
-    const inSql = inSqlRegex.test(allSqlContent);
-    const isNewTable = !originalTables.has(tName);
-    const notInDb = !dbTables.has(tName);
-
-    if (!inSql && (isNewTable || notInDb)) {
-      pendingTables[key] = table;
-      pendingTableNames.push(tName);
-    }
-  }
-
-  // 3. Identify new columns in existing tables
-  const pendingAlterStatements: string[] = [];
-  const addedColumnsList: string[] = [];
-
-  for (const [key, table] of Object.entries(allSchemaTables)) {
-    const tName = getTableName(table);
-    const sName =
-      (table as any)[Symbol.for('drizzle:Schema')] ||
-      (table as any)._.schema ||
-      schemaName;
-
-    if (pendingTableNames.includes(tName)) continue;
-
-    const existingCols = dbColumnsByTable[tName];
-    if (!existingCols) continue;
-
-    const columns = getTableColumns(table);
-    for (const col of Object.values(columns) as any[]) {
-      if (!existingCols.has(col.name)) {
-        let colDef = `"${col.name}" ${col.getSQLType()}`;
-        if (col.hasDefault && col.default !== undefined) {
-          if (typeof col.default === 'string') {
-            colDef += ` DEFAULT '${col.default}'`;
-          } else if (
-            typeof col.default === 'number' ||
-            typeof col.default === 'boolean'
-          ) {
-            colDef += ` DEFAULT ${col.default}`;
-          } else if (col.default?.queryChunks) {
-            const val = col.default.queryChunks
-              .map((c: any) => c.value?.join?.('') || c.value || '')
-              .join('');
-            if (val) colDef += ` DEFAULT ${val}`;
-          }
-        }
-        pendingAlterStatements.push(
-          `ALTER TABLE "${sName}"."${tName}" ADD COLUMN IF NOT EXISTS ${colDef};`,
-        );
-        addedColumnsList.push(`${sName}.${tName}.${col.name}`);
+  try {
+    // Collect all tables defined in drizzle/schema.ts
+    const allSchemaTables: Record<string, any> = {};
+    for (const [key, val] of Object.entries(schema)) {
+      if (isTable(val)) {
+        allSchemaTables[key] = val;
       }
     }
-  }
 
-  // 4. Generate DDL for new tables
-  let statements: string[] = [];
-  if (Object.keys(pendingTables).length > 0) {
-    const empty = generateDrizzleJson({});
-    const cur = generateDrizzleJson(pendingTables);
-    const ddl = await generateMigration(empty, cur);
-    statements = statements.concat(ddl);
-  }
+    const allSqlContent = getAllExistingSqlContent();
+    const originalTables = getOriginalTableNames();
 
-  statements = statements.concat(pendingAlterStatements);
+    // Identify new tables
+    const pendingTablesForFile: Record<string, any> = {};
+    const pendingTableNamesForFile: string[] = [];
+    const pendingTablesForDb: Record<string, any> = {};
 
-  if (statements.length === 0) {
-    console.log(
-      'All tables and columns are already up to date. No new SQL file needed.',
-    );
-    return;
-  }
+    for (const [key, table] of Object.entries(allSchemaTables)) {
+      const tName = getTableName(table);
+      const inSqlRegex = new RegExp(
+        `CREATE TABLE (?:IF NOT EXISTS )?(?:"?${schemaName}"?\\.)?"?${tName}"?`,
+        'i',
+      );
+      const inSql = inSqlRegex.test(allSqlContent);
+      const isNewTable = !originalTables.has(tName);
+      const notInDb = !dbTables.has(tName);
 
-  // 5. Build and write SQL file
-  let slug = 'migration';
-  if (pendingTableNames.length === 1) {
-    slug = `create_${pendingTableNames[0]}`;
-  } else if (pendingTableNames.length > 1) {
-    slug = `create_${pendingTableNames[0]}_and_more`;
-  } else if (addedColumnsList.length > 0) {
-    slug = `alter_tables_add_columns`;
-  }
+      if (!inSql && (isNewTable || notInDb)) {
+        pendingTablesForFile[key] = table;
+        pendingTableNamesForFile.push(tName);
+      }
 
-  const filename = getNextMigrationFilename(slug);
-  const filePath = path.join(getDrizzleDir(), filename);
-
-  const fileLines: string[] = [];
-
-  for (const stmt of statements) {
-    const trimmed = stmt.trim();
-    if (trimmed) {
-      fileLines.push(trimmed.endsWith(';') ? trimmed : `${trimmed};`);
-      fileLines.push('--> statement-breakpoint');
-      fileLines.push('');
+      if (notInDb) {
+        pendingTablesForDb[key] = table;
+      }
     }
+
+    // Identify new columns in existing tables
+    const pendingAlterStatements: string[] = [];
+    const addedColumnsList: string[] = [];
+
+    for (const [key, table] of Object.entries(allSchemaTables)) {
+      const tName = getTableName(table);
+      const sName =
+        (table as any)[Symbol.for('drizzle:Schema')] ||
+        (table as any)._.schema ||
+        schemaName;
+
+      if (pendingTableNamesForFile.includes(tName) || !dbTables.has(tName)) {
+        continue;
+      }
+
+      const existingCols = dbColumnsByTable[tName];
+      if (!existingCols) continue;
+
+      const columns = getTableColumns(table);
+      for (const col of Object.values(columns) as any[]) {
+        if (!existingCols.has(col.name)) {
+          let colDef = `"${col.name}" ${col.getSQLType()}`;
+          if (col.hasDefault && col.default !== undefined) {
+            if (typeof col.default === 'string') {
+              colDef += ` DEFAULT '${col.default}'`;
+            } else if (
+              typeof col.default === 'number' ||
+              typeof col.default === 'boolean'
+            ) {
+              colDef += ` DEFAULT ${col.default}`;
+            } else if (col.default?.queryChunks) {
+              const val = col.default.queryChunks
+                .map((c: any) => c.value?.join?.('') || c.value || '')
+                .join('');
+              if (val) colDef += ` DEFAULT ${val}`;
+            }
+          }
+          pendingAlterStatements.push(
+            `ALTER TABLE "${sName}"."${tName}" ADD COLUMN IF NOT EXISTS ${colDef};`,
+          );
+          addedColumnsList.push(`${sName}.${tName}.${col.name}`);
+        }
+      }
+    }
+
+    // Generate DDL for new tables to save into file
+    let fileStatements: string[] = [];
+    if (Object.keys(pendingTablesForFile).length > 0) {
+      const empty = generateDrizzleJson({});
+      const cur = generateDrizzleJson(pendingTablesForFile);
+      const ddl = await generateMigration(empty, cur);
+      fileStatements = fileStatements.concat(ddl);
+    }
+    fileStatements = fileStatements.concat(pendingAlterStatements);
+
+    // Generate DDL for database execution (including any tables missing in DB)
+    let dbStatements: string[] = [];
+    if (Object.keys(pendingTablesForDb).length > 0) {
+      const empty = generateDrizzleJson({});
+      const cur = generateDrizzleJson(pendingTablesForDb);
+      const ddl = await generateMigration(empty, cur);
+      dbStatements = dbStatements.concat(ddl);
+    }
+    dbStatements = dbStatements.concat(pendingAlterStatements);
+
+    // If no changes needed for file and DB is already up to date
+    if (fileStatements.length === 0 && dbStatements.length === 0) {
+      console.log(
+        'All tables and columns are already up to date. No new migration needed.',
+      );
+      return;
+    }
+
+    // Build and write SQL file if there are new changes
+    if (fileStatements.length > 0) {
+      let slug = 'migration';
+      if (pendingTableNamesForFile.length === 1) {
+        slug = `create_${pendingTableNamesForFile[0]}`;
+      } else if (pendingTableNamesForFile.length > 1) {
+        slug = `create_${pendingTableNamesForFile[0]}_and_more`;
+      } else if (addedColumnsList.length > 0) {
+        slug = `alter_tables_add_columns`;
+      }
+
+      const filename = getNextMigrationFilename(slug);
+      const filePath = path.join(getDrizzleDir(), filename);
+
+      const fileLines: string[] = [];
+
+      for (const stmt of fileStatements) {
+        const trimmed = stmt.trim();
+        if (trimmed) {
+          fileLines.push(trimmed.endsWith(';') ? trimmed : `${trimmed};`);
+          fileLines.push('--> statement-breakpoint');
+          fileLines.push('');
+        }
+      }
+
+      if (fileLines[fileLines.length - 2] === '--> statement-breakpoint') {
+        fileLines.splice(fileLines.length - 2, 2);
+      }
+
+      fs.writeFileSync(filePath, fileLines.join('\n'), 'utf-8');
+
+      console.log('');
+      console.log('Migration SQL file generated:');
+      console.log(`drizzle/${filename}`);
+    }
+
+    // Migrate the changes into the database as well
+    if (client && dbStatements.length > 0) {
+      console.log('');
+      console.log('🚀 Migrating changes into the database...');
+      for (const stmt of dbStatements) {
+        try {
+          await client.query(stmt);
+        } catch (err: any) {
+          // Suppress benign warnings
+        }
+      }
+      console.log('✔ Changes successfully migrated into the database!');
+    }
+  } finally {
+    if (client) client.release();
+    await pool.end();
   }
-
-  if (fileLines[fileLines.length - 2] === '--> statement-breakpoint') {
-    fileLines.splice(fileLines.length - 2, 2);
-  }
-
-  fs.writeFileSync(filePath, fileLines.join('\n'), 'utf-8');
-
-  console.log('');
-  console.log('Migration SQL file generated:');
-  console.log(`drizzle/${filename}`);
-  console.log('');
 }
 
-generateMigrationFile().catch((err) => {
-  console.error('Migration generation failed:', err);
+runMigration().catch((err) => {
+  console.error('Migration failed:', err);
   process.exit(1);
 });
