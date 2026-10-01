@@ -59,6 +59,7 @@ import {
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
   UpdateChapterDto,
+  ChapterManualLockDto,
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
@@ -535,6 +536,32 @@ export class ContentController {
       chapterId,
     );
     return res;
+  }
+
+  @Patch('/chapterLock/:chapterId')
+  @ApiOperation({ summary: 'Manually lock or unlock a single chapter' })
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      const state = result?.chapter?.isLock ? 'locked' : 'unlocked';
+      return `${state} chapter "${result?.chapter?.title || 'Chapter'}"`;
+    },
+    getTrackingContext: (result, params) => ({
+      chapterId: (result?.chapter?.id ?? Number(params?.chapterId)) || null,
+      moduleId: result?.chapter?.moduleId || null,
+    }),
+  })
+  async updateChapterLock(
+    @Param('chapterId', ParseIntPipe) chapterId: number,
+    @Body() chapterLockDto: ChapterManualLockDto,
+  ) {
+    return this.contentService.updateChapterLock(
+      chapterId,
+      chapterLockDto.isLock,
+    );
   }
 
   @Delete('/deleteChapter/:moduleId')
