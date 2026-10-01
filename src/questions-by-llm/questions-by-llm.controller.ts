@@ -3,11 +3,11 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
-  Delete,
   ParseIntPipe,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,16 +16,24 @@ import {
   ApiBody,
   ApiParam,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { QuestionsByLlmService } from './questions-by-llm.service';
-import { CreateQuestionsByLlmDto } from './dto/create-questions-by-llm.dto';
-import { UpdateQuestionsByLlmDto } from './dto/update-questions-by-llm.dto';
+import {
+  CreateQuestionsByLlmDto,
+  GenerateQuestionsDto,
+} from './dto/create-questions-by-llm.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 
 @ApiTags('questions-by-llm')
-@Controller('questions-by-llm')
+@Controller('questions')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 export class QuestionsByLlmController {
   constructor(private readonly questionsByLlmService: QuestionsByLlmService) {}
-
   @Post()
   @ApiOperation({ summary: 'Create a QuestionsByLlm entry' })
   @ApiBody({ type: CreateQuestionsByLlmDto })

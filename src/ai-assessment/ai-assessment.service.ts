@@ -42,15 +42,18 @@ export class AiAssessmentService {
     private readonly questionEvaluationService: QuestionEvaluationService,
     private readonly questionByLlmService: QuestionsByLlmService,
   ) {}
-  async create(userId, createAiAssessmentDto: CreateAiAssessmentDto) {
+  async create(userId, createAiAssessmentDto: any) {
     try {
       const { inserted, enrolledStudentsCount } = await db.transaction(
         async (tx) => {
           const payload = {
             bootcampId: createAiAssessmentDto.bootcampId,
+            chapterId: createAiAssessmentDto.chapterId,
             title: createAiAssessmentDto.title,
             description: createAiAssessmentDto.description ?? null,
-            topics: createAiAssessmentDto.topics,
+            objective: createAiAssessmentDto.objective,
+            chapterIds: createAiAssessmentDto.chapterIds ?? [],
+            poolTopics: createAiAssessmentDto.poolTopics ?? [],
             // audience: createAiAssessmentDto.audience ?? null,
             totalNumberOfQuestions:
               createAiAssessmentDto.totalNumberOfQuestions,
@@ -63,7 +66,7 @@ export class AiAssessmentService {
 
           const [aiRow] = await tx
             .insert(aiAssessment)
-            .values(payload)
+            .values(payload as any)
             .returning();
 
           const enrolledStudents = await tx
@@ -247,8 +250,13 @@ export class AiAssessmentService {
   async countScore(submitAssessmentDto: SubmitAssessmentDto) {
     const { answers } = submitAssessmentDto;
     let score = 0;
+    const correctByQuestionId = new Map<string, boolean>();
 
     for (const q of answers) {
+      if (!q.selectedAnswerByStudent) {
+        correctByQuestionId.set(String(q.id), false);
+        continue;
+      }
       const correct = await db
         .select()
         .from(correctAnswers)
@@ -260,11 +268,13 @@ export class AiAssessmentService {
         )
         .limit(1);
 
-      if (correct.length > 0) {
+      const isCorrect = correct.length > 0;
+      correctByQuestionId.set(String(q.id), isCorrect);
+      if (isCorrect) {
         score++;
       }
     }
-    return { score, totalQuestions: answers.length };
+    return { score, totalQuestions: answers.length, correctByQuestionId };
   }
 
   async submitLlmAssessment(
@@ -276,7 +286,7 @@ export class AiAssessmentService {
         const { answers, aiAssessmentId } = submitAssessmentDto;
 
         // const totalQuestions = answers.length;
-        const { score, totalQuestions } =
+        const { score, totalQuestions, correctByQuestionId } =
           await this.countScore(submitAssessmentDto);
         const totalScore = (score / totalQuestions) * 100;
 
@@ -358,6 +368,14 @@ export class AiAssessmentService {
           parseError = 'Empty LLM response.';
         }
 
+        if (Array.isArray(parsedEvaluation?.evaluations)) {
+          for (const item of parsedEvaluation.evaluations) {
+            item.status = correctByQuestionId.get(String(item.id))
+              ? 'correct'
+              : 'incorrect';
+          }
+        }
+
         // Optionally: persist parsedEvaluation to DB here if successful
         // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
         await this.questionEvaluationService.saveEvaluations(
@@ -436,7 +454,7 @@ export class AiAssessmentService {
         bootcampId: aiAssessment.bootcampId,
         title: aiAssessment.title,
         description: aiAssessment.description,
-        topics: aiAssessment.topics,
+        topics: aiAssessment.poolTopics,
         audience: aiAssessment.audience,
         totalNumberOfQuestions: aiAssessment.totalNumberOfQuestions,
         totalQuestionsWithBuffer: aiAssessment.totalQuestionsWithBuffer,
@@ -479,7 +497,7 @@ export class AiAssessmentService {
       const topicsData = await db
         .select({
           id: aiAssessment.id,
-          topics: aiAssessment.topics,
+          topics: aiAssessment.poolTopics,
         })
         .from(aiAssessment)
         .where(inArray(aiAssessment.id, assessmentIds));

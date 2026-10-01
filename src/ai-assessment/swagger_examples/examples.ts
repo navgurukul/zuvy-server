@@ -61,3 +61,19 @@ export const createAiAssessment = {
   audience: 'Any previous cohorts (based on bootcampId)',
   totalNumberOfQuestions: 8,
 };
+
+export const createAiAssessmentBootcamp = {
+  bootcampId: 803,
+  chapterId: 1201,
+  moduleId: 44,
+  title: 'JavaScript Fundamentals Assessment',
+  objective: 'Evaluate JavaScript fundamentals for the selected chapter',
+  description: 'Covers variables, functions, arrays, and control flow.',
+  expectedOutcomes: 'Students can solve foundational JavaScript questions.',
+  totalNumberOfQuestions: 10,
+  chapterIds: [1201],
+  poolTopics: [
+    { id: 1, name: 'JavaScript Basics' },
+    { id: 2, name: 'Arrays' },
+  ],
+};

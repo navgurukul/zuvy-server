@@ -30,6 +30,7 @@ import { RolesModule } from './roles/roles.module';
 import { UserTokensModule } from './user-tokens/user-tokens.module';
 import { LlmModule } from './llm/llm.module';
 import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
+import { QuestionsModule } from './eval-questions/questions.module';
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
 import { OrgModule } from './org/org.module';
@@ -49,6 +50,8 @@ import { NewNotificationModule } from './controller/notification/notification.mo
 import { ZoomLicenseModule } from './controller/zoom-license/zoom-license.module';
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
+import { BullModule } from '@nestjs/bullmq';
+import { TopicModule } from './eval-topic/topic.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -64,6 +67,13 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
       signOptions: { expiresIn: '24h' },
     }),
     ConfigModule.forRoot({ isGlobal: true }),
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_PORT || 6379),
+      },
+      prefix: process.env.BULLMQ_PREFIX || 'zuvy',
+    }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
@@ -84,6 +94,8 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     UserTokensModule,
     LlmModule,
     QuestionsByLlmModule,
+    QuestionsModule,
+    TopicModule,
     LevelModule,
     AiAssessmentModule,
     OrgModule,

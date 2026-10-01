@@ -1,28 +1,139 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import {
   CreateCorrectAnswerDto,
   CreateMcqQuestionOptionDto,
   CreateQuestionsByLlmDto,
 } from './dto/create-questions-by-llm.dto';
-import { UpdateQuestionsByLlmDto } from './dto/update-questions-by-llm.dto';
 import { db } from 'src/db';
 import {
   questionsByLLM,
   questionLevelRelation,
   mcqQuestionOptions,
   correctAnswers,
+  zuvyQuestions,
+  questionIndexOutbox,
 } from 'drizzle/schema';
-import { asc, inArray } from 'drizzle-orm';
+import { and, asc, inArray, ilike } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
+import { generateMcqPromptFromSpec } from 'src/ai-assessment/system_prompts/system_prompts';
+import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
+import { LlmService } from 'src/llm/llm.service';
+
+const GENERATION_QUEUE = 'llm-generation';
+const GENERATION_JOB = 'generate-topic-batch';
+const BATCH_SIZE = 10;
+
+export interface QuestionGenerationJob {
+  orgId: number;
+  topic: string;
+  topicDescription: string;
+  count: number;
+  subtopics?: string[];
+  learningObjectives?: string;
+  targetAudience?: string;
+  focusAreas?: string;
+  bloomsLevel?: string;
+  questionStyle?: string;
+  difficultyDistribution?: { easy?: number; medium?: number; hard?: number };
+  questionCounts?: { easy?: number; medium?: number; hard?: number };
+  batchQuestionCounts?: { easy?: number; medium?: number; hard?: number };
+  levelId?: string | null;
+  requestedByUserId?: string;
+}
 
 @Injectable()
 export class QuestionsByLlmService {
   private readonly logger = new Logger(QuestionsByLlmService.name);
+
+  constructor(
+    @InjectQueue(GENERATION_QUEUE) private readonly generationQueue: Queue,
+    @InjectQueue('question-index') private readonly questionIndexQueue: Queue,
+    private readonly llmService: LlmService,
+  ) {}
+
+  async processGenerationJob(job: QuestionGenerationJob) {
+    const existing = await db
+      .select({ question: zuvyQuestions.question })
+      .from(zuvyQuestions)
+      .where(
+        and(
+          eq(zuvyQuestions.orgId, job.orgId),
+          ilike(zuvyQuestions.topicName, job.topic),
+        ),
+      )
+      .limit(200);
+    const prompt = generateMcqPromptFromSpec(
+      job,
+      existing.map((row) => row.question),
+    );
+    const response = await this.llmService.generate({ systemPrompt: prompt });
+    const parsed = parseLlmMcq(response);
+    if (parsed.evaluations.length !== job.count) {
+      throw new Error(
+        `Generation job expected ${job.count} questions but received ${parsed.evaluations.length}.`,
+      );
+    }
+
+    return this.insertGeneratedQuestions(parsed.evaluations, job);
+  }
+
+  private async insertGeneratedQuestions(
+    evaluations: any[],
+    job: QuestionGenerationJob,
+  ) {
+    return db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(zuvyQuestions)
+        .values(
+          evaluations.map((question) => ({
+            orgId: job.orgId,
+            topicName: question.topic || job.topic,
+            topicDescription: job.topicDescription || job.topic,
+            subtopics: job.subtopics ?? null,
+            learningObjectives: job.learningObjectives ?? null,
+            targetAudience: job.targetAudience ?? null,
+            focusAreas: job.focusAreas ?? null,
+            bloomsLevel: job.bloomsLevel ?? null,
+            questionStyle: job.questionStyle ?? null,
+            question: question.question,
+            difficulty: question.difficulty ?? null,
+            language: question.language ?? null,
+            options: question.options,
+            correctOption: Number(question.correctOption),
+            difficultyDistribution: job.difficultyDistribution ?? null,
+            questionCounts: job.questionCounts ?? null,
+            levelId: job.levelId ?? null,
+          })),
+        )
+        .returning({ id: zuvyQuestions.id });
+
+      if (inserted.length) {
+        await tx.insert(questionIndexOutbox).values(
+          inserted.map((question) => ({
+            questionId: question.id,
+            requestedByUserId: job.requestedByUserId ?? null,
+            status: 'pending',
+          })),
+        );
+      }
+      if (inserted.length) {
+        await this.questionIndexQueue.add(
+          'index-questions',
+          { questionIds: inserted.map((question) => question.id) },
+          { attempts: 3, backoff: { type: 'exponential', delay: 5_000 } },
+        );
+      }
+      return inserted;
+    });
+  }
+
   async createMcqQuestionOption(dto: CreateMcqQuestionOptionDto) {
     return await db.insert(mcqQuestionOptions).values(dto).returning();
   }
@@ -293,7 +404,7 @@ export class QuestionsByLlmService {
     return `This action returns a #${id} questionsByLlm`;
   }
 
-  update(id: number, updateQuestionsByLlmDto: UpdateQuestionsByLlmDto) {
+  update(id: number) {
     return `This action updates a #${id} questionsByLlm`;
   }
 
