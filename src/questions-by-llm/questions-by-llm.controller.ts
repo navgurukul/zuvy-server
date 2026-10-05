@@ -29,7 +29,7 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 
 @ApiTags('questions-by-llm')
-@Controller('questions')
+@Controller('questions-by-llm')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 export class QuestionsByLlmController {
@@ -60,8 +60,9 @@ export class QuestionsByLlmController {
     description: 'List retrieved',
     type: [CreateQuestionsByLlmDto],
   })
-  findAll(@Query('aiAssessmentId') id: number) {
-    return this.questionsByLlmService.getAllLlmQuestions(id);
+  findAll(@Query('aiAssessmentId') id: number, @Req() req) {
+    const userId = req.user?.sub;
+    return this.questionsByLlmService.getAllLlmQuestions(id, userId);
   }
 
   // @Get(':id')

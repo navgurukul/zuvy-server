@@ -17,11 +17,15 @@ import {
   questionLevelRelation,
   mcqQuestionOptions,
   correctAnswers,
+  studentAssessment,
+  studentLevelRelation,
+  aiAssessment,
   zuvyQuestions,
   questionIndexOutbox,
 } from 'drizzle/schema';
-import { and, asc, inArray, ilike } from 'drizzle-orm';
+import { and, asc, desc, inArray, ilike } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
+import { randomizeAssessmentQuestions } from 'src/global-utils';
 import { generateMcqPromptFromSpec } from 'src/ai-assessment/system_prompts/system_prompts';
 import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
 import { LlmService } from 'src/llm/llm.service';
@@ -153,7 +157,6 @@ export class QuestionsByLlmService {
       difficulty: q.difficulty ?? null,
       question: q.question,
       language: q.language,
-      aiAssessmentId,
     }));
 
     try {
@@ -270,38 +273,86 @@ export class QuestionsByLlmService {
     }
   }
 
-  async getAllLlmQuestions(aiAssessmentId: number) {
+  async getAllLlmQuestions(aiAssessmentId: number, userId: number) {
     try {
-      // fetch questions by aiAssessmentId
-      const questions = await db
+      const assessmentStatus = await db
         .select()
-        .from(questionsByLLM)
-        .where(eq(questionsByLLM.aiAssessmentId, aiAssessmentId));
+        .from(studentAssessment)
+        .where(
+          and(
+            eq(studentAssessment.studentId, userId),
+            eq(studentAssessment.aiAssessmentId, aiAssessmentId),
+          ),
+        )
+        .limit(1);
 
-      if (!questions || questions.length === 0) {
-        return [];
+      const isCompleted =
+        assessmentStatus.length > 0 && assessmentStatus[0].status === 1;
+
+      const bootcamp = await db
+        .select({ bootcampId: aiAssessment.bootcampId })
+        .from(aiAssessment)
+        .where(eq(aiAssessment.id, aiAssessmentId))
+        .limit(1);
+
+      const bootcampId = bootcamp?.[0]?.bootcampId;
+
+      const studentLevel = await db
+        .select({
+          levelId: studentLevelRelation.levelId,
+        })
+        .from(studentLevelRelation)
+        .innerJoin(
+          aiAssessment,
+          eq(studentLevelRelation.aiAssessmentId, aiAssessment.id),
+        )
+        .where(
+          and(
+            eq(studentLevelRelation.studentId, userId),
+            eq(aiAssessment.bootcampId, bootcampId),
+          ),
+        )
+        .orderBy(desc(studentLevelRelation.createdAt))
+        .limit(1);
+
+      const levelId = studentLevel?.[0]?.levelId;
+
+      let questions;
+
+      if (!levelId) {
+        questions = await db.select().from(questionsByLLM);
+      } else {
+        questions = await db
+          .select()
+          .from(questionsByLLM)
+          .innerJoin(
+            questionLevelRelation,
+            eq(questionsByLLM.id, questionLevelRelation.questionId),
+          )
+          .where(eq(questionLevelRelation.levelId, levelId))
+          .then((rows) => rows.map((r) => r.questions_by_llm));
       }
 
-      // populate options and correctOption for each question
+      if (!questions || questions.length === 0) {
+        return { isCompleted, questions: [] };
+      }
+
       const populated = await Promise.all(
         questions.map(async (q) => {
-          // get options for this question (ordered by optionNumber)
           const options = await db
             .select()
             .from(mcqQuestionOptions)
             .where(eq(mcqQuestionOptions.questionId, q.id))
             .orderBy(asc(mcqQuestionOptions.optionNumber));
 
-          // get correct answer row (if exists)
           const correctRow = await db
             .select()
             .from(correctAnswers)
             .where(eq(correctAnswers.questionId, q.id))
             .limit(1);
 
-          let correctOption = null;
+          let correctOption: CreateMcqQuestionOptionDto | null = null;
           if (correctRow && correctRow.length > 0) {
-            // fetch the option referenced by correct_option_id
             const correctOptionRows = await db
               .select()
               .from(mcqQuestionOptions)
@@ -314,7 +365,6 @@ export class QuestionsByLlmService {
                 : null;
           }
 
-          // return original question + TWO additional fields: options & correctOption
           return {
             ...q,
             options,
@@ -323,7 +373,12 @@ export class QuestionsByLlmService {
         }),
       );
 
-      return populated;
+      const randomizedAssessment = randomizeAssessmentQuestions(populated);
+
+      return {
+        isCompleted,
+        questions: randomizedAssessment,
+      };
     } catch (error) {
       this.logger.error('Error fetching LLM questions:', error);
       throw new InternalServerErrorException('Failed to fetch LLM questions');

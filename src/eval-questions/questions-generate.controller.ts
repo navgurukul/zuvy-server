@@ -1,9 +1,33 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { resolveOrgId } from 'src/auth/resolve-org-id';
+import { CreateQuestionDto } from './dto/create-question.dto';
 import { GenerateQuestionsDto } from './dto/generate-questions.dto';
+import { ReplaceQuestionDto } from './dto/replace-question.dto';
+import { UpdateQuestionDto } from './dto/update-question.dto';
+import { QuestionsCrudService } from './questions.crud.service';
 import { QuestionsService } from './questions.service';
 import { generateQuestionsExample } from './swagger_examples/examples';
 
@@ -11,7 +35,196 @@ import { generateQuestionsExample } from './swagger_examples/examples';
 @ApiBearerAuth('JWT-auth')
 @Controller('questions')
 export class QuestionsGenerateController {
-  constructor(private readonly questionsService: QuestionsService) {}
+  constructor(
+    private readonly questionsService: QuestionsService,
+    private readonly questionsCrudService: QuestionsCrudService,
+  ) {}
+
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Create a question' })
+  @ApiBody({
+    type: CreateQuestionDto,
+    examples: {
+      createQuestion: {
+        summary: 'Create an MCQ question',
+        value: {
+          topicName: 'HTML & CSS',
+          topicDescription: 'Fundamentals of HTML and CSS.',
+          subtopics: ['HTML basics'],
+          question: 'Which HTML tag creates a hyperlink?',
+          difficulty: 'easy',
+          language: 'English',
+          options: {
+            '1': '<a>',
+            '2': '<link>',
+            '3': '<href>',
+            '4': '<url>',
+          },
+          correctOption: 1,
+        },
+      },
+    },
+  })
+  create(
+    @Req() req: Request & { user?: { orgId?: number } },
+    @Body() createQuestionDto: CreateQuestionDto,
+  ) {
+    return this.questionsCrudService.create(
+      resolveOrgId(req),
+      createQuestionDto,
+    );
+  }
+
+  @Get('replace')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Get replacement questions filtered by topic and difficulty (used by Review → Replace)',
+  })
+  @ApiQuery({
+    name: 'topicName',
+    required: true,
+    type: String,
+    example: 'HTML & CSS',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: true,
+    type: String,
+    example: 'easy',
+  })
+  @ApiQuery({
+    name: 'questionSetId',
+    required: true,
+    type: Number,
+    example: 253,
+    description: 'Question set whose existing questions must be excluded',
+  })
+  @ApiQuery({
+    name: 'excludeId',
+    required: false,
+    type: Number,
+    example: 42,
+    description: 'ID of the current question to exclude',
+  })
+  findReplacement(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Query('topicName') topicName: string,
+    @Query('difficulty') difficulty: string,
+    @Query('questionSetId') questionSetId: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.questionsCrudService.findReplacements({
+      orgId: resolveOrgId(req),
+      topicName,
+      difficulty,
+      questionSetId: Number(questionSetId),
+      excludeId: excludeId ? Number(excludeId) : undefined,
+    });
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+  ) {
+    return this.questionsCrudService.findOne(resolveOrgId(req), Number(id));
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  remove(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+  ) {
+    return this.questionsCrudService.remove(resolveOrgId(req), Number(id));
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Update a question, its MCQ options, or the correct option',
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Question ID',
+    example: 1503,
+  })
+  @ApiBody({
+    type: UpdateQuestionDto,
+    examples: {
+      correctAnswerOnly: {
+        summary: 'Correct an AI-selected answer',
+        value: { correctOption: 3 },
+      },
+      updateOptionsAndAnswer: {
+        summary: 'Update MCQ options and correct answer',
+        value: {
+          options: {
+            '1': 'Option A',
+            '2': 'Option B',
+            '3': 'Corrected option C',
+            '4': 'Option D',
+          },
+          correctOption: 3,
+        },
+      },
+    },
+  })
+  update(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('id') id: string,
+    @Body() updateQuestionDto: UpdateQuestionDto,
+  ) {
+    return this.questionsCrudService.update(
+      resolveOrgId(req),
+      Number(id),
+      updateQuestionDto,
+    );
+  }
+
+  @Put(':oldQuestionId/replace')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Replace a question in a question set' })
+  @ApiParam({
+    name: 'oldQuestionId',
+    type: Number,
+    description: 'ID of the existing question that will be replaced in the set',
+    example: 1503,
+  })
+  @ApiBody({ type: ReplaceQuestionDto })
+  replace(
+    @Req() req: Request & { user?: { orgId?: number | string } },
+    @Param('oldQuestionId') oldQuestionId: string,
+    @Body() body: ReplaceQuestionDto,
+  ) {
+    if (!body) {
+      throw new BadRequestException('Request body is required');
+    }
+
+    const { questionSetId, replacementQuestionId } = body;
+
+    if (!Number.isInteger(questionSetId) || questionSetId <= 0) {
+      throw new BadRequestException('questionSetId must be a positive integer');
+    }
+    if (
+      !Number.isInteger(replacementQuestionId) ||
+      replacementQuestionId <= 0
+    ) {
+      throw new BadRequestException(
+        'replacementQuestionId must be a positive integer',
+      );
+    }
+
+    return this.questionsCrudService.replaceInQuestionSet(
+      Number(oldQuestionId),
+      Number(questionSetId),
+      Number(replacementQuestionId),
+    );
+  }
 
   @Post('generate')
   @UseGuards(JwtAuthGuard)

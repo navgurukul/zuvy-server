@@ -154,10 +154,14 @@ export class CreateQuestionsByLlmDto {
 
   @IsString()
   @IsOptional()
-  levelId?: string;
+  levelId?: string | null;
 }
 
 export class CreateMcqQuestionOptionDto {
+  @IsNumber()
+  @IsOptional()
+  id?: number;
+
   @IsNumber()
   @IsNotEmpty()
   questionId: number;
