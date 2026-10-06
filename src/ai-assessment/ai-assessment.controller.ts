@@ -46,6 +46,9 @@ import {
 import { AiAssessmentCrudService } from './ai-assessment.crud.service';
 import { AiAssessmentMappingService } from './ai-assessment.mapping.service';
 import { resolveOrgId } from 'src/auth/resolve-org-id';
+import { ExplainQuestionDto } from './dto/explain-question.dto';
+import { QuestionExplanationService } from './question-explanation.service';
+import { VectorService } from 'src/vector/vector.service';
 
 @ApiTags('AI Assessment')
 @ApiBearerAuth('JWT-auth')
@@ -56,6 +59,8 @@ export class AiAssessmentController {
     private readonly aiAssessmentService: AiAssessmentService,
     private readonly aiAssessmentCrudService: AiAssessmentCrudService,
     private readonly aiAssessmentMappingService: AiAssessmentMappingService,
+    private readonly questionExplanationService: QuestionExplanationService,
+    private readonly vectorService: VectorService,
   ) {}
 
   @Post()
@@ -240,6 +245,34 @@ export class AiAssessmentController {
       throw new HttpException('Invalid assessmentId', HttpStatus.BAD_REQUEST);
     }
     return this.aiAssessmentService.getAssessmentTimeStatus(id);
+  }
+
+  @Post('questions/explain')
+  @ApiOperation({
+    summary:
+      'Get or generate a cached explanation for why the correct MCQ option is correct (one LLM call per question globally).',
+  })
+  @ApiBody({ type: ExplainQuestionDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      '{ questionId, explanation, cached } — cached true when loaded from DB.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Question not part of this student assessment.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No assignment or question not found.',
+  })
+  explainQuestion(@Body() dto: ExplainQuestionDto, @Req() req) {
+    const userId = req.user[0]?.id;
+    return this.questionExplanationService.getOrCreateQuestionExplanation(
+      userId,
+      dto.assessmentId,
+      dto.questionId,
+    );
   }
 
   @Get(':id/my-questions')
@@ -511,5 +544,30 @@ export class AiAssessmentController {
         authorization: req.headers?.authorization,
       },
     );
+  }
+
+  @Post('admin/create-qdrant-indexes')
+  @ApiOperation({
+    summary:
+      'One-time: create payload indexes on QUESTIONS collection in Qdrant',
+  })
+  @ApiResponse({ status: 200, description: 'Indexes created successfully' })
+  async createQdrantIndexes() {
+    const collection = 'QUESTIONS';
+    await this.vectorService.createPayloadIndex(collection, 'topic', 'keyword');
+    await this.vectorService.createPayloadIndex(
+      collection,
+      'subtopics',
+      'keyword',
+    );
+    await this.vectorService.createPayloadIndex(
+      collection,
+      'difficulty',
+      'keyword',
+    );
+    return {
+      message: 'Qdrant payload indexes created on QUESTIONS collection',
+      fields: ['topic', 'subtopics', 'difficulty'],
+    };
   }
 }

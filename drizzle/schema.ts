@@ -4510,6 +4510,14 @@ export const zuvyQuestions = main.table('zuvy_questions', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+export const zuvyQuestionExplanations = main.table('zuvy_question_explanations', {
+  id: serial('id').primaryKey().notNull(),
+  questionId: integer('question_id').notNull().unique().references(() => zuvyQuestions.id, { onDelete: 'cascade' }),
+  explanation: text('explanation').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
 export const aiAssessmentQuestions = main.table(
   'ai_assessment_questions',
   {

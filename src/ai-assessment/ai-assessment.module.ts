@@ -10,6 +10,7 @@ import { AiAssessmentMappingService } from './ai-assessment.mapping.service';
 import { AiAssessmentMappingHelpers } from './ai-assessment.mapping.helpers';
 import { TopicModule } from 'src/eval-topic/topic.module';
 import { StorageModule } from 'src/storage/storage.module';
+import { QuestionExplanationService } from './question-explanation.service';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StorageModule } from 'src/storage/storage.module';
     AiAssessmentCrudService,
     AiAssessmentMappingHelpers,
     AiAssessmentMappingService,
+    QuestionExplanationService,
   ],
 })
 export class AiAssessmentModule {}
