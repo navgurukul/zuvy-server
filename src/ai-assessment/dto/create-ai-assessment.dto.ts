@@ -4,7 +4,6 @@ import {
   IsDateString,
   IsInt,
   IsNotEmpty,
-  IsNumber,
   IsString,
   IsOptional,
   Min,
@@ -94,71 +93,18 @@ export class PublishAssessmentDto {
   endDatetime?: string;
 }
 
-export class SelectedAnswerByStudentDto {
-  @IsNumber()
-  @IsNotEmpty()
-  id: number;
-
-  @IsNumber()
-  @IsNotEmpty()
-  questionId: number;
-
-  @IsString()
-  @IsNotEmpty()
-  optionText: string;
-
-  @IsNumber()
-  @IsNotEmpty()
-  optionNumber: number;
-}
-class QuestionAnswerDto {
-  @IsNumber()
-  @IsNotEmpty()
-  id: number;
-
-  @IsString()
-  @IsNotEmpty()
-  question: string;
-
-  @IsString()
-  @IsOptional()
-  topic?: string;
-
-  @IsString()
-  @IsOptional()
-  difficulty?: string;
-
-  @ValidateNested()
-  @Type(() => SelectedAnswerByStudentDto)
-  options: SelectedAnswerByStudentDto;
-
-  @ValidateNested()
-  @Type(() => SelectedAnswerByStudentDto)
-  selectedAnswerByStudent: SelectedAnswerByStudentDto;
-
-  @IsString()
-  @IsOptional()
-  language?: string;
-}
-
 export class SubmitAssessmentDto {
-  @IsArray()
-  @IsNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => QuestionAnswerDto)
-  answers: QuestionAnswerDto[];
-
-  @IsNumber()
   aiAssessmentId: number;
+  answers: any[];
 }
 
 export class GenerateAssessmentDto {
-  @IsNumber()
-  @IsNotEmpty()
+  @IsInt()
+  @Min(1)
   aiAssessmentId: number;
 
-  @IsNumber()
-  @IsNotEmpty()
+  @IsInt()
+  @Min(1)
   bootcampId: number;
 }
 

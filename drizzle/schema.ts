@@ -4625,11 +4625,40 @@ export const studentLevelRelation = main.table("student_level_relation", {
   studentId: integer("student_id").notNull().references(() => users.id),
   levelId: integer("level_id").notNull().references(() => levels.id),
   aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
   assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
 }, (table) => ({
-  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId, table.bootcampId),
 }));
+
+export const studentAnswers = main.table('student_answers', {
+  id: serial('id').primaryKey().notNull(),
+  studentId: integer('student_id').notNull().references(() => users.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: 'cascade' }),
+  questionId: integer('question_id').notNull().references(() => zuvyQuestions.id, { onDelete: 'cascade' }),
+  selectedOption: integer('selected_option'),
+  isCorrect: integer('is_correct').notNull().default(0),
+  answeredAt: timestamp('answered_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique('uniq_student_answer').on(table.studentId, table.aiAssessmentId, table.questionId),
+}));
+
+
+export const llmUsage = main.table("llm_usage", {
+  id: serial("id").primaryKey(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  prompt: text("prompt").notNull(),
+  responseText: text("response_text").notNull(),
+  latencyMs: integer("latency_ms").notNull(),
+  usage: jsonb("usage"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type LLMUsage = typeof llmUsage.$inferSelect;
+export type InsertLLMUsage = typeof llmUsage.$inferInsert;
 
 export const questionEvaluation = main.table('question_evaluation', {
   id: serial('id').primaryKey().notNull(),
