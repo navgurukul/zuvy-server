@@ -13,6 +13,8 @@ import {
   Req,
   UsePipes,
   ValidationPipe,
+  UseGuards,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,15 +22,20 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { LearnerProfileService } from './learner.profile.service';
 import {
   SaveCompleteProfileDto,
   ProfileStrengthResponseDto,
+  AdminLearnerQueryDto,
 } from './dto/learner.dto';
 import { ValidationError } from 'class-validator';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
+import { Roles } from '../../decorators/roles.decorator';
+import { RolesGuard } from '../../guards/roles.guard';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 function flattenErrors(errors: ValidationError[]): string[] {
   const messages: string[] = [];
@@ -80,6 +87,32 @@ export class LearnerProfileController {
   async getCompleteProfile(@Req() req) {
     const userId = req.user[0]?.id;
     return this.learnerProfileService.getCompleteProfile(userId);
+  }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiBearerAuth('JWT-auth')
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Maximum number of profiles to return (1-1000)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  @ApiOperation({
+    summary: 'Admin: Get all learner profiles',
+  })
+  async getAllLearnerProfiles(@Query() query: AdminLearnerQueryDto) {
+    return this.learnerProfileService.getAlllearnerProfilesData(
+      query.limit,
+      query.offset,
+    );
   }
 
   @Put(':id')

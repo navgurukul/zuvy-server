@@ -272,6 +272,34 @@ export class LearnerProfileService {
       message: 'Profile deleted successfully',
     };
   }
+
+  // ─── ADMIN: Get All LearNER Profiles ───────────────────────────
+
+  async getAlllearnerProfilesData(limit?: number, offset?: number) {
+    await this.ensureCompleteProfileTableReady();
+
+    let q = db.select().from(zuvyLearnersCompleteProfile);
+
+    if (typeof limit === 'number') {
+      q = q.limit(limit);
+    }
+
+    if (typeof offset === 'number') {
+      q = q.offset(offset);
+    }
+
+    const rows = await q;
+
+    const responseData = rows.map((r) => ({
+      ...r,
+      termsAndCondition: r?.termsAndCondition ?? false,
+    }));
+
+    return {
+      success: true,
+      data: responseData,
+    };
+  }
   private getProfileStrengthDetails(percentage: number): {
     level: string;
     message: string;
