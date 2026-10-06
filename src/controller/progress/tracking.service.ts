@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { db } from '../../db/index';
 import {
   eq,
@@ -57,9 +62,19 @@ import {
   resolveGoogleMeetAttendanceReadiness,
 } from 'src/services/attendance/attendance-readiness';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
+import {
+  ChapterLockState,
+  computeChapterLockStates,
+} from 'src/helpers/chapterLock';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
+
+const UNLOCKED_CHAPTER: ChapterLockState = {
+  isLock: false,
+  lockReason: null,
+  lockMessage: null,
+};
 
 @Injectable()
 export class TrackingService {
@@ -220,6 +235,23 @@ export class TrackingService {
         ]);
 
       if (chapterExistsInModuleChapter.length != 0) {
+        if (chapterExistsInChapterTracking.length == 0) {
+          const lockState = await this.getChapterLockStateForUser(
+            bootcampId,
+            moduleId,
+            chapterId,
+            userId,
+          );
+          if (lockState.isLock) {
+            return [
+              {
+                status: 'error',
+                message: lockState.lockMessage,
+                lockReason: lockState.lockReason,
+              },
+            ];
+          }
+        }
         if (chapterExistsInChapterTracking.length == 0) {
           const insertChapterTracking: any = {
             userId: BigInt(userId),
@@ -510,6 +542,76 @@ export class TrackingService {
     }
   }
 
+  // Whether the chapter is closed to this user, and why: an admin locked it, or
+  // the course has Chapter Lock on and the chapter before it is not completed.
+  // Module Lock plays no part in this.
+  async getChapterLockStateForUser(
+    bootcampId: number,
+    moduleId: number,
+    chapterId: number,
+    userId: number,
+  ): Promise<ChapterLockState> {
+    const bootcampSetting = await db.query.zuvyBootcampType.findFirst({
+      where: (bootcamp, { eq }) => eq(bootcamp.bootcampId, bootcampId),
+      columns: { isChapterLocked: true },
+    });
+    if (!bootcampSetting?.isChapterLocked) {
+      // Ordered lock is off, so only the admin's manual lock can apply.
+      const [chapter] = await db
+        .select({ id: zuvyModuleChapter.id, isLock: zuvyModuleChapter.isLock })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+      return (
+        computeChapterLockStates(
+          chapter ? [chapter] : [],
+          new Set(),
+          false,
+        ).get(chapterId) ?? UNLOCKED_CHAPTER
+      );
+    }
+
+    const [moduleChapters, completedChapters] = await Promise.all([
+      db
+        .select({
+          id: zuvyModuleChapter.id,
+          topicId: zuvyModuleChapter.topicId,
+          isLock: zuvyModuleChapter.isLock,
+          assessmentState: zuvyOutsourseAssessments.currentState,
+        })
+        .from(zuvyModuleChapter)
+        .leftJoin(
+          zuvyOutsourseAssessments,
+          eq(zuvyModuleChapter.id, zuvyOutsourseAssessments.chapterId),
+        )
+        .where(eq(zuvyModuleChapter.moduleId, moduleId))
+        .orderBy(asc(zuvyModuleChapter.order)),
+      db
+        .select({ chapterId: zuvyChapterTracking.chapterId })
+        .from(zuvyChapterTracking)
+        .where(
+          and(
+            eq(zuvyChapterTracking.userId, BigInt(userId)),
+            eq(zuvyChapterTracking.moduleId, moduleId),
+          ),
+        ),
+    ]);
+
+    // Same visibility rule as getAllChapterWithStatus: assessments that are
+    // not published/active/closed are hidden and must not block the order.
+    const visibleChapters = moduleChapters.filter(
+      (chapter) =>
+        chapter.topicId !== 6 ||
+        chapter.assessmentState == null ||
+        [1, 2, 3].includes(chapter.assessmentState),
+    );
+    const chapterLocks = computeChapterLockStates(
+      visibleChapters,
+      new Set(completedChapters.map((c) => c.chapterId)),
+      true,
+    );
+    return chapterLocks.get(chapterId) ?? UNLOCKED_CHAPTER;
+  }
+
   async getAllChapterWithStatus(moduleId: number, userId: number) {
     try {
       const moduleDetails = await db
@@ -526,6 +628,7 @@ export class TrackingService {
             id: true,
             title: true,
             topicId: true,
+            isLock: true,
           },
           with: {
             chapterTrackingDetails: {
@@ -591,6 +694,24 @@ export class TrackingService {
             chapter['chapterTrackingDetails'].length > 0
               ? 'Completed'
               : 'Pending';
+        });
+
+        const bootcampSetting = await db.query.zuvyBootcampType.findFirst({
+          where: (bootcamp, { eq }) =>
+            eq(bootcamp.bootcampId, moduleDetails[0].bootcampId),
+          columns: { isChapterLocked: true },
+        });
+        const chapterLocks = computeChapterLockStates(
+          trackingData,
+          new Set(
+            trackingData
+              .filter((chapter) => chapter['status'] === 'Completed')
+              .map((chapter) => chapter.id),
+          ),
+          bootcampSetting?.isChapterLocked || false,
+        );
+        trackingData.forEach((chapter) => {
+          Object.assign(chapter, chapterLocks.get(chapter.id));
         });
 
         const chapterIds = trackingData.map((chapter) => chapter.id);
@@ -1344,6 +1465,21 @@ export class TrackingService {
           where: (cm, { eq }) => eq(cm.id, chapter.moduleId),
           columns: { bootcampId: true },
         });
+        if (courseModule?.bootcampId) {
+          const lockState = await this.getChapterLockStateForUser(
+            courseModule.bootcampId,
+            chapter.moduleId,
+            chapterId,
+            userId,
+          );
+          if (lockState.isLock) {
+            throw new ForbiddenException({
+              statusCode: 403,
+              message: lockState.lockMessage,
+              lockReason: lockState.lockReason,
+            });
+          }
+        }
         if (courseModule?.bootcampId) {
           const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
             where: (be, { and, eq }) =>
