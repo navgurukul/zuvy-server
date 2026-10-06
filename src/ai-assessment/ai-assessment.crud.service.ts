@@ -3,12 +3,16 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from 'src/db';
 import {
   aiAssessment,
+  aiAssessmentQuestionSets,
+  levels,
   studentAssessment,
+  studentLevelRelation,
   users,
   zuvyBatchEnrollments,
 } from 'drizzle/schema';
@@ -171,6 +175,211 @@ export class AiAssessmentCrudService {
       publishedAt: aiAssessment.publishedAt,
       createdAt: aiAssessment.createdAt,
       updatedAt: aiAssessment.updatedAt,
+    };
+  }
+
+  private async loadAssessmentOrFail(aiAssessmentId: number) {
+    const [assessment] = await db
+      .select({
+        id: aiAssessment.id,
+        status: aiAssessment.status,
+        bootcampId: aiAssessment.bootcampId,
+      })
+      .from(aiAssessment)
+      .where(eq(aiAssessment.id, aiAssessmentId))
+      .limit(1);
+
+    if (!assessment) {
+      throw new NotFoundException('AI assessment not found');
+    }
+
+    return assessment;
+  }
+
+  async draftAssessment(aiAssessmentId: number) {
+    await this.loadAssessmentOrFail(aiAssessmentId);
+    const now = new Date().toISOString();
+
+    await db
+      .update(aiAssessment)
+      .set({
+        status: 'draft',
+        publishedAt: null,
+        startDatetime: null,
+        endDatetime: null,
+        updatedAt: now,
+      } as any)
+      .where(eq(aiAssessment.id, aiAssessmentId));
+
+    return { aiAssessmentId, status: 'draft' };
+  }
+
+  private async requireQuestionSets(aiAssessmentId: number) {
+    const sets = await db
+      .select({ id: aiAssessmentQuestionSets.id })
+      .from(aiAssessmentQuestionSets)
+      .where(eq(aiAssessmentQuestionSets.aiAssessmentId, aiAssessmentId));
+
+    if (sets.length === 0) {
+      throw new BadRequestException(
+        'No mapped question sets found. Run map-questions first.',
+      );
+    }
+    return sets;
+  }
+
+  private async resolveStudentLevel(
+    studentId: number,
+    bootcampId: number,
+  ): Promise<string | null> {
+    const [row] = await db
+      .select({ grade: levels.grade })
+      .from(studentLevelRelation)
+      .innerJoin(levels, eq(levels.id, studentLevelRelation.levelId))
+      .where(
+        and(
+          eq(studentLevelRelation.studentId, studentId),
+          eq(studentLevelRelation.bootcampId, bootcampId),
+        ),
+      )
+      .orderBy(desc(studentLevelRelation.assignedAt))
+      .limit(1);
+    return row?.grade ?? null;
+  }
+
+  private async assignQuestionSetsToStudents(
+    aiAssessmentId: number,
+    bootcampId: number,
+  ) {
+    const sets = await db
+      .select({
+        id: aiAssessmentQuestionSets.id,
+        label: aiAssessmentQuestionSets.label,
+        levelCode: aiAssessmentQuestionSets.levelCode,
+      })
+      .from(aiAssessmentQuestionSets)
+      .where(eq(aiAssessmentQuestionSets.aiAssessmentId, aiAssessmentId));
+
+    if (sets.length === 0) return;
+
+    const isBaseline = sets.length === 1 && sets[0].label === 'BASELINE';
+
+    const students = await db
+      .select({
+        id: studentAssessment.id,
+        studentId: studentAssessment.studentId,
+      })
+      .from(studentAssessment)
+      .where(eq(studentAssessment.aiAssessmentId, aiAssessmentId));
+
+    if (students.length === 0) return;
+
+    if (isBaseline) {
+      const setId = sets[0].id;
+      await db
+        .update(studentAssessment)
+        .set({
+          questionSetId: setId,
+          updatedAt: new Date().toISOString(),
+        } as any)
+        .where(eq(studentAssessment.aiAssessmentId, aiAssessmentId));
+      return;
+    }
+
+    const setByLevel = new Map(
+      sets
+        .filter((s) => s.levelCode)
+        .map((s) => [s.levelCode!.toUpperCase(), s.id]),
+    );
+    const fallbackSetId = setByLevel.get('C') ?? sets[0].id;
+
+    for (const student of students) {
+      const grade = await this.resolveStudentLevel(
+        student.studentId,
+        bootcampId,
+      );
+      const normalizedGrade = grade?.toUpperCase() ?? null;
+      const assignedSetId =
+        (normalizedGrade && setByLevel.get(normalizedGrade)) || fallbackSetId;
+
+      await db
+        .update(studentAssessment)
+        .set({
+          questionSetId: assignedSetId,
+          updatedAt: new Date().toISOString(),
+        } as any)
+        .where(eq(studentAssessment.id, student.id));
+    }
+  }
+
+  async scheduleAssessment(
+    aiAssessmentId: number,
+    startDatetime: string,
+    endDatetime?: string,
+  ) {
+    const assessment = await this.loadAssessmentOrFail(aiAssessmentId);
+    const sets = await this.requireQuestionSets(aiAssessmentId);
+    const now = new Date().toISOString();
+
+    await db
+      .update(aiAssessment)
+      .set({
+        status: 'scheduled',
+        startDatetime,
+        endDatetime: endDatetime ?? null,
+        updatedAt: now,
+      } as any)
+      .where(eq(aiAssessment.id, aiAssessmentId));
+
+    await this.assignQuestionSetsToStudents(
+      aiAssessmentId,
+      assessment.bootcampId,
+    );
+
+    return {
+      aiAssessmentId,
+      status: 'scheduled',
+      startDatetime,
+      endDatetime: endDatetime ?? null,
+      questionSetCount: sets.length,
+    };
+  }
+
+  async publishAssessment(aiAssessmentId: number, endDatetime?: string) {
+    const assessment = await this.loadAssessmentOrFail(aiAssessmentId);
+    const sets = await this.requireQuestionSets(aiAssessmentId);
+    const now = new Date().toISOString();
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(aiAssessment)
+        .set({
+          status: 'published',
+          publishedAt: now,
+          startDatetime: now,
+          endDatetime: endDatetime ?? null,
+          updatedAt: now,
+        } as any)
+        .where(eq(aiAssessment.id, aiAssessmentId));
+
+      await tx
+        .update(aiAssessmentQuestionSets)
+        .set({ status: 'approved', updatedAt: now } as any)
+        .where(eq(aiAssessmentQuestionSets.aiAssessmentId, aiAssessmentId));
+    });
+
+    await this.assignQuestionSetsToStudents(
+      aiAssessmentId,
+      assessment.bootcampId,
+    );
+
+    return {
+      aiAssessmentId,
+      status: 'published',
+      publishedAt: now,
+      startDatetime: now,
+      endDatetime: endDatetime ?? null,
+      questionSetCount: sets.length,
     };
   }
 }

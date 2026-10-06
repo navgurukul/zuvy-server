@@ -18,6 +18,8 @@ import { AiAssessmentService } from './ai-assessment.service';
 import {
   CreateAiAssessmentDto,
   GenerateAssessmentDto,
+  PublishAssessmentDto,
+  ScheduleAssessmentDto,
   ScoreSubmitDto,
   SubmitAssessmentDto,
 } from './dto/create-ai-assessment.dto';
@@ -34,6 +36,10 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import {
   createAiAssessmentBootcamp,
+  scheduleAssessmentExample,
+  scheduleAssessmentNoEndExample,
+  publishAssessmentExample,
+  publishAssessmentNoEndExample,
   scoreSubmitExample,
   submitAssessmentExample,
 } from './swagger_examples/examples';
@@ -251,6 +257,56 @@ export class AiAssessmentController {
     return this.aiAssessmentService.getStudentQuestions(userId, +id);
   }
 
+  @Post('audio')
+  @ApiOperation({
+    summary: 'Generate audio summary using TTS and upload to S3',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', example: 'This is the assessment summary...' },
+        language: {
+          type: 'string',
+          example: 'hi for hindi, kn for kannada and mr for marathi',
+        },
+        studentId: { type: 'string', example: 'S12345' },
+        assessmentId: { type: 'string', example: 'A98765' },
+      },
+      required: ['text', 'studentId', 'assessmentId'],
+    },
+  })
+  async generateAudio(
+    @Body('text') text: string,
+    @Body('language') language: string,
+    @Body('studentId') studentId: string,
+    @Body('assessmentId') assessmentId: string,
+  ) {
+    if (!text?.trim()) {
+      throw new HttpException('Text is required', HttpStatus.BAD_REQUEST);
+    }
+    if (!studentId || !assessmentId) {
+      throw new HttpException(
+        'studentId and assessmentId are required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      return await this.aiAssessmentService.generateAudioSummary(
+        text,
+        language,
+        studentId,
+        assessmentId,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to generate audio',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get(':id/question-sets')
   @ApiOperation({
     summary:
@@ -323,6 +379,101 @@ export class AiAssessmentController {
         difficulty,
         questionId: questionId ? Number(questionId) : undefined,
       },
+    );
+  }
+
+  @Post(':id/draft')
+  @ApiOperation({
+    summary:
+      'Revert assessment to draft. Clears publishedAt, startDatetime, and endDatetime.',
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Assessment reverted to draft.' })
+  @ApiResponse({ status: 404, description: 'Assessment not found.' })
+  async draftAssessment(@Param('id') id: string) {
+    const aiAssessmentId = Number(id);
+    if (Number.isNaN(aiAssessmentId)) {
+      throw new HttpException('Invalid assessment id', HttpStatus.BAD_REQUEST);
+    }
+    return this.aiAssessmentCrudService.draftAssessment(aiAssessmentId);
+  }
+
+  @Post(':id/schedule')
+  @ApiOperation({
+    summary:
+      'Schedule the assessment for a future start. Accepts startDatetime (required) and endDatetime (optional). ' +
+      'Students see the assessment once startDatetime arrives. Requires mapped question sets.',
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    type: ScheduleAssessmentDto,
+    examples: {
+      withEnd: {
+        summary: 'Schedule with start and end',
+        value: scheduleAssessmentExample,
+      },
+      noEnd: {
+        summary: 'Schedule with start only (no end date)',
+        value: scheduleAssessmentNoEndExample,
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Assessment scheduled.' })
+  @ApiResponse({
+    status: 400,
+    description: 'No question sets or missing startDatetime.',
+  })
+  @ApiResponse({ status: 404, description: 'Assessment not found.' })
+  async scheduleAssessment(
+    @Param('id') id: string,
+    @Body() dto: ScheduleAssessmentDto,
+  ) {
+    const aiAssessmentId = Number(id);
+    if (Number.isNaN(aiAssessmentId)) {
+      throw new HttpException('Invalid assessment id', HttpStatus.BAD_REQUEST);
+    }
+    return this.aiAssessmentCrudService.scheduleAssessment(
+      aiAssessmentId,
+      dto.startDatetime,
+      dto.endDatetime,
+    );
+  }
+
+  @Post(':id/publish')
+  @ApiOperation({
+    summary:
+      'Publish the assessment immediately (startDatetime = now). Optionally accepts endDatetime. ' +
+      'Requires mapped question sets.',
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    type: PublishAssessmentDto,
+    required: false,
+    examples: {
+      withEnd: {
+        summary: 'Publish now with an end date',
+        value: publishAssessmentExample,
+      },
+      noEnd: {
+        summary: 'Publish now, no end date (open-ended)',
+        value: publishAssessmentNoEndExample,
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Assessment published.' })
+  @ApiResponse({ status: 400, description: 'No question sets to publish.' })
+  @ApiResponse({ status: 404, description: 'Assessment not found.' })
+  async publishAssessment(
+    @Param('id') id: string,
+    @Body() dto: PublishAssessmentDto,
+  ) {
+    const aiAssessmentId = Number(id);
+    if (Number.isNaN(aiAssessmentId)) {
+      throw new HttpException('Invalid assessment id', HttpStatus.BAD_REQUEST);
+    }
+    return this.aiAssessmentCrudService.publishAssessment(
+      aiAssessmentId,
+      dto?.endDatetime,
     );
   }
 

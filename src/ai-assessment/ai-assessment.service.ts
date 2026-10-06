@@ -40,6 +40,7 @@ import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
 import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.service';
 import { resolveLevelBand } from 'src/level/level-band.util';
 import { LLMUsageService } from 'src/llm/llmUsage.service';
+import { StorageService } from 'src/storage/storage.service';
 // import { encode } from '@toon-format/toon';
 
 @Injectable()
@@ -50,6 +51,7 @@ export class AiAssessmentService {
     private readonly questionEvaluationService: QuestionEvaluationService,
     private readonly questionByLlmService: QuestionsByLlmService,
     private readonly llmUsageService: LLMUsageService,
+    private readonly storageService: StorageService,
   ) {}
 
   async saveTokenUsage(aiAssessmentId: number, response: any) {
@@ -669,6 +671,36 @@ export class AiAssessmentService {
       studentStatus: row.studentStatus,
       questions,
     };
+  }
+
+  async generateAudioSummary(
+    text: string,
+    language: string,
+    studentId: string,
+    assessmentId: string,
+  ) {
+    try {
+      const audioBuffer = await this.llmService.generateAudioSummary(
+        text,
+        language,
+      );
+      const { audioUrl } = await this.storageService.uploadAudioToS3(
+        audioBuffer,
+        studentId,
+        assessmentId,
+      );
+
+      return { audioUrl };
+    } catch (error) {
+      this.logger.error(
+        `Audio generation failed for student=${studentId}, assessment=${assessmentId}`,
+        error.stack,
+      );
+
+      throw new InternalServerErrorException(
+        'Failed to generate audio. Please try again later.',
+      );
+    }
   }
 
   async submitLlmAssessment(

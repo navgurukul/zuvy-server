@@ -9,6 +9,7 @@ import { VectorModule } from 'src/vector/vector.module';
 import { AiAssessmentMappingService } from './ai-assessment.mapping.service';
 import { AiAssessmentMappingHelpers } from './ai-assessment.mapping.helpers';
 import { TopicModule } from 'src/eval-topic/topic.module';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { TopicModule } from 'src/eval-topic/topic.module';
     QuestionsByLlmModule,
     VectorModule,
     TopicModule,
+    StorageModule,
   ],
   controllers: [AiAssessmentController],
   providers: [
