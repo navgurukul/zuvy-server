@@ -331,10 +331,11 @@ export class SubmissionService {
         },
         with: {
           user: {
-            // users table will only expose name and email per request
+            // users table will only expose name, email and profilePicture per request
             columns: {
               name: true,
               email: true,
+              profilePicture: true,
             },
             with: {
               studentCodeDetails: {
@@ -445,6 +446,7 @@ export class SubmissionService {
               id: Number(canonicalUserId),
               name: user['name'],
               email: user['email'],
+              profilePicture: user['profilePicture'] ?? null,
               batchId: enrollmentMap[String(canonicalUserId)]?.batchId ?? null,
               batchName:
                 enrollmentMap[String(canonicalUserId)]?.batchName ?? null,
@@ -1145,7 +1147,30 @@ export class SubmissionService {
                     : asc(projectData.title),
 
                 with: {
-                  projectTrackingData: true,
+                  // Only count submissions from students still enrolled in this
+                  // bootcamp, matching the filter used by getUserDetailsForProject,
+                  // so removed students' leftover tracking rows aren't counted.
+                  projectTrackingData: {
+                    columns: { id: true },
+                    where: (projectTracking, { and, eq }) =>
+                      and(
+                        eq(projectTracking.bootcampId, bootcampId),
+                        exists(
+                          db
+                            .select({ _: zuvyBatchEnrollments.userId })
+                            .from(zuvyBatchEnrollments)
+                            .where(
+                              and(
+                                eq(
+                                  zuvyBatchEnrollments.userId,
+                                  projectTracking.userId,
+                                ),
+                                eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                              ),
+                            ),
+                        ),
+                      ),
+                  },
                 },
               },
             },
@@ -1335,6 +1360,7 @@ export class SubmissionService {
                   columns: {
                     name: true,
                     email: true,
+                    profilePicture: true,
                   },
                 },
               },
@@ -1455,6 +1481,8 @@ export class SubmissionService {
           if (project['userDetails']) {
             project['name'] = project['userDetails']['name'];
             project['email'] = project['userDetails']['email'];
+            project['profilePicture'] =
+              project['userDetails']['profilePicture'] ?? null;
             delete project['userDetails'];
           }
 
@@ -2092,6 +2120,7 @@ export class SubmissionService {
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
             batchInfo: {
@@ -2155,6 +2184,7 @@ export class SubmissionService {
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
           },
@@ -2219,6 +2249,7 @@ export class SubmissionService {
             id: Number(s['user'].id),
             name: s['user'].name,
             email: s['user'].email,
+            profilePicture: s['user'].profilePicture ?? null,
             status: 'Submitted',
             batchId: completedEnrollmentMap[uid]?.batchId ?? null,
             batchName: completedEnrollmentMap[uid]?.batchName ?? null,
@@ -2235,6 +2266,7 @@ export class SubmissionService {
           id: Number(s['user'].id),
           name: s['user'].name,
           email: s['user'].email,
+          profilePicture: s['user'].profilePicture ?? null,
           status: 'Not Submitted',
           batchId: s.batchId ?? null,
           batchName: s['batchInfo']?.name ?? null,
@@ -2683,6 +2715,7 @@ export class SubmissionService {
                   id: true,
                   name: true,
                   email: true,
+                  profilePicture: true,
                 },
                 with: {
                   studentAssignmentStatus: {
@@ -2847,6 +2880,7 @@ export class SubmissionService {
               id: userIdNumber,
               name: statusCode['user']['name'],
               emailId: statusCode['user']['email'],
+              profilePicture: statusCode['user']['profilePicture'] ?? null,
               status: isLate ? 'Late Submission' : 'On Time',
               bootcampId:
                 statusCode['user'].studentAssignmentStatus?.bootcampId,
@@ -3646,6 +3680,7 @@ Zuvy LMS Team
                 columns: {
                   name: true,
                   email: true,
+                  profilePicture: true,
                 },
               },
             },
@@ -3752,7 +3787,11 @@ Zuvy LMS Team
         if (!processedUserIds.has(uId)) {
           if (!uId || isNaN(uId)) continue;
           const userRes = await db
-            .select({ name: users.name, email: users.email })
+            .select({
+              name: users.name,
+              email: users.email,
+              profilePicture: users.profilePicture,
+            })
             .from(users)
             .where(eq(users.id, BigInt(uId)));
 
@@ -3775,6 +3814,7 @@ Zuvy LMS Team
               user: {
                 name: userRes[0].name,
                 email: userRes[0].email,
+                profilePicture: userRes[0].profilePicture ?? null,
               },
               sessionId: submissions[0]?.id ?? null,
               sessionTitle: submissions[0]?.title ?? null,

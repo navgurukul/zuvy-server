@@ -1691,6 +1691,7 @@ Team Zuvy`;
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
           },
@@ -1737,6 +1738,7 @@ Team Zuvy`;
             id: uid,
             name: tracking['user'].name,
             email: tracking['user'].email,
+            profilePicture: tracking['user'].profilePicture ?? null,
             completedAt: tracking.completedAt,
             batchId: enrollment ? Number(enrollment.batchId) : null,
             batchName:

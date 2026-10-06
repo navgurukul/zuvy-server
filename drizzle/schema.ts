@@ -2475,6 +2475,7 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
+  isChapterLocked: boolean('is_chapter_locked').default(false),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
 
     leaderboardEnabled: boolean('leaderboard_enabled')
@@ -2929,6 +2930,8 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
     mode: 'string',
   }),
   order: integer('order'),
+  // Admin-set manual lock for this chapter, independent of Module/Chapter Lock.
+  isLock: boolean('is_lock').default(false),
   version: varchar('version', { length: 10 })
 }, (table) => ({
   // perf: chapters are always listed/reordered by moduleId, often sorted by order.
