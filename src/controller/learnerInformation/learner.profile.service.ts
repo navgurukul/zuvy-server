@@ -275,8 +275,34 @@ export class LearnerProfileService {
 
   // ─── ADMIN: Get All LearNER Profiles ───────────────────────────
 
-  async getAlllearnerProfilesData(limit?: number, offset?: number) {
+  async getAlllearnerProfilesData(
+    limit?: number,
+    offset?: number,
+    userId?: number,
+  ) {
     await this.ensureCompleteProfileTableReady();
+    // If userId provided, return only that profile (or throw NotFound)
+    if (typeof userId === 'number') {
+      const rows = await db
+        .select()
+        .from(zuvyLearnersCompleteProfile)
+        .where(eq(zuvyLearnersCompleteProfile.userId, userId))
+        .limit(1);
+
+      if (!rows || rows.length === 0) {
+        throw new NotFoundException('Profile not found.');
+      }
+
+      const responseData = rows.map((r) => ({
+        ...r,
+        termsAndCondition: r?.termsAndCondition ?? false,
+      }));
+
+      return {
+        success: true,
+        data: responseData,
+      };
+    }
 
     let q = db.select().from(zuvyLearnersCompleteProfile);
 

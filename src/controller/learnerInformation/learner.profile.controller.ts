@@ -105,6 +105,12 @@ export class LearnerProfileController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    type: Number,
+    description: 'Optional userId to fetch a single learner profile',
+  })
   @ApiOperation({
     summary: 'Admin: Get all learner profiles',
   })
@@ -112,6 +118,7 @@ export class LearnerProfileController {
     return this.learnerProfileService.getAlllearnerProfilesData(
       query.limit,
       query.offset,
+      query.userId,
     );
   }
 

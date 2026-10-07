@@ -985,7 +985,6 @@ export class ProfileStrengthResponseDto {
 export class AdminLearnerQueryDto {
   @ApiPropertyOptional({
     type: Number,
-    example: 100,
     description: 'Maximum number of profiles to return (1-1000)',
   })
   @IsOptional()
@@ -997,7 +996,6 @@ export class AdminLearnerQueryDto {
 
   @ApiPropertyOptional({
     type: Number,
-    example: 0,
     description: 'Offset for pagination',
   })
   @IsOptional()
@@ -1005,4 +1003,14 @@ export class AdminLearnerQueryDto {
   @IsInt()
   @Min(0)
   offset?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Optional userId to fetch a single learner profile',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  userId?: number;
 }
