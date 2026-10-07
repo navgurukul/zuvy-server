@@ -304,14 +304,14 @@ export class LearnerProfileService {
       };
     }
 
-    let q = db.select().from(zuvyLearnersCompleteProfile);
+    let q: any = db.select().from(zuvyLearnersCompleteProfile);
 
     if (typeof limit === 'number') {
-      q = q.limit(limit);
+      q = (q as any).limit(limit);
     }
 
     if (typeof offset === 'number') {
-      q = q.offset(offset);
+      q = (q as any).offset(offset);
     }
 
     const rows = await q;

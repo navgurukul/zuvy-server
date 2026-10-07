@@ -50,6 +50,18 @@ import { AttendanceCalculationService } from 'src/services/attendance/attendance
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
+type BootcampStudentDropdownRow = {
+  careerStatus?: string[] | string | null;
+  skills?: string[] | string | null;
+  openToRemote?: boolean | null;
+};
+
+type BootcampStudentDropdownOptions = {
+  careerStatus: string[];
+  skills: string[];
+  openToRemote: boolean[];
+};
+
 @Injectable()
 export class BootcampService {
   constructor(
@@ -58,6 +70,101 @@ export class BootcampService {
     private rbacService: RbacService,
     private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
+
+  private buildDropdownOptions(
+    rows: BootcampStudentDropdownRow[],
+  ): BootcampStudentDropdownOptions {
+    const careerStatusSet = new Set<string>();
+    const skillsMap = new Map<string, string>();
+    const openToRemoteSet = new Set<boolean>();
+
+    for (const row of rows) {
+      const careerStatusValues = Array.isArray(row.careerStatus)
+        ? row.careerStatus
+        : typeof row.careerStatus === 'string' && row.careerStatus.trim()
+          ? [row.careerStatus]
+          : [];
+      for (const value of careerStatusValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          careerStatusSet.add(normalized);
+        }
+      }
+
+      const skillValues = Array.isArray(row.skills)
+        ? row.skills
+        : typeof row.skills === 'string' && row.skills.trim()
+          ? [row.skills]
+          : [];
+      for (const value of skillValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          const key = normalized.toLowerCase();
+          if (!skillsMap.has(key)) {
+            skillsMap.set(key, normalized);
+          }
+        }
+      }
+
+      if (typeof row.openToRemote === 'boolean') {
+        openToRemoteSet.add(row.openToRemote);
+      }
+    }
+
+    return {
+      careerStatus: Array.from(careerStatusSet).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+      skills: Array.from(skillsMap.values()).sort((a, b) => a.localeCompare(b)),
+      openToRemote: Array.from(openToRemoteSet).sort(
+        (a, b) => Number(a) - Number(b),
+      ),
+    };
+  }
+
+  private async getStudentDropdownOptions(
+    bootcampId: number,
+    batchId: number,
+    roleName: string[],
+    instructorId?: number,
+  ): Promise<BootcampStudentDropdownOptions> {
+    const batchIdNum = Number.isFinite(Number(batchId))
+      ? Number(batchId)
+      : undefined;
+    const normalizedRoleName =
+      typeof roleName?.[0] === 'string' ? roleName[0].toLowerCase().trim() : '';
+    const isInstructor = normalizedRoleName === 'instructor';
+
+    const dropdownConditions = [
+      eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+    ];
+
+    if (batchIdNum !== undefined) {
+      dropdownConditions.push(eq(zuvyBatchEnrollments.batchId, batchIdNum));
+    }
+
+    if (isInstructor && instructorId) {
+      dropdownConditions.push(eq(zuvyBatches.instructorId, instructorId));
+    }
+
+    const dropdownRows = await db
+      .select({
+        careerStatus: zuvyLearnersCompleteProfile.targetRoles,
+        skills: zuvyLearnersCompleteProfile.technicalSkills,
+        openToRemote: zuvyLearnersCompleteProfile.openToRemote,
+      })
+      .from(zuvyBatchEnrollments)
+      .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+      .leftJoin(
+        zuvyLearnersCompleteProfile,
+        eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+      )
+      .where(and(...dropdownConditions));
+
+    return this.buildDropdownOptions(
+      dropdownRows as BootcampStudentDropdownRow[],
+    );
+  }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -1678,6 +1785,12 @@ export class BootcampService {
           };
         }),
       );
+      const dropdownOptions = await this.getStudentDropdownOptions(
+        bootcampId,
+        batchId,
+        roleName,
+        instructorId,
+      );
       const currentPage = hasPagination
         ? Math.floor(offsetNum / limitNum) + 1
         : 1;
@@ -1703,6 +1816,7 @@ export class BootcampService {
         status: 'success',
         code: 200,
         modifiedStudentInfo,
+        dropdownOptions,
         totalNumberOfStudents,
         currentPage,
         totalPages,
