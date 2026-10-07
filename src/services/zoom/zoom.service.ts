@@ -230,8 +230,26 @@ export class ZoomService {
   // Simple in-memory token cache (process lifetime). Avoids generating a new token for every request.
   private tokenCache: { accessToken: string; expiresAt: number } | null = null;
   private tokenRefreshPromise: Promise<string> | null = null;
+  // Hosts exempted from the platform-wide `annotation: false` policy.
+  // Annotation is a user-level Zoom setting (there is no meeting-level
+  // override), and the licensed-user payload below is re-PATCHed onto the
+  // host on every session creation / license change — so toggling it in the
+  // Zoom UI gets silently reverted. Exceptions must therefore live here.
+  // Comma-separated, case-insensitive emails; unset = no exceptions.
+  private readonly annotationEnabledHosts: ReadonlySet<string> = new Set(
+    (process.env.ZOOM_ANNOTATION_ENABLED_HOSTS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
-  private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
+  private isAnnotationEnabledFor(email: string): boolean {
+    return this.annotationEnabledHosts.has(email.trim().toLowerCase());
+  }
+
+  private buildLicensedUserSettingsPayload(
+    email: string,
+  ): ZoomUserSettingsPayload {
     return {
       security: {
         waiting_room: false,
@@ -257,7 +275,7 @@ export class ZoomService {
         co_host: true,
         polling: true,
         attendee_on_hold: false,
-        annotation: false,
+        annotation: this.isAnnotationEnabledFor(email),
         remote_control: false,
         non_verbal_feedback: true,
         breakout_room: true,
@@ -289,14 +307,15 @@ export class ZoomService {
 
   async applyLicensedUserSettings(email: string) {
     const url = `${this.baseUrl}/users/${encodeURIComponent(email)}/settings`;
-    const payload = this.buildLicensedUserSettingsPayload();
+    const payload = this.buildLicensedUserSettingsPayload(email);
 
     try {
       await axios.patch(url, payload, {
         headers: await this.getHeaders(),
       });
       this.logger.log(
-        `Applied Zoom licensed-user settings for ${email} successfully.`,
+        `Applied Zoom licensed-user settings for ${email} successfully` +
+          (payload.in_meeting?.annotation ? ' (annotation exception).' : '.'),
       );
       return { success: true };
     } catch (e: any) {
