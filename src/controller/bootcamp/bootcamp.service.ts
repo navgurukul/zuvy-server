@@ -34,6 +34,10 @@ import {
   zuvyUserRolesAssigned,
   zuvyOrganizations,
   zuvyTrackingLogs,
+  zuvyLearnersCompleteProfile,
+  zuvyTechnicalSkills,
+  zuvyLearnersRoles,
+  zuvyLearnersDegreeDetails,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -1381,6 +1385,10 @@ export class BootcampService {
     orderDirection?: string,
     instructorId?: number, // Add instructor ID parameter
     orgId?: number,
+    careerStatus?: string,
+    skills?: string,
+    education?: string,
+    openToRemote?: boolean,
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1433,6 +1441,49 @@ export class BootcampService {
       const statusFilter = status
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
+      const careerStatusFilter = careerStatus?.trim()
+        ? sql`EXISTS (
+            SELECT 1
+            FROM ${zuvyLearnersRoles} AS career
+            WHERE LOWER(career.name) = LOWER(${careerStatus.trim()})
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                  COALESCE(${zuvyLearnersCompleteProfile.targetRoles}, '[]'::jsonb)
+                ) AS target_role(name)
+                WHERE LOWER(target_role.name) = LOWER(career.name)
+              )
+          )`
+        : undefined;
+      // Technical skills are stored on the learner profile as the student-to-skill
+      // mapping. Match against the existing skills catalogue through EXISTS so a
+      // student with more than one skill still occupies one roster row.
+      const skillsFilter = skills?.trim()
+        ? sql`EXISTS (
+            SELECT 1
+            FROM ${zuvyTechnicalSkills} AS skill
+            WHERE LOWER(skill.name) = LOWER(${skills.trim()})
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                  COALESCE(${zuvyLearnersCompleteProfile.technicalSkills}, '[]'::jsonb)
+                ) AS student_skill(name)
+                WHERE LOWER(student_skill.name) = LOWER(skill.name)
+              )
+          )`
+        : undefined;
+      const educationFilter = education?.trim()
+        ? sql`EXISTS (
+            SELECT 1
+            FROM ${zuvyLearnersDegreeDetails} AS degree
+            WHERE LOWER(degree.name) = LOWER(${education.trim()})
+              AND LOWER(${zuvyLearnersCompleteProfile.degree}) = LOWER(degree.name)
+          )`
+        : undefined;
+      const openToRemoteFilter =
+        openToRemote === undefined
+          ? undefined
+          : eq(zuvyLearnersCompleteProfile.openToRemote, openToRemote);
 
       // Normalize roleName for comparison (handle case sensitivity and whitespace)
       const normalizedRoleName =
@@ -1477,6 +1528,10 @@ export class BootcampService {
         statusFilter,
         attendanceFilter,
         instructorBatchFilter, // Add instructor filter to WHERE clause
+        careerStatusFilter,
+        skillsFilter,
+        educationFilter,
+        openToRemoteFilter,
       );
 
       const hasPagination =
@@ -1492,6 +1547,10 @@ export class BootcampService {
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
         .where(whereClause);
       const totalNumberOfStudents = countResult[0]?.count ?? 0;
 
@@ -1511,10 +1570,20 @@ export class BootcampService {
           progress: zuvyBootcampTracking.progress,
           zuvyBootcampTrackingId: zuvyBootcampTracking.id,
           zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
+          careerStatus: zuvyLearnersCompleteProfile.targetRoles,
+          skills: zuvyLearnersCompleteProfile.technicalSkills,
+          education: zuvyLearnersCompleteProfile.degree,
+          openToRemote: zuvyLearnersCompleteProfile.openToRemote,
         })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        // Complete profile has a unique user_id, and skills are filtered with
+        // EXISTS above; neither can multiply the enrolled-student rows.
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
         .leftJoin(
           zuvyBootcampTracking,
           and(
@@ -1602,6 +1671,10 @@ export class BootcampService {
             status: item.status || null,
             zuvyBatchEnrollmentsId: item.zuvyBatchEnrollmentsId || null,
             zuvyBootcampTrackingId: item.zuvyBootcampTrackingId || null,
+            careerStatus: item.careerStatus ?? [],
+            skills: item.skills ?? [],
+            education: item.education ?? null,
+            openToRemote: item.openToRemote ?? false,
           };
         }),
       );

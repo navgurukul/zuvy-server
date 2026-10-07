@@ -500,6 +500,30 @@ export class BootcampController {
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc'],
   })
+  @ApiQuery({
+    name: 'careerStatus',
+    required: false,
+    type: String,
+    description: 'Filter by a learner career status (target role)',
+  })
+  @ApiQuery({
+    name: 'skills',
+    required: false,
+    type: String,
+    description: 'Filter by a learner technical skill',
+  })
+  @ApiQuery({
+    name: 'education',
+    required: false,
+    type: String,
+    description: 'Filter by a learner degree',
+  })
+  @ApiQuery({
+    name: 'openToRemote',
+    required: false,
+    type: Boolean,
+    description: 'Filter by whether a learner is open to remote work',
+  })
   @ApiBearerAuth('JWT-auth')
   async getStudentsByBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
@@ -513,6 +537,10 @@ export class BootcampController {
     @Query('attendance') attendance: number,
     @Query('orderBy') orderBy: string,
     @Query('orderDirection') orderDirection: string,
+    @Query('careerStatus') careerStatus: string,
+    @Query('skills') skills: string,
+    @Query('education') education: string,
+    @Query('openToRemote') openToRemote: boolean | string,
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
@@ -543,6 +571,20 @@ export class BootcampController {
       }
     }
 
+    let openToRemoteNormalized: boolean | undefined;
+    if (openToRemote !== undefined && openToRemote !== null) {
+      if (openToRemote === true || openToRemote === 'true') {
+        openToRemoteNormalized = true;
+      } else if (openToRemote === false || openToRemote === 'false') {
+        openToRemoteNormalized = false;
+      } else {
+        throw new BadRequestException({
+          status: 'error',
+          message: 'openToRemote must be a boolean value.',
+        });
+      }
+    }
+
     const res = await this.bootcampService.getStudentsInABootcamp(
       roleName,
       bootcamp_id,
@@ -558,6 +600,10 @@ export class BootcampController {
       orderDirection,
       userId,
       orgId,
+      careerStatus,
+      skills,
+      education,
+      openToRemoteNormalized,
     );
     return res;
   }
