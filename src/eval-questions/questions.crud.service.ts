@@ -9,7 +9,11 @@ import {
   normalizeTopicName,
   topicNameEquals,
 } from 'src/eval-topic/topic-name.util';
-import { aiAssessmentQuestions, zuvyQuestions } from 'drizzle/schema';
+import {
+  aiAssessmentQuestions,
+  questionIndexOutbox,
+  zuvyQuestions,
+} from 'drizzle/schema';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 
@@ -20,31 +24,39 @@ export class QuestionsCrudService {
       throw new BadRequestException('orgId is required');
     }
 
-    const [row] = await db
-      .insert(zuvyQuestions)
-      .values({
-        orgId: orgId,
-        domainName: null,
-        topicName: normalizeTopicName(dto.topicName),
-        topicDescription: dto.topicDescription,
-        subtopics: dto.subtopics ?? null,
-        learningObjectives: dto.learningObjectives ?? null,
-        targetAudience: dto.targetAudience ?? null,
-        focusAreas: dto.focusAreas ?? null,
-        bloomsLevel: dto.bloomsLevel ?? null,
-        questionStyle: dto.questionStyle ?? null,
-        question: dto.question,
-        difficulty: dto.difficulty ?? null,
-        language: dto.language ?? null,
-        options: dto.options,
-        correctOption: dto.correctOption,
-        difficultyDistribution: dto.difficultyDistribution ?? null,
-        questionCounts: dto.questionCounts ?? null,
-        levelId: dto.levelId ?? null,
-      } as any)
-      .returning();
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(zuvyQuestions)
+        .values({
+          orgId: orgId,
+          domainName: null,
+          topicName: normalizeTopicName(dto.topicName),
+          topicDescription: dto.topicDescription,
+          subtopics: dto.subtopics ?? null,
+          learningObjectives: dto.learningObjectives ?? null,
+          targetAudience: dto.targetAudience ?? null,
+          focusAreas: dto.focusAreas ?? null,
+          bloomsLevel: dto.bloomsLevel ?? null,
+          questionStyle: dto.questionStyle ?? null,
+          question: dto.question,
+          difficulty: dto.difficulty ?? null,
+          language: dto.language ?? null,
+          options: dto.options,
+          correctOption: dto.correctOption,
+          difficultyDistribution: dto.difficultyDistribution ?? null,
+          questionCounts: dto.questionCounts ?? null,
+          levelId: dto.levelId ?? null,
+        } as any)
+        .returning();
 
-    return row;
+      await tx.insert(questionIndexOutbox).values({
+        questionId: row.id,
+        requestedByUserId: null,
+        status: 'pending',
+      });
+
+      return row;
+    });
   }
 
   async findAll(params: {

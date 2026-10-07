@@ -112,6 +112,9 @@ export class QuestionsService {
           topic,
           count: batchSizes[i],
           batchQuestionCounts: perBatchCounts?.[i],
+          batchIndex: i,
+          batchCount: numBatches,
+          totalCount: count,
           ...perTopicCtx,
         });
       }

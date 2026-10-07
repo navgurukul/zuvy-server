@@ -22,6 +22,48 @@ import { CreateAiAssessmentDto } from './dto/create-ai-assessment.dto';
 export class AiAssessmentCrudService {
   private readonly logger = new Logger(AiAssessmentCrudService.name);
 
+  async findAll(
+    userId: number,
+    bootcampId?: number | string,
+    chapterId?: number | string,
+    moduleId?: number | string,
+    status?: string,
+  ) {
+    const query = db.select().from(aiAssessment);
+    const parsedBootcampId =
+      bootcampId === undefined || bootcampId === null || bootcampId === ''
+        ? undefined
+        : Number(bootcampId);
+    const parsedChapterId =
+      chapterId === undefined || chapterId === null || chapterId === ''
+        ? undefined
+        : Number(chapterId);
+    const parsedModuleId =
+      moduleId === undefined || moduleId === null || moduleId === ''
+        ? undefined
+        : Number(moduleId);
+    const validStatuses = ['draft', 'scheduled', 'published'] as const;
+    const normalizedStatus = status?.trim().toLowerCase();
+    const conditions = [
+      typeof parsedBootcampId === 'number' && !Number.isNaN(parsedBootcampId)
+        ? eq(aiAssessment.bootcampId, parsedBootcampId)
+        : undefined,
+      typeof parsedChapterId === 'number' && !Number.isNaN(parsedChapterId)
+        ? eq(aiAssessment.chapterId, parsedChapterId)
+        : undefined,
+      typeof parsedModuleId === 'number' && !Number.isNaN(parsedModuleId)
+        ? eq(aiAssessment.moduleId, parsedModuleId)
+        : undefined,
+      normalizedStatus && validStatuses.includes(normalizedStatus as any)
+        ? eq(aiAssessment.status, normalizedStatus as any)
+        : undefined,
+    ].filter(Boolean);
+
+    return conditions.length > 0
+      ? query.where(and(...(conditions as any)))
+      : query;
+  }
+
   async create(userId: number, dto: CreateAiAssessmentDto) {
     const { inserted, enrolledStudentsCount, wasUpdated } =
       await db.transaction(async (tx) => {

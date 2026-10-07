@@ -36,6 +36,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import {
   createAiAssessmentBootcamp,
+  mapQuestionsExample,
   scheduleAssessmentExample,
   scheduleAssessmentNoEndExample,
   publishAssessmentExample,
@@ -43,6 +44,7 @@ import {
   scoreSubmitExample,
   submitAssessmentExample,
 } from './swagger_examples/examples';
+import { MapQuestionsForAssessmentDto } from './dto/map-questions.dto';
 import { AiAssessmentCrudService } from './ai-assessment.crud.service';
 import { AiAssessmentMappingService } from './ai-assessment.mapping.service';
 import { resolveOrgId } from 'src/auth/resolve-org-id';
@@ -101,7 +103,7 @@ export class AiAssessmentController {
   })
   @ApiResponse({ status: 400, description: 'Invalid assessment data.' })
   generate(@Body() generateAssessmentDto: GenerateAssessmentDto, @Req() req) {
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.aiAssessmentService.generate(userId, generateAssessmentDto);
   }
 
@@ -123,7 +125,7 @@ export class AiAssessmentController {
   @ApiResponse({ status: 400, description: 'Invalid assessment data.' })
   takeAssessment(@Body() submitAssessmentDto: SubmitAssessmentDto, @Req() req) {
     try {
-      const studentId = req.user[0]?.id;
+      const studentId = req.user?.sub;
       return this.aiAssessmentService.submitLlmAssessment(
         studentId,
         submitAssessmentDto,
@@ -156,19 +158,39 @@ export class AiAssessmentController {
     description: 'Invalid payload or assessment not available.',
   })
   submitScore(@Body() scoreSubmitDto: ScoreSubmitDto, @Req() req) {
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.aiAssessmentService.submitAndScore(userId, scoreSubmitDto);
   }
 
   @Get()
   @ApiOperation({
-    summary: 'Get all AI assessments (optionally filter by bootcampId)',
+    summary:
+      'Get all AI assessments (optionally filter by bootcampId, chapterId, moduleId, and status)',
   })
   @ApiQuery({ name: 'bootcampId', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'List of AI assessments.' })
-  findAll(@Req() req, @Query('bootcampId') bootcampId?: number) {
-    const userId = req.user[0]?.id;
-    return this.aiAssessmentService.findAll(userId, bootcampId);
+  @ApiQuery({ name: 'chapterId', required: false, type: Number })
+  @ApiQuery({ name: 'moduleId', required: false, type: Number })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['draft', 'scheduled', 'published'],
+  })
+  findAll(
+    @Req() req,
+    @Query('bootcampId') bootcampId?: number,
+    @Query('chapterId') chapterId?: number,
+    @Query('moduleId') moduleId?: number,
+    @Query('status') status?: string,
+  ) {
+    const userId = req.user?.sub;
+    return this.aiAssessmentCrudService.findAll(
+      userId,
+      bootcampId,
+      chapterId,
+      moduleId,
+      status,
+    );
   }
 
   @Get('/by/studentId')
@@ -189,7 +211,7 @@ export class AiAssessmentController {
     @Query('moduleId') moduleId?: number,
     @Req() req?,
   ) {
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.aiAssessmentService.findAllAssessmentOfAStudent(
       userId,
       bootcampId,
@@ -222,7 +244,7 @@ export class AiAssessmentController {
     if (!Number.isFinite(id) || id < 1) {
       throw new HttpException('Invalid assessmentId', HttpStatus.BAD_REQUEST);
     }
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.aiAssessmentService.getSubmitScoreResult(userId, id);
   }
 
@@ -267,7 +289,7 @@ export class AiAssessmentController {
     description: 'No assignment or question not found.',
   })
   explainQuestion(@Body() dto: ExplainQuestionDto, @Req() req) {
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.questionExplanationService.getOrCreateQuestionExplanation(
       userId,
       dto.assessmentId,
@@ -286,7 +308,7 @@ export class AiAssessmentController {
   })
   @ApiParam({ name: 'id', type: Number, description: 'AI Assessment ID' })
   getStudentQuestions(@Param('id') id: number, @Req() req) {
-    const userId = req.user[0]?.id;
+    const userId = req.user?.sub;
     return this.aiAssessmentService.getStudentQuestions(userId, +id);
   }
 
@@ -507,6 +529,33 @@ export class AiAssessmentController {
     return this.aiAssessmentCrudService.publishAssessment(
       aiAssessmentId,
       dto?.endDatetime,
+    );
+  }
+
+  @Post('map-questions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Map (generate) question sets for an assessment via JSON body.',
+  })
+  @ApiBody({
+    type: MapQuestionsForAssessmentDto,
+    examples: {
+      basicExample: {
+        summary: 'Map questions for assessment 800',
+        value: mapQuestionsExample,
+      },
+    },
+  })
+  async mapQuestionsFromBody(
+    @Body() dto: MapQuestionsForAssessmentDto,
+    @Req() req: Request & { user?: { orgId?: number | string } },
+  ) {
+    return this.aiAssessmentMappingService.mapQuestionsForAssessment(
+      dto.aiAssessmentId,
+      {
+        orgId: resolveOrgId(req),
+        authorization: req.headers?.authorization,
+      },
     );
   }
 

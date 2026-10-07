@@ -90,6 +90,10 @@ export const scoreSubmitExample = {
   ],
 };
 
+export const mapQuestionsExample = {
+  aiAssessmentId: 800,
+};
+
 export const scheduleAssessmentExample = {
   startDatetime: '2026-04-10T09:00:00+05:30',
   endDatetime: '2026-04-10T11:00:00+05:30',

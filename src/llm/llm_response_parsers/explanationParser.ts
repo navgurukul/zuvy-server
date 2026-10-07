@@ -6,6 +6,8 @@ export const QuestionExplanationSchema = z.object({
   explanation: z.string().min(1),
 });
 
+export type QuestionExplanation = z.infer<typeof QuestionExplanationSchema>;
+
 function extractFirstJsonObject(raw: string): string | null {
   const start = raw.indexOf('{');
   if (start === -1) return null;
@@ -27,12 +29,15 @@ function extractFirstJsonObject(raw: string): string | null {
   return null;
 }
 
-export function parseQuestionExplanation(raw: string | null) {
+export function parseQuestionExplanation(
+  raw: string | null,
+): QuestionExplanation | null {
   if (!raw?.trim()) return null;
   const jsonChunk = extractFirstJsonObject(stripFencesAndNoise(raw));
   if (!jsonChunk) return null;
   try {
-    const result = QuestionExplanationSchema.safeParse(JSON.parse(jsonChunk));
+    const parsed: unknown = JSON.parse(jsonChunk);
+    const result = QuestionExplanationSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
     return null;

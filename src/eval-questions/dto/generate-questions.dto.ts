@@ -144,4 +144,7 @@ export interface GenerateTopicBatchJobPayload {
     medium: number;
     hard: number;
   };
+  batchIndex?: number;
+  batchCount?: number;
+  totalCount?: number;
 }
