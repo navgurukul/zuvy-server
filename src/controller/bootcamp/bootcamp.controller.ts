@@ -43,7 +43,7 @@ import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 const CAREER_STATUS_OPTIONS = [
-  'Looking for a Job',
+  'Looking for Job',
   'Learning',
   'Working',
 ] as const;
