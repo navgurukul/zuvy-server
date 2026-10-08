@@ -12,6 +12,9 @@ import {
   asc,
   ne,
   isNull,
+  exists,
+  ilike,
+  arrayContains,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -54,12 +57,14 @@ type BootcampStudentDropdownRow = {
   careerStatus?: string[] | string | null;
   skills?: string[] | string | null;
   openToRemote?: boolean | null;
+  education?: string | number | null;
 };
 
 type BootcampStudentDropdownOptions = {
   careerStatus: string[];
   skills: string[];
   openToRemote: boolean[];
+  education: string[];
 };
 
 @Injectable()
@@ -77,6 +82,7 @@ export class BootcampService {
     const careerStatusSet = new Set<string>();
     const skillsMap = new Map<string, string>();
     const openToRemoteSet = new Set<boolean>();
+    const educationSet = new Set<string>();
 
     for (const row of rows) {
       const careerStatusValues = Array.isArray(row.careerStatus)
@@ -109,6 +115,12 @@ export class BootcampService {
       if (typeof row.openToRemote === 'boolean') {
         openToRemoteSet.add(row.openToRemote);
       }
+      if (row.education !== undefined && row.education !== null) {
+        const normalized = String(row.education).trim();
+        if (normalized) {
+          educationSet.add(normalized);
+        }
+      }
     }
 
     return {
@@ -119,6 +131,7 @@ export class BootcampService {
       openToRemote: Array.from(openToRemoteSet).sort(
         (a, b) => Number(a) - Number(b),
       ),
+      education: Array.from(educationSet).sort((a, b) => b.localeCompare(a)),
     };
   }
 
@@ -152,6 +165,7 @@ export class BootcampService {
         careerStatus: zuvyLearnersCompleteProfile.currentStatus,
         skills: zuvyLearnersCompleteProfile.technicalSkills,
         openToRemote: zuvyLearnersCompleteProfile.openToRemote,
+        education: zuvyLearnersCompleteProfile.graduationYear,
       })
       .from(zuvyBatchEnrollments)
       .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
@@ -1549,44 +1563,49 @@ export class BootcampService {
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
       const careerStatusFilter = careerStatus?.trim()
-        ? sql`EXISTS (
-            SELECT 1
-            FROM ${zuvyLearnersRoles} AS career
-            WHERE LOWER(career.name) = LOWER(${careerStatus.trim()})
-              AND EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements_text(
-                  COALESCE(${zuvyLearnersCompleteProfile.targetRoles}, '[]'::jsonb)
-                ) AS target_role(name)
-                WHERE LOWER(target_role.name) = LOWER(career.name)
-              )
-          )`
+        ? exists(
+            db
+              .select()
+              .from(zuvyLearnersRoles)
+              .where(
+                and(
+                  ilike(zuvyLearnersRoles.name, careerStatus.trim()),
+                  // Limitation: Drizzle ORM lacks native case-insensitive matching for elements within a JSONB array
+                  // without using raw SQL. We are using `arrayContains` (which maps to `@>`) here as the closest
+                  // alternative, but note that it performs a case-sensitive match.
+                  arrayContains(zuvyLearnersCompleteProfile.targetRoles, [
+                    careerStatus.trim(),
+                  ]),
+                ),
+              ),
+          )
         : undefined;
       // Technical skills are stored on the learner profile as the student-to-skill
       // mapping. Match against the existing skills catalogue through EXISTS so a
       // student with more than one skill still occupies one roster row.
       const skillsFilter = skills?.trim()
-        ? sql`EXISTS (
-            SELECT 1
-            FROM ${zuvyTechnicalSkills} AS skill
-            WHERE LOWER(skill.name) = LOWER(${skills.trim()})
-              AND EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements_text(
-                  COALESCE(${zuvyLearnersCompleteProfile.technicalSkills}, '[]'::jsonb)
-                ) AS student_skill(name)
-                WHERE LOWER(student_skill.name) = LOWER(skill.name)
-              )
-          )`
+        ? exists(
+            db
+              .select()
+              .from(zuvyTechnicalSkills)
+              .where(
+                and(
+                  ilike(zuvyTechnicalSkills.name, skills.trim()),
+                  // Limitation: Drizzle ORM lacks native case-insensitive matching for elements within a JSONB array
+                  // without using raw SQL. We are using `arrayContains` (which maps to `@>`) here as the closest
+                  // alternative, but note that it performs a case-sensitive match.
+                  arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
+                    skills.trim(),
+                  ]),
+                ),
+              ),
+          )
         : undefined;
-      const educationFilter = education?.trim()
-        ? sql`EXISTS (
-            SELECT 1
-            FROM ${zuvyLearnersDegreeDetails} AS degree
-            WHERE LOWER(degree.name) = LOWER(${education.trim()})
-              AND LOWER(${zuvyLearnersCompleteProfile.degree}) = LOWER(degree.name)
-          )`
-        : undefined;
+      const parsedYear = parseInt(education?.trim() || '', 10);
+      const educationFilter =
+        !isNaN(parsedYear) && parsedYear >= 1000 && parsedYear <= 9999
+          ? eq(zuvyLearnersCompleteProfile.graduationYear, parsedYear)
+          : undefined;
       const openToRemoteFilter =
         openToRemote === undefined
           ? undefined
@@ -1679,7 +1698,7 @@ export class BootcampService {
           zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
           careerStatus: zuvyLearnersCompleteProfile.targetRoles,
           skills: zuvyLearnersCompleteProfile.technicalSkills,
-          education: zuvyLearnersCompleteProfile.degree,
+          education: zuvyLearnersCompleteProfile.graduationYear,
           openToRemote: zuvyLearnersCompleteProfile.openToRemote,
         })
         .from(zuvyBatchEnrollments)
@@ -1780,7 +1799,7 @@ export class BootcampService {
             zuvyBootcampTrackingId: item.zuvyBootcampTrackingId || null,
             careerStatus: item.careerStatus ?? [],
             skills: item.skills ?? [],
-            education: item.education ?? null,
+            education: item.education != null ? String(item.education) : null,
             openToRemote: item.openToRemote ?? false,
           };
         }),

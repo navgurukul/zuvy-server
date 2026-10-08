@@ -596,7 +596,7 @@ export class BootcampController {
     name: 'education',
     required: false,
     type: String,
-    description: 'Filter by a learner degree',
+    description: 'Filter by a learner degree or graduation year',
   })
   @ApiQuery({
     name: 'openToRemote',
