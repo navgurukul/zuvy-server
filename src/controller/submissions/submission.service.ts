@@ -67,7 +67,41 @@ const {
 @Injectable()
 export class SubmissionService {
   constructor(private readonly rbacService: RbacService) {}
-  private readonly logger = new Logger(SubmissionService.name);
+
+  private async getTotalStudentsCount(bootcampId?: number, batchId?: number) {
+    const cleanBootcampId =
+      bootcampId !== undefined &&
+      bootcampId !== null &&
+      !isNaN(Number(bootcampId))
+        ? Number(bootcampId)
+        : undefined;
+
+    const cleanBatchId =
+      batchId !== undefined && batchId !== null && !isNaN(Number(batchId))
+        ? Number(batchId)
+        : undefined;
+
+    if (!cleanBootcampId) {
+      return 0;
+    }
+
+    const conditions: any[] = [
+      eq(zuvyBatchEnrollments.bootcampId, cleanBootcampId),
+      isNotNull(zuvyBatchEnrollments.batchId),
+    ];
+    if (cleanBatchId) {
+      conditions.push(eq(zuvyBatchEnrollments.batchId, cleanBatchId));
+    }
+
+    const result = await db
+      .select({
+        count: count(zuvyBatchEnrollments.id),
+      })
+      .from(zuvyBatchEnrollments)
+      .where(and(...conditions));
+
+    return result[0]?.count ?? 0;
+  }
 
   async getSubmissionOfPractiseProblem(
     roleName,
@@ -237,6 +271,7 @@ export class SubmissionService {
     chapterId: number,
     moduleId: number,
     batchId?: number,
+    bootcampId: number,
     limit?: number,
     offset?: number,
     searchStudent?: string,
@@ -296,10 +331,11 @@ export class SubmissionService {
         },
         with: {
           user: {
-            // users table will only expose name and email per request
+            // users table will only expose name, email and profilePicture per request
             columns: {
               name: true,
               email: true,
+              profilePicture: true,
             },
             with: {
               studentCodeDetails: {
@@ -317,7 +353,7 @@ export class SubmissionService {
       });
 
       // Get the total number of students matching the chapter, module, batch, and search criteria
-      const totalStudentsRes = await db
+      const totalSubmittedStudentsRes = await db
         .select({
           count: count(zuvyChapterTracking.id),
         })
@@ -359,9 +395,15 @@ export class SubmissionService {
               : []),
           ),
         );
-      const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+      const totalSubmittedStudents = totalSubmittedStudentsRes[0]?.count ?? 0;
+
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        bootcampId,
+        batchId,
+      );
+
       const totalPages = safeLimit
-        ? Math.ceil(totalStudentsCount / safeLimit)
+        ? Math.ceil(totalSubmittedStudents / safeLimit)
         : 1;
 
       // Prepare the result with data about each student's attempts and submission status
@@ -404,6 +446,7 @@ export class SubmissionService {
               id: Number(canonicalUserId),
               name: user['name'],
               email: user['email'],
+              profilePicture: user['profilePicture'] ?? null,
               batchId: enrollmentMap[String(canonicalUserId)]?.batchId ?? null,
               batchName:
                 enrollmentMap[String(canonicalUserId)]?.batchName ?? null,
@@ -474,8 +517,12 @@ export class SubmissionService {
           return 0;
         });
       }
-
-      return { data, totalPages, totalStudentsCount };
+      return {
+        data,
+        totalPages,
+        totalStudentsCount,
+        totalSubmittedStudents,
+      };
     } catch (err) {
       throw err;
     }
@@ -953,12 +1000,18 @@ export class SubmissionService {
     }
   }
 
-  async patchOpenendedQuestion(data: any, id: number) {
+  async patchOpenendedQuestion(data: any, id: number, userId: number) {
     try {
       const res = await db
         .update(zuvyOpenEndedQuestionSubmission)
         .set(data)
-        .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        // .where(eq(zuvyOpenEndedQuestionSubmission.id, id))
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestionSubmission.id, id),
+            eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+          ),
+        )
         .returning();
       return res;
     } catch (err) {
@@ -1094,7 +1147,30 @@ export class SubmissionService {
                     : asc(projectData.title),
 
                 with: {
-                  projectTrackingData: true,
+                  // Only count submissions from students still enrolled in this
+                  // bootcamp, matching the filter used by getUserDetailsForProject,
+                  // so removed students' leftover tracking rows aren't counted.
+                  projectTrackingData: {
+                    columns: { id: true },
+                    where: (projectTracking, { and, eq }) =>
+                      and(
+                        eq(projectTracking.bootcampId, bootcampId),
+                        exists(
+                          db
+                            .select({ _: zuvyBatchEnrollments.userId })
+                            .from(zuvyBatchEnrollments)
+                            .where(
+                              and(
+                                eq(
+                                  zuvyBatchEnrollments.userId,
+                                  projectTracking.userId,
+                                ),
+                                eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                              ),
+                            ),
+                        ),
+                      ),
+                  },
                 },
               },
             },
@@ -1284,6 +1360,7 @@ export class SubmissionService {
                   columns: {
                     name: true,
                     email: true,
+                    profilePicture: true,
                   },
                 },
               },
@@ -1343,9 +1420,14 @@ export class SubmissionService {
           ),
         );
 
-      const totalStudentsCount = totalStudentsCountRes[0]?.count ?? 0;
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        bootcampId,
+        safeBatchId,
+      );
+
+      const totalSubmittedStudents = totalStudentsCountRes[0]?.count ?? 0;
       const totalPages = limit
-        ? Math.ceil(totalStudentsCount / (limit || 1))
+        ? Math.ceil(totalSubmittedStudents / (limit || 1))
         : 1;
 
       // Process the project submission data and ensure batchId/submitted_date/createdAt are exposed
@@ -1399,6 +1481,8 @@ export class SubmissionService {
           if (project['userDetails']) {
             project['name'] = project['userDetails']['name'];
             project['email'] = project['userDetails']['email'];
+            project['profilePicture'] =
+              project['userDetails']['profilePicture'] ?? null;
             delete project['userDetails'];
           }
 
@@ -1494,7 +1578,9 @@ export class SubmissionService {
             projectTrackingData: pagedData,
           },
           totalPages: safeLimit > 0 ? totalPages : 1,
-          totalStudents: totalStudentsCount,
+          // totalStudents: totalStudentsCount,
+          totalStudentsCount,
+          totalSubmittedStudents,
         };
       } else {
         return {
@@ -1674,7 +1760,12 @@ export class SubmissionService {
       await db
         .update(zuvyAssessmentSubmission)
         .set(updateAssessmentMcqInfo)
-        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+        .where(
+          and(
+            eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            eq(zuvyAssessmentSubmission.userId, userId),
+          ),
+        )
         .returning();
 
       // Return combined data
@@ -1782,7 +1873,12 @@ export class SubmissionService {
         await db
           .update(zuvyAssessmentSubmission)
           .set({ attemptedOpenEndedQuestions: insertData.length } as any)
-          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+          .where(
+            and(
+              eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+              eq(zuvyAssessmentSubmission.userId, userId),
+            ),
+          )
           .returning();
       }
       return {
@@ -2024,6 +2120,7 @@ export class SubmissionService {
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
             batchInfo: {
@@ -2087,10 +2184,15 @@ export class SubmissionService {
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
           },
         });
+
+      const totalSubmittedStudents = new Set(
+        statusOfCompletedStudentFormRaw.map((student) => student.userId),
+      ).size;
 
       /* -------------------------------------------------- */
       /* 🔹 FETCH BATCH INFO FOR COMPLETED USERS */
@@ -2147,6 +2249,7 @@ export class SubmissionService {
             id: Number(s['user'].id),
             name: s['user'].name,
             email: s['user'].email,
+            profilePicture: s['user'].profilePicture ?? null,
             status: 'Submitted',
             batchId: completedEnrollmentMap[uid]?.batchId ?? null,
             batchName: completedEnrollmentMap[uid]?.batchName ?? null,
@@ -2163,9 +2266,10 @@ export class SubmissionService {
           id: Number(s['user'].id),
           name: s['user'].name,
           email: s['user'].email,
+          profilePicture: s['user'].profilePicture ?? null,
           status: 'Not Submitted',
           batchId: s.batchId ?? null,
-          batchName: s['batchInfo'].name ?? null,
+          batchName: s['batchInfo']?.name ?? null,
           submittedAt: null,
         }));
 
@@ -2215,8 +2319,10 @@ export class SubmissionService {
         chapterId,
         combinedData: paginatedData,
         totalPages,
-        totalStudentsCount: combinedData.length,
-        totalAllStudents,
+        // totalStudentsCount: combinedData.length,
+        // totalAllStudents
+        totalStudentsCount: totalAllStudents,
+        totalSubmittedStudents,
       };
     } catch (err) {
       throw err;
@@ -2497,6 +2603,23 @@ export class SubmissionService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
       if (chapterDeadline.length > 0) {
+        const chapterDetails = await db.query.zuvyModuleChapter.findFirst({
+          where: (chapter, { eq }) => eq(chapter.id, chapterId),
+          columns: {
+            id: true,
+          },
+          with: {
+            courseModulesData: {
+              columns: {
+                bootcampId: true,
+              },
+            },
+          },
+        });
+
+        const bootcampId = Number(
+          chapterDetails?.courseModulesData?.bootcampId,
+        );
         // Normalize pagination inputs up-front so they can be pushed down to
         // the DB query below. Non-positive/invalid limits are treated as
         // "no limit".
@@ -2592,6 +2715,7 @@ export class SubmissionService {
                   id: true,
                   name: true,
                   email: true,
+                  profilePicture: true,
                 },
                 with: {
                   studentAssignmentStatus: {
@@ -2665,8 +2789,13 @@ export class SubmissionService {
             };
           });
         }
+        const totalStudentsCount = await this.getTotalStudentsCount(
+          bootcampId,
+          batchId,
+        );
+
         // Get the total student count for pagination using enrollment table to respect batch filtering
-        const totalStudentsRes = await db
+        const totalSubmittedStudentsRes = await db
           .select({
             count: count(zuvyChapterTracking.id),
           })
@@ -2710,13 +2839,14 @@ export class SubmissionService {
                 : []),
             ),
           );
-        const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+        const totalSubmittedStudentsCount =
+          totalSubmittedStudentsRes[0]?.count ?? 0;
         const totalPages = safeLimit
-          ? Math.ceil(totalStudentsCount / safeLimit)
+          ? Math.ceil(totalSubmittedStudentsCount / safeLimit)
           : 1;
-        const deadlineDate = new Date(
-          chapterDeadline[0].completionDate,
-        ).getTime();
+        const deadlineDate = chapterDeadline[0].completionDate
+          ? new Date(chapterDeadline[0].completionDate).getTime()
+          : null;
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
           .filter((statusCode) => statusCode['user'])
@@ -2729,11 +2859,13 @@ export class SubmissionService {
               ({ batchId: null, batchName: null } as const);
             if (
               studentAssignmentStatus &&
-              studentAssignmentStatus['completedAt']
+              studentAssignmentStatus['completedAt'] &&
+              deadlineDate !== null
             ) {
               const createdAtDate = new Date(
                 studentAssignmentStatus['completedAt'],
               ).getTime();
+
               if (createdAtDate > deadlineDate) {
                 isLate = true;
               }
@@ -2748,6 +2880,7 @@ export class SubmissionService {
               id: userIdNumber,
               name: statusCode['user']['name'],
               emailId: statusCode['user']['email'],
+              profilePicture: statusCode['user']['profilePicture'] ?? null,
               status: isLate ? 'Late Submission' : 'On Time',
               bootcampId:
                 statusCode['user'].studentAssignmentStatus?.bootcampId,
@@ -2775,6 +2908,7 @@ export class SubmissionService {
               chapterName: chapterDeadline[0].title,
               totalPages,
               totalStudentsCount,
+              totalSubmittedStudentsCount,
               currentPage,
             },
           },
@@ -2993,7 +3127,7 @@ export class SubmissionService {
           null,
           {
             statusCode: 202,
-            message: 'assessmet submission not found',
+            message: 'assessment submission not found',
           },
         ];
       }
@@ -3268,33 +3402,33 @@ Zuvy LMS Team
     orgId?: number,
   ): Promise<[any, any]> {
     try {
-      // Validate ordering inputs
-      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
-        return [
-          {
-            message: 'Both orderBy and orderDirection are required together',
-            statusCode: STATUS_CODES.BAD_REQUEST,
-          },
-          null,
-        ];
-      }
+      const cleanBootcampId =
+        bootcampId !== undefined &&
+        bootcampId !== null &&
+        !isNaN(Number(bootcampId))
+          ? Number(bootcampId)
+          : undefined;
 
-      // ORDER BY chapter title only
-      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
-        helpers.asc(moduleChapter.title);
-
-      if (orderBy === 'title') {
-        chapterOrderClause = (moduleChapter: any, helpers: any) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
-          return dir(moduleChapter.title);
-        };
-      }
+      // Default to ascending order by chapter title unless desc is specified
+      const dir =
+        orderDirection && orderDirection.toLowerCase() === 'desc'
+          ? 'desc'
+          : 'asc';
+      const chapterOrderClause = (moduleChapter: any, helpers: any) => {
+        return dir === 'desc'
+          ? helpers.desc(moduleChapter.title)
+          : helpers.asc(moduleChapter.title);
+      };
 
       // Query modules mapped to bootcampId
       const topicId = 8; // or as per your schema for chapters
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq, and }) =>
-          and(eq(courseModules.bootcampId, bootcampId)),
+          and(
+            cleanBootcampId
+              ? eq(courseModules.bootcampId, cleanBootcampId)
+              : undefined,
+          ),
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
           moduleChapterData: {
@@ -3356,17 +3490,19 @@ Zuvy LMS Team
         offset,
       });
       // Get total students for bootcamp
-      const zuvyBatchEnrollmentsCount = await db
-        .select({
-          count: count(zuvyBatchEnrollments.id),
-        })
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-            isNotNull(zuvyBatchEnrollments.batchId),
-          ),
-        );
+      const zuvyBatchEnrollmentsCount = cleanBootcampId
+        ? await db
+            .select({
+              count: count(zuvyBatchEnrollments.id),
+            })
+            .from(zuvyBatchEnrollments)
+            .where(
+              and(
+                eq(zuvyBatchEnrollments.bootcampId, cleanBootcampId),
+                isNotNull(zuvyBatchEnrollments.batchId),
+              ),
+            )
+        : [{ count: 0 }];
       // Add submitStudents field and expose submissions for each chapter
       trackingData.forEach((course: any) => {
         course.moduleChapterData.forEach((chapterTracking: any) => {
@@ -3381,6 +3517,7 @@ Zuvy LMS Team
             name: d.user?.name ?? null,
             email: d.user?.email ?? null,
             completedAt: d.completedAt ?? null,
+            status: 'Viewed',
           }));
         });
       });
@@ -3414,25 +3551,44 @@ Zuvy LMS Team
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
+    bootcampId: number,
     limit?: number,
     offset?: number,
     name?: string,
     email?: string,
-    status?: 'present' | 'absent',
+    status?: 'present' | 'absent' | string,
     orderBy?: 'name' | 'email' | 'status' | 'batchId' | 'batchName',
     orderDirection?: 'asc' | 'desc',
     batchId?: number,
     batchName?: string,
   ): Promise<[any, any]> {
     try {
-      // Resolve batch filters up-front so we can filter sessions at the DB layer
-      const batchFilterIds: number[] = [];
-      const normalizedBatchId =
-        Number.isFinite(Number(batchId)) && Number(batchId) > 0
+      const cleanModuleChapterId = Number(moduleChapterId);
+      const cleanBootcampId =
+        bootcampId !== undefined &&
+        bootcampId !== null &&
+        !isNaN(Number(bootcampId))
+          ? Number(bootcampId)
+          : undefined;
+      const cleanBatchId =
+        batchId !== undefined && batchId !== null && !isNaN(Number(batchId))
           ? Number(batchId)
           : undefined;
-      if (normalizedBatchId) {
-        batchFilterIds.push(normalizedBatchId);
+
+      if (isNaN(cleanModuleChapterId)) {
+        return [
+          {
+            message: 'Invalid module chapter id',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // Resolve batch filters up-front so we can filter sessions at the DB layer
+      const batchFilterIds: number[] = [];
+      if (cleanBatchId && cleanBatchId > 0) {
+        batchFilterIds.push(cleanBatchId);
       }
 
       // If batchName is provided, fetch matching ids and merge into filter set
@@ -3454,12 +3610,22 @@ Zuvy LMS Team
 
       // If a batchName was requested but no batches match, short-circuit to empty
       if (batchName && uniqueBatchFilterIds.length === 0) {
-        return [null, { data: [], totalCount: 0, totalPages: limit ? 0 : 1 }];
+        return [
+          null,
+          {
+            data: [],
+            totalSubmittedStudents: 0,
+            totalStudentsCount: 0,
+            totalPages: limit ? 0 : 1,
+          },
+        ];
       }
 
       const submissions = await db.query.zuvySessions.findMany({
         where: (session, { and, eq, or, inArray }) => {
-          const conditions: any[] = [eq(session.chapterId, moduleChapterId)];
+          const conditions: any[] = [
+            eq(session.chapterId, cleanModuleChapterId),
+          ];
           if (uniqueBatchFilterIds.length > 0) {
             conditions.push(
               or(
@@ -3503,7 +3669,6 @@ Zuvy LMS Team
                         ),
                     )
                   : undefined,
-                status ? eq(record.status, status) : undefined,
               ),
             columns: {
               userId: true,
@@ -3515,6 +3680,7 @@ Zuvy LMS Team
                 columns: {
                   name: true,
                   email: true,
+                  profilePicture: true,
                 },
               },
             },
@@ -3547,25 +3713,40 @@ Zuvy LMS Team
         });
       }
 
-      // Fetch all completed student tracking records for this chapter to compute submission status dynamically
+      // Fetch all completed student tracking records for this chapter to compute recording view status
       const completedTracking = await db
-        .select({ userId: zuvyChapterTracking.userId })
+        .select({
+          userId: zuvyChapterTracking.userId,
+          completedAt: zuvyChapterTracking.completedAt,
+        })
         .from(zuvyChapterTracking)
         .where(
           and(
-            eq(zuvyChapterTracking.chapterId, moduleChapterId),
+            eq(zuvyChapterTracking.chapterId, cleanModuleChapterId),
             isNotNull(zuvyChapterTracking.completedAt),
           ),
         );
-      const completedUserIdsSet = new Set(
-        completedTracking.map((ct) => Number(ct.userId)),
+
+      const completedTrackingMap = new Map<number, any>();
+      completedTracking.forEach((ct) => {
+        completedTrackingMap.set(Number(ct.userId), ct);
+      });
+
+      const totalStudentsCount = await this.getTotalStudentsCount(
+        cleanBootcampId,
+        cleanBatchId,
       );
 
       // Process and flatten data
       let allRecords: any[] = [];
+      const processedUserIds = new Set<number>();
+
       submissions.forEach((session: any) => {
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
+            const uId = Number(record.userId);
+            processedUserIds.add(uId);
+
             const resolvedBatchId = uniqueBatchFilterIds.length
               ? ([session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
@@ -3580,22 +3761,95 @@ Zuvy LMS Team
               resolvedBatchId !== null && resolvedBatchId !== undefined
                 ? (batchMap[Number(resolvedBatchId)] ?? null)
                 : null;
-            const isCompleted = completedUserIdsSet.has(Number(record.userId));
+
+            const trackingInfo = completedTrackingMap.get(uId);
+            const isCompleted = !!trackingInfo;
+            const recordStatus = isCompleted ? 'Viewed' : 'Not Viewed';
+
             allRecords.push({
               ...record,
+              status: recordStatus,
+              submissionStatus: isCompleted ? 1 : 0,
+              completedAt: trackingInfo?.completedAt ?? null,
               sessionId: session.id,
               sessionTitle: session.title,
               meetingId: session.meetingId,
               hangoutLink: session.hangoutLink,
               batchId: resolvedBatchId,
               batchName: resolvedBatchName,
-              submissionStatus: isCompleted ? 1 : 0,
             });
           });
         }
       });
 
-      // Sorting (unchanged)
+      // Also include any students in completedTracking who were not in studentAttendanceRecords
+      for (const [uId, trackingInfo] of completedTrackingMap.entries()) {
+        if (!processedUserIds.has(uId)) {
+          if (!uId || isNaN(uId)) continue;
+          const userRes = await db
+            .select({
+              name: users.name,
+              email: users.email,
+              profilePicture: users.profilePicture,
+            })
+            .from(users)
+            .where(eq(users.id, BigInt(uId)));
+
+          if (userRes.length > 0) {
+            if (
+              (name &&
+                !userRes[0].name?.toLowerCase().includes(name.toLowerCase())) ||
+              (email &&
+                !userRes[0].email?.toLowerCase().includes(email.toLowerCase()))
+            ) {
+              continue;
+            }
+
+            allRecords.push({
+              userId: uId,
+              status: 'Viewed',
+              submissionStatus: 1,
+              completedAt: trackingInfo.completedAt ?? null,
+              duration: null,
+              user: {
+                name: userRes[0].name,
+                email: userRes[0].email,
+                profilePicture: userRes[0].profilePicture ?? null,
+              },
+              sessionId: submissions[0]?.id ?? null,
+              sessionTitle: submissions[0]?.title ?? null,
+              meetingId: submissions[0]?.meetingId ?? null,
+              hangoutLink: submissions[0]?.hangoutLink ?? null,
+              batchId: cleanBatchId ?? null,
+              batchName:
+                batchName ??
+                (cleanBatchId
+                  ? (batchMap[Number(cleanBatchId)] ?? null)
+                  : null),
+            });
+          }
+        }
+      }
+
+      // Filter by status if requested
+      if (status) {
+        const lowerStatus = status.toLowerCase();
+        if (lowerStatus === 'viewed') {
+          allRecords = allRecords.filter((r) => r.status === 'Viewed');
+        } else if (lowerStatus === 'not viewed' || lowerStatus === 'absent') {
+          allRecords = allRecords.filter((r) => r.status === 'Not Viewed');
+        } else {
+          allRecords = allRecords.filter((r) =>
+            (r.status || '').toLowerCase().includes(lowerStatus),
+          );
+        }
+      }
+
+      const totalSubmittedStudents = allRecords.filter(
+        (r) => r.status === 'Viewed',
+      ).length;
+
+      // Sorting
       if (orderBy) {
         const dir =
           orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
@@ -3631,9 +3885,23 @@ Zuvy LMS Team
       }
 
       // Pagination
+      const parsedLimit =
+        limit !== undefined && limit !== null ? Number(limit) : undefined;
+      const parsedOffset =
+        offset !== undefined && offset !== null ? Number(offset) : 0;
+
       const safeLim =
-        typeof limit === 'number' && limit > 0 ? limit : undefined;
-      const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
+        typeof parsedLimit === 'number' &&
+        !isNaN(parsedLimit) &&
+        parsedLimit > 0
+          ? parsedLimit
+          : undefined;
+      const safeOff =
+        typeof parsedOffset === 'number' &&
+        !isNaN(parsedOffset) &&
+        parsedOffset >= 0
+          ? parsedOffset
+          : 0;
 
       const paginatedRecords = safeLim
         ? allRecords.slice(safeOff, safeOff + safeLim)
@@ -3645,7 +3913,8 @@ Zuvy LMS Team
         null,
         {
           data: paginatedRecords,
-          totalCount: allRecords.length,
+          totalSubmittedStudents,
+          totalStudentsCount,
           totalPages,
         },
       ];

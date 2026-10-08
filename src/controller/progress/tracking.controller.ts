@@ -13,6 +13,8 @@ import {
   Req,
   Res,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -45,6 +47,13 @@ import { helperVariable } from 'src/constants/helper';
 
 @SkipOrgCheck()
 @Controller('tracking')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }),
+)
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
@@ -95,7 +104,13 @@ export class TrackingController {
     summary: 'Recompute attendance percentage for a batch (testing)',
   })
   @ApiBearerAuth('JWT-auth')
-  async recomputeAttendance(@Param('batchId') batchId: number) {
+  async recomputeAttendance(@Param('batchId') batchId: number, @Req() req) {
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
+      throw new ForbiddenException('Only admin can perform this action');
+    }
+
     const res = await this.TrackingService.recomputeBatchAttendancePercentages(
       Number(batchId),
     );
@@ -426,8 +441,19 @@ export class TrackingController {
     @Req() req,
     @Query('studentId') userId: number,
   ) {
-    if (!userId) {
-      userId = req.user[0].id;
+    // if (!userId) {
+    //   userId = req.user[0].id;
+    // }
+
+    const loggedInUserId = req.user[0].id;
+    const roles = req.user[0].roles;
+    const isAdmin = roles?.includes('admin');
+    if (!isAdmin) {
+      userId = loggedInUserId;
+    } else if (userId && !Number.isNaN(Number(userId))) {
+      userId = Number(userId);
+    } else {
+      userId = undefined;
     }
     const res = await this.TrackingService.getAssessmentSubmission(
       submissionId,
@@ -477,11 +503,14 @@ export class TrackingController {
   @ApiBearerAuth('JWT-auth')
   async getProperting(
     @Param('assessment_submission_id') assessmentSubmissionId: number,
+    @Req() req,
     @Res() res,
   ) {
     try {
       let [err, success] = await this.TrackingService.getProperting(
         assessmentSubmissionId,
+        req.user[0].id,
+        req.user[0].roles,
       );
       if (err) {
         return ErrorResponse.BadRequestException(

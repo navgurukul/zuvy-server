@@ -12,6 +12,7 @@ import {
   Optional,
   Query,
   BadRequestException,
+  ForbiddenException,
   Req,
   Res,
   UseGuards,
@@ -25,6 +26,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { helperVariable } from 'src/constants/helper';
 import {
   InstructorFeedbackDto,
   PatchOpenendedQuestionDto,
@@ -106,6 +108,12 @@ export class SubmissionController {
   @Get('/practiseProblemStatus/:moduleId')
   @ApiOperation({ summary: 'Get the status of practise Problems' })
   @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Bootcamp id',
+  })
+  @ApiQuery({
     name: 'chapterId',
     required: true,
     type: Number,
@@ -157,6 +165,7 @@ export class SubmissionController {
   })
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
     @Query('chapterId') chapterId: number,
     @Query('questionId') questionId: number,
     @Query('batchId') batchId?: number,
@@ -171,6 +180,7 @@ export class SubmissionController {
       chapterId,
       moduleId,
       batchId,
+      bootcampId,
       limit,
       offset,
       searchStudent,
@@ -233,15 +243,31 @@ export class SubmissionController {
   async patchOpenendedQuestion(
     @Body() data: PatchOpenendedQuestionDto,
     @Query('id') id: number,
+    @Req() req: any,
   ) {
-    return this.submissionService.patchOpenendedQuestion(data, id);
+    return this.submissionService.patchOpenendedQuestion(
+      data,
+      id,
+      req.user[0].id,
+    );
   }
 
   @Post('/instructor/feedback')
   async instructorFeedback(
     @Body() data: InstructorFeedbackDto,
+    @Req() req: any,
     @Query('id') id: number,
   ) {
+    const roles = req.user[0]?.roles;
+    if (
+      !roles?.includes(helperVariable.instructor) &&
+      !roles?.includes(helperVariable.admin)
+    ) {
+      throw new ForbiddenException(
+        'You are not authorized to grade this submission',
+      );
+    }
+
     return this.submissionService.instructorFeedback(data, id);
   }
 
@@ -804,13 +830,21 @@ export class SubmissionController {
     }
   }
   //recalcOnlyMCQ
+
   @Patch('/assessment/recalcOnlyMCQ')
   @ApiOperation({ summary: 'Recalculating the MCQ score' })
   async recalcAndFixMCQForAssessment(
     @Query('assessment_outsourse_id') assessmentOutsourseId: number,
     @Res() res,
+    @Req() req: any,
   ) {
     try {
+      const roles = req.user[0]?.roles || [];
+      if (!roles.includes('admin') && !roles.includes('instructor')) {
+        throw new ForbiddenException(
+          'Only admin or instructor can recalculate MCQ score',
+        );
+      }
       let [err, success] =
         await this.submissionService.recalcAndFixMCQForAssessment(
           assessmentOutsourseId,
@@ -876,7 +910,8 @@ export class SubmissionController {
     summary: 'Get chapter tracking data for Live sessions inside modules',
   })
   async getLiveChapterSubmissions(
-    @Query('bootcamp_id') bootcampId: number,
+    @Query('bootcamp_id') bootcamp_id: number,
+    @Query('bootcampId') bootcampId: number,
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -887,12 +922,13 @@ export class SubmissionController {
   ) {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
+      const effectiveBootcampId = bootcamp_id ?? bootcampId;
       const roleName = req.user[0]?.roles;
       const orgId = req.user[0]?.orgId;
       const [err, result] =
         await this.submissionService.getLiveChapterSubmissions(
           roleName,
-          bootcampId,
+          effectiveBootcampId,
           searchTerm,
           limit,
           offset,
@@ -929,6 +965,12 @@ export class SubmissionController {
     description: 'Limit the number of results',
   })
   @ApiQuery({
+    name: 'bootcampId',
+    required: false,
+    type: Number,
+    description: 'Filter students by bootcamp id',
+  })
+  @ApiQuery({
     name: 'offset',
     required: false,
     type: String,
@@ -950,7 +992,7 @@ export class SubmissionController {
     name: 'status',
     required: false,
     type: String,
-    description: 'Filter by attendance status (present or absent)',
+    description: 'Filter by recording view status (Viewed or Not Viewed)',
   })
   @ApiQuery({
     name: 'batchId',
@@ -982,7 +1024,9 @@ export class SubmissionController {
   })
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
-    @Res() res?: any,
+    @Res() res: any,
+    @Query('bootcampId') bootcampId?: number,
+    @Query('bootcamp_id') bootcamp_id?: number,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('name') name?: string,
@@ -995,9 +1039,11 @@ export class SubmissionController {
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
     try {
+      const effectiveBootcampId = bootcampId ?? bootcamp_id;
       const [err, result] =
         await this.submissionService.getLiveChapterStudentSubmission(
           moduleChapterId,
+          effectiveBootcampId,
           limit,
           offset,
           name,

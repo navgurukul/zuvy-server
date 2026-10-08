@@ -15,6 +15,7 @@ import {
   zuvyOutsourseAssessments,
   zuvyBatchEnrollments,
   zuvyBatches,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 import { and, eq, asc, count, isNotNull, isNull } from 'drizzle-orm';
 
@@ -59,6 +60,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     try {
       // Ensure user exists in `users` table
       await this.ensureUserExists(user);
+
+      // Skip auto-enroll for the explicit enroll endpoint — the service
+      // owns that path and must apply its own already-enrolled / overflow
+      // batch logic with the correct success / error responses.
+      const isExplicitEnrollEndpoint =
+        request.method === 'POST' &&
+        /\/student\/bootcamp\/enroll\/?$/.test(request.path);
+      if (isExplicitEnrollEndpoint) return true;
 
       // Resolve bootcampId from request (params/query/body or via module/chapter/assessment)
       const bootcampId = await this.resolveBootcampIdFromRequest(request);
@@ -112,6 +121,30 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
             selectedBatchId = batch.id;
             break;
           }
+        }
+
+        // All batches are full — create a new unlimited-capacity overflow batch
+        if (selectedBatchId === null) {
+          const [bootcamp] = await tx
+            .select({ name: zuvyBootcamps.name })
+            .from(zuvyBootcamps)
+            .where(eq(zuvyBootcamps.id, bootcampId))
+            .limit(1);
+
+          const bootcampName = bootcamp?.name || 'Bootcamp';
+          const batchCount = batches.length;
+          const newBatchName = `${bootcampName} - Batch ${batchCount + 1}`;
+
+          const [newBatch] = await tx
+            .insert(zuvyBatches)
+            .values({
+              name: newBatchName,
+              bootcampId,
+              // capEnrollment omitted → null in DB (unlimited capacity)
+            } as any)
+            .returning();
+
+          selectedBatchId = newBatch.id;
         }
 
         await tx

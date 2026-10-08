@@ -24,6 +24,7 @@ import {
   zuvyProjectTracking,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
+import { computeChapterLockStates } from 'src/helpers/chapterLock';
 import {
   eq,
   sql,
@@ -783,6 +784,30 @@ export class StudentService {
         ];
       }
 
+      // Check if user is already enrolled before doing any batch work.
+      // The JwtAuthGuard skips auto-enroll for this endpoint, so an
+      // existing record here means the student genuinely enrolled before.
+      const existingEnrollment = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        );
+
+      if (existingEnrollment && existingEnrollment.length > 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Already enrolled in this course.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
       // Find an available batch where capEnrollment > enrollments
       const batches = await db
         .select()
@@ -805,36 +830,26 @@ export class StudentService {
       }
 
       if (!selectedBatchId) {
-        return [
-          {
-            status: 'error',
-            message: 'All batches for this course are currently full.',
-            code: 400,
-          },
-          null,
-        ];
-      }
+        // All existing batches are full — create a new unlimited-capacity overflow batch
+        const bootcampRes = await db
+          .select({ name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, bootcampId))
+          .limit(1);
 
-      // Check if user already enrolled
-      const existingEnrollment = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-          ),
-        );
+        const bootcampName = bootcampRes[0]?.name || 'Bootcamp';
+        const newBatchName = `${bootcampName} - Batch ${batches.length + 1}`;
 
-      if (existingEnrollment && existingEnrollment.length > 0) {
-        return [
-          {
-            status: 'error',
-            message: 'Already enrolled in this course.',
-            code: 400,
-          },
-          null,
-        ];
+        const [newBatch] = await db
+          .insert(zuvyBatches)
+          .values({
+            name: newBatchName,
+            bootcampId,
+            // capEnrollment omitted → null in DB (unlimited enrollment)
+          } as any)
+          .returning();
+
+        selectedBatchId = newBatch.id;
       }
 
       // Create enrollment
@@ -2133,6 +2148,14 @@ Team Zuvy`;
                 topicId: true,
                 order: true,
                 completionDate: true,
+                isLock: true,
+              },
+              with: {
+                chapterTrackingDetails: {
+                  columns: { id: true },
+                  where: (chapterTracking, { eq }) =>
+                    eq(chapterTracking.userId, BigInt(userId)),
+                },
               },
               orderBy: (zuvyModuleChapter, { asc }) =>
                 asc(zuvyModuleChapter.order),
@@ -2164,6 +2187,7 @@ Team Zuvy`;
       ]);
 
       const isCourseLocked = bootcampLockData?.isModuleLocked || false;
+      const isChapterLocked = bootcampLockData?.isChapterLocked || false;
 
       const moduleProgressMap = new Map(
         moduleTrackingData.map((tracking) => [
@@ -2274,6 +2298,23 @@ Team Zuvy`;
       // 8. Format modules with progress
       let formattedModules = modules.map((module, index) => {
         const progress = moduleProgressMap.get(module.id) || 0;
+        const visibleChapters = (
+          (module as any).moduleChapterData || []
+        ).filter((chapter: any) => {
+          const state = assessmentStateMap.get(chapter.id);
+          return state === undefined || allowedStates.includes(state);
+        });
+        const chapterLocks = computeChapterLockStates(
+          visibleChapters,
+          new Set(
+            visibleChapters
+              .filter(
+                (chapter: any) => chapter.chapterTrackingDetails.length > 0,
+              )
+              .map((chapter: any) => chapter.id),
+          ),
+          isChapterLocked,
+        );
 
         return {
           moduleId: Number(module.id),
@@ -2284,32 +2325,28 @@ Team Zuvy`;
           moduleDuration: module.timeAlloted
             ? `${Math.round(module.timeAlloted / 60)} min`
             : 'Not specified',
-          chapters: ((module as any).moduleChapterData || [])
-            .filter((chapter: any) => {
-              const state = assessmentStateMap.get(chapter.id);
-              return state === undefined || allowedStates.includes(state);
-            })
-            .map((chapter: any) => {
-              const duration = chapterDurationMap.get(chapter.id);
-              let chapterDuration = 'Self-paced';
+          chapters: visibleChapters.map((chapter: any) => {
+            const duration = chapterDurationMap.get(chapter.id);
+            let chapterDuration = 'Self-paced';
 
-              if (duration) {
-                chapterDuration = `${duration} min`;
-              } else if (chapter.completionDate) {
-                chapterDuration = 'Timed';
-              }
+            if (duration) {
+              chapterDuration = `${duration} min`;
+            } else if (chapter.completionDate) {
+              chapterDuration = 'Timed';
+            }
 
-              return {
-                chapterId: Number(chapter.id),
-                chapterName: chapter.title,
-                chapterDescription: chapter.description,
-                chapterType: chapter.topicId
-                  ? topicMap.get(chapter.topicId) || 'Unknown'
-                  : 'Unknown',
-                chapterDuration,
-                chapterOrder: chapter.order,
-              };
-            }),
+            return {
+              chapterId: Number(chapter.id),
+              chapterName: chapter.title,
+              chapterDescription: chapter.description,
+              chapterType: chapter.topicId
+                ? topicMap.get(chapter.topicId) || 'Unknown'
+                : 'Unknown',
+              chapterDuration,
+              chapterOrder: chapter.order,
+              ...chapterLocks.get(chapter.id),
+            };
+          }),
         };
       });
 

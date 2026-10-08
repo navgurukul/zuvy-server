@@ -4,6 +4,12 @@ export interface Item {
   description: string | null;
 }
 
+export function capitalizeFirstLetter(value: string): string {
+  if (!value) return value;
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function convertToPascalCaseWithSpaces(items: Item[]): Item[] {
   return items.map((item) => {
     const processedName = convertNameToPascalWithSpaces(item.name);

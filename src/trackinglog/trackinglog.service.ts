@@ -380,27 +380,45 @@ export class TrackinglogService {
           .where(whereClause),
       ]);
 
-      // Fetch roles for each actor in the logs
-      const logsWithRoles = await Promise.all(
-        logs.map(async (log) => {
-          const userRoles = await db
-            .select({
-              roleName: zuvyUserRoles.name,
-              roleId: zuvyUserRoles.id,
-            })
-            .from(zuvyUserRolesAssigned)
-            .leftJoin(
-              zuvyUserRoles,
-              eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
-            )
-            .where(sql`${zuvyUserRolesAssigned.userId} = ${log.actorUserId}`);
+      // Fetch roles for each actor in the logs in a single query (avoid N+1)
+      const actorUserIds = [
+        ...new Set(logs.map((log) => Number(log.actorUserId))),
+      ];
+      const userRolesMap = new Map<number, string[]>();
 
-          return {
-            ...log,
-            actorRoles: userRoles.map((r) => r.roleName).filter(Boolean),
-          };
-        }),
-      );
+      if (actorUserIds.length > 0) {
+        const userRolesData = await db
+          .select({
+            userId: zuvyUserRolesAssigned.userId,
+            roleName: zuvyUserRoles.name,
+          })
+          .from(zuvyUserRolesAssigned)
+          .leftJoin(
+            zuvyUserRoles,
+            eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+          )
+          .where(
+            sql`${zuvyUserRolesAssigned.userId} IN (${sql.join(
+              actorUserIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
+          );
+
+        for (const row of userRolesData) {
+          const uId = Number(row.userId);
+          if (!userRolesMap.has(uId)) {
+            userRolesMap.set(uId, []);
+          }
+          if (row.roleName) {
+            userRolesMap.get(uId)!.push(row.roleName);
+          }
+        }
+      }
+
+      const logsWithRoles = logs.map((log) => ({
+        ...log,
+        actorRoles: userRolesMap.get(Number(log.actorUserId)) || [],
+      }));
 
       const total = Number(totalResult?.[0]?.count ?? 0);
 
