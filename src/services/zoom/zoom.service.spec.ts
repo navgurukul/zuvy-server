@@ -76,6 +76,50 @@ describe('ZoomService — waiting room "invited only" policy', () => {
     });
   });
 
+  describe('annotation exceptions (ZOOM_ANNOTATION_ENABLED_HOSTS)', () => {
+    const annotationFor = (email: string) =>
+      findCall(
+        mockedAxios.patch.mock.calls as PatchCall[],
+        `/users/${encodeURIComponent(email)}/settings`,
+      )![1].in_meeting.annotation;
+
+    afterEach(() => {
+      delete process.env.ZOOM_ANNOTATION_ENABLED_HOSTS;
+    });
+
+    it('keeps annotation disabled for every host when no exceptions are configured', async () => {
+      await service.applyLicensedUserSettings('instructor@example.com');
+      expect(annotationFor('instructor@example.com')).toBe(false);
+    });
+
+    it('enables annotation only for allowlisted hosts (case/whitespace-insensitive)', async () => {
+      process.env.ZOOM_ANNOTATION_ENABLED_HOSTS =
+        ' Allowed@Example.com , other@example.com,';
+      service = new ZoomServiceCtor();
+
+      await service.applyLicensedUserSettings('allowed@example.com');
+      await service.applyLicensedUserSettings('instructor@example.com');
+
+      expect(annotationFor('allowed@example.com')).toBe(true);
+      expect(annotationFor('instructor@example.com')).toBe(false);
+    });
+
+    it('carries the exception through session creation so it is not reverted', async () => {
+      process.env.ZOOM_ANNOTATION_ENABLED_HOSTS = 'allowed@example.com';
+      service = new ZoomServiceCtor();
+
+      await service.createMeetingForUser('allowed@example.com', {
+        topic: 'Live class',
+        type: 2,
+        start_time: '2026-01-01T00:00:00Z',
+        duration: 60,
+        timezone: 'UTC',
+      } as any);
+
+      expect(annotationFor('allowed@example.com')).toBe(true);
+    });
+  });
+
   describe('createMeeting (team/"me"-hosted meetings)', () => {
     it('enables meeting-level waiting_room with custom mode + users_not_on_invite, and re-applies the "me" user policy', async () => {
       const result = await service.createMeeting({
