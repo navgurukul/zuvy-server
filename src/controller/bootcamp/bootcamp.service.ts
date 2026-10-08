@@ -149,7 +149,7 @@ export class BootcampService {
 
     const dropdownRows = await db
       .select({
-        careerStatus: zuvyLearnersCompleteProfile.targetRoles,
+        careerStatus: zuvyLearnersCompleteProfile.currentStatus,
         skills: zuvyLearnersCompleteProfile.technicalSkills,
         openToRemote: zuvyLearnersCompleteProfile.openToRemote,
       })
