@@ -266,8 +266,8 @@ export class ClassesService {
   private isPendingZoomMeetingId(meetingId?: string | null) {
     return Boolean(
       meetingId &&
-        (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
-          meetingId.startsWith('activating-')),
+      (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
+        meetingId.startsWith('activating-')),
     );
   }
 
@@ -1226,7 +1226,8 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         timeZone: eventDetails.timeZone,
-        attendees: invitedStudents.map((s) => s.email),
+        // Student ID accounts have no email; a null attendee fails the event.
+        attendees: invitedStudents.map((s) => s.email).filter(Boolean),
       };
 
       const calendarResult = await this.createGoogleCalendarEvent(
@@ -1709,8 +1710,8 @@ export class ClassesService {
 
               throw new Error(
                 nextAvailableAt &&
-                nextAvailableAt.getTime() >
-                  new Date(original.startTime).getTime()
+                  nextAvailableAt.getTime() >
+                    new Date(original.startTime).getTime()
                   ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
                   : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
@@ -5294,9 +5295,13 @@ export class ClassesService {
         `Found ${childBatchStudents.length} students in child batch to add to parent session`,
       );
 
-      // Prepare student details for invites
-      const studentEmails = childBatchStudents.map((student) => student.email);
-      const studentDetails = childBatchStudents.map((student) => ({
+      // Prepare student details for invites. Student ID accounts have no
+      // email and cannot be invited; a null attendee would fail the whole call.
+      const invitableStudents = childBatchStudents.filter(
+        (student) => student.email,
+      );
+      const studentEmails = invitableStudents.map((student) => student.email);
+      const studentDetails = invitableStudents.map((student) => ({
         email: student.email,
         name: student.name || student.email.split('@')[0],
       }));
