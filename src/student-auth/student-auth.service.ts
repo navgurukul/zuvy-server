@@ -41,6 +41,23 @@ const STUDENT_ID_RANDOM_LENGTH = 6;
 const GENERATED_PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const GENERATED_PASSWORD_LENGTH = 8;
 
+const ENROLL_ROLES = ['admin', 'ops'];
+
+/**
+ * Org admins and ops may enrol students by Student ID only into courses of
+ * the organisation they are currently logged into. (Super admins are
+ * checked separately and may enrol into any course.)
+ */
+export function canEnrollInCourse(
+  orgRoles: string[],
+  actorOrgId: number | null,
+  courseOrgId: number | null,
+): boolean {
+  if (actorOrgId == null || courseOrgId == null) return false;
+  if (Number(actorOrgId) !== Number(courseOrgId)) return false;
+  return orgRoles.some((role) => ENROLL_ROLES.includes(role));
+}
+
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 const INVALID_CREDENTIALS = 'Invalid Student ID or password';
@@ -244,22 +261,31 @@ export class StudentAuthService {
    * students up by email, so email-less students are enrolled here by
    * Student ID instead. Public courses need nothing: students are enrolled
    * automatically when they open one.
+   *
+   * Allowed for super admins (any course) and for admins / ops of the
+   * organisation that owns the course, in their current org session.
    */
   async enrollStudent(
-    actorUserId: number,
+    actor: { userId: number; orgId: number | null },
     studentId: string,
     bootcampId: number,
     batchId?: number,
   ) {
-    await this.assertSuperAdmin(actorUserId);
-    const { user } = await this.getStudentOrThrow(studentId);
-
     const [bootcamp] = await db
-      .select({ id: zuvyBootcamps.id, name: zuvyBootcamps.name })
+      .select({
+        id: zuvyBootcamps.id,
+        name: zuvyBootcamps.name,
+        organizationId: zuvyBootcamps.organizationId,
+      })
       .from(zuvyBootcamps)
       .where(eq(zuvyBootcamps.id, bootcampId))
       .limit(1);
+
+    // Authorise before revealing whether the course or Student ID exists.
+    await this.assertCanEnroll(actor, bootcamp?.organizationId ?? null);
     if (!bootcamp) throw new NotFoundException('Course not found');
+
+    const { user } = await this.getStudentOrThrow(studentId);
 
     if (batchId) {
       const [batch] = await db
@@ -307,6 +333,7 @@ export class StudentAuthService {
         return {
           status: 'success',
           message: 'Student moved to the selected batch',
+          data: this.enrollmentSummary(user, studentId, bootcamp, batchId),
         };
       }
       throw new ConflictException('Student is already enrolled in this course');
@@ -325,7 +352,48 @@ export class StudentAuthService {
     return {
       status: 'success',
       message: `Student ${studentId} enrolled in ${bootcamp.name}`,
+      data: this.enrollmentSummary(user, studentId, bootcamp, batchId),
     };
+  }
+
+  private enrollmentSummary(
+    user: { id: bigint; name: string },
+    studentId: string,
+    bootcamp: { id: number; name: string },
+    batchId?: number,
+  ) {
+    // The name lets the admin confirm they typed the right Student ID.
+    return {
+      studentId,
+      userId: user.id.toString(),
+      name: user.name,
+      bootcampId: bootcamp.id,
+      bootcampName: bootcamp.name,
+      batchId: batchId ?? null,
+    };
+  }
+
+  private async assertCanEnroll(
+    actor: { userId: number; orgId: number | null },
+    courseOrgId: number | null,
+  ) {
+    const globalRoles = await this.authService.getUserRoles(
+      Number(actor.userId),
+      null,
+    );
+    if (globalRoles.includes('super_admin')) return;
+
+    const orgRoles = actor.orgId
+      ? await this.authService.getUserRoles(
+          Number(actor.userId),
+          Number(actor.orgId),
+        )
+      : [];
+    if (!canEnrollInCourse(orgRoles, actor.orgId, courseOrgId)) {
+      throw new ForbiddenException(
+        "Only super admins, or admins and ops of this course's organisation, can enrol students by Student ID",
+      );
+    }
   }
 
   private async insertCredentialWithUniqueId(
