@@ -40,7 +40,7 @@ import {
  * /auth/refresh and /auth/logout work unchanged.
  */
 @ApiTags('Student ID Authentication')
-@Controller('auth/student')
+@Controller('auth')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -52,7 +52,7 @@ export class StudentAuthController {
   constructor(private readonly studentAuthService: StudentAuthService) {}
 
   @Public()
-  @Post('signup')
+  @Post('student/signup')
   @UseGuards(ThrottlerGuard)
   @SkipThrottle({ [LOGIN_PER_15_MINUTES]: true })
   @ApiOperation({
@@ -76,7 +76,7 @@ export class StudentAuthController {
   }
 
   @Public()
-  @Post('login')
+  @Post('student/login')
   @UseGuards(ThrottlerGuard)
   @SkipThrottle({ [SIGNUP_PER_MINUTE]: true, [SIGNUP_PER_HOUR]: true })
   @HttpCode(HttpStatus.OK)
