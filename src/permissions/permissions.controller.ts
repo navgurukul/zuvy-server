@@ -11,6 +11,7 @@ import {
   Query,
   ParseIntPipe,
   Req,
+  UseInterceptors,
 } from '@nestjs/common';
 import { PermissionsService } from './permissions.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
@@ -34,6 +35,8 @@ import {
   UserPermissionResponseDto,
 } from 'src/rbac/dto/permission.dto';
 import { PermissionsAllocationService } from './permissions.alloc.service';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @ApiTags('Permissions')
 @Controller('permissions')
@@ -68,6 +71,14 @@ export class PermissionsController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_permission',
+    resourceType: 'permission',
+    displayType: 'permission',
+    permissionName: 'createPermission',
+    getResourceName: (_result, params) => params?.name || '',
+  })
   async createPermission(
     @Body() createPermissionDto: CreatePermissionDto,
   ): Promise<any> {
@@ -187,6 +198,15 @@ export class PermissionsController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_permission_to_role',
+    resourceType: 'permission',
+    displayType: 'role permission assignment',
+    permissionName: 'assignPermission',
+    getResourceName: (_result, params) =>
+      params?.roleId ? `role ${params.roleId}` : '',
+  })
   async assignPermissionsToRole(
     @Body() assignPermissionsDto: AssignPermissionsToRoleDto,
     @Req() req,
@@ -247,6 +267,15 @@ export class PermissionsController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_permission_to_user',
+    resourceType: 'permission',
+    displayType: 'user permission assignment',
+    permissionName: 'assignPermission',
+    getResourceName: (_result, params) =>
+      params?.userId ? `user ${params.userId}` : '',
+  })
   async assignPermissionsToUser(
     @Body() assignPermissionsDto: AssignPermissionsToUserDto,
   ): Promise<any> {
@@ -382,6 +411,15 @@ export class PermissionsController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_permission',
+    resourceType: 'permission',
+    displayType: 'permission',
+    permissionName: 'deletePermission',
+    getResourceName: (_result, params) =>
+      params?.id ? `permission ${params.id}` : '',
+  })
   async deletePermission(@Param('id', ParseIntPipe) id: number): Promise<any> {
     try {
       const result = await this.permissionsService.deletePermission(id);
