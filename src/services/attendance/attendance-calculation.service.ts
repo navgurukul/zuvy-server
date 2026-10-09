@@ -198,11 +198,12 @@ export class AttendanceCalculationService {
               (scope as { batchId: number }).batchId,
             ),
           );
+        // Users without an email (Student ID accounts) cannot be matched to
+        // Meet attendance, and an empty key would match email-less records.
         emailToUserId = new Map(
-          enrolledUsers.map((u) => [
-            (u.email || '').toLowerCase(),
-            Number(u.userId),
-          ]),
+          enrolledUsers
+            .filter((u) => u.email)
+            .map((u) => [u.email.toLowerCase(), Number(u.userId)]),
         );
       }
 
@@ -224,9 +225,9 @@ export class AttendanceCalculationService {
             userId: number;
             userEmail: string;
           };
-          const rec = students.find(
-            (s: any) => s.email?.toLowerCase() === userEmail,
-          );
+          const rec = userEmail
+            ? students.find((s: any) => s.email?.toLowerCase() === userEmail)
+            : undefined;
           if (rec) {
             setEntry(sessionId, userId, {
               status: rec.attendance || 'absent',

@@ -1572,7 +1572,9 @@ export class StudentService {
         ];
       }
 
-      const userEmail = userRecord[0].email.toLowerCase();
+      // Student ID accounts have no email; attendance then comes from the
+      // per-user records only.
+      const userEmail = userRecord[0].email?.toLowerCase() ?? null;
 
       // Find the batch the user is enrolled in for this bootcamp
       const batchData = await db
