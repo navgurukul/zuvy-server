@@ -98,7 +98,7 @@ describe('Student ID rate limits behind nginx', () => {
   it('does not rate-limit the admin routes', async () => {
     for (let i = 0; i < 5; i++) {
       const res = await request(app.getHttpServer())
-        .get('/auth/student/admin/students?name=test')
+        .get('/auth/admin/students?name=test')
         .set('X-Forwarded-For', '203.0.113.10');
       expect(res.status).toBe(200);
     }

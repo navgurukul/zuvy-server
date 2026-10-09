@@ -79,7 +79,7 @@ Key points:
 | ------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `drizzle/migrations/0043_create_zuvy_student_credentials.sql` | Creates the `zuvy_student_credentials` table                          |
 | `src/student-auth/student-auth.module.ts`                     | New Nest module                                                       |
-| `src/student-auth/student-auth.controller.ts`                 | The 5 new endpoints under `/auth/student`                             |
+| `src/student-auth/student-auth.controller.ts`                 | The 5 new endpoints under `/auth/student` and `/auth/admin`           |
 | `src/student-auth/student-auth.service.ts`                    | Sign-up, login, lockout, password reset, search and enrol logic       |
 | `src/student-auth/dto/student-auth.dto.ts`                    | Request body and query validation                                     |
 | `src/student-auth/captcha.service.ts`                         | Verifies the Turnstile captcha token with Cloudflare on the backend   |
@@ -226,7 +226,7 @@ On production neither works: a real token from the frontend widget is always req
 
 ### Getting a super admin token (needed for the admin APIs)
 
-The admin endpoints (`/auth/student/admin/*`) only work for a **super admin**.
+The admin endpoints (`/auth/admin/*`) only work for a **super admin**.
 
 1. Log in to the **dev Zuvy web app** with a Google account that is a super admin on dev.
 2. Open the browser DevTools (F12) → **Network** tab.
@@ -321,7 +321,7 @@ Creates the account and logs the student in straight away.
 
   Login has no captcha. Young students log in often, and the account lockout plus the per-IP ceiling already stop password guessing.
 
-### 5.3 Reset a password (super admin): `POST /auth/student/admin/reset-password`
+### 5.3 Reset a password (super admin): `POST /auth/admin/reset-password`
 
 Use this when a student forgets their password.
 
@@ -362,7 +362,7 @@ Use this when a student forgets their password.
   | 403    | Caller is not a super admin                               | `Only super admins can manage Student IDs` |
   | 404    | Student ID does not exist                                 | `Student ID not found`                     |
 
-### 5.4 Find students (super admin): `GET /auth/student/admin/students`
+### 5.4 Find students (super admin): `GET /auth/admin/students`
 
 Use this to look up a student's Student ID by name, or to check an account.
 
@@ -375,7 +375,7 @@ Use this to look up a student's Student ID by name, or to check an account.
   | `name`      | `riya`     | Part of the name (case-insensitive) |
   | `limit`     | `20`       | 1–100, default 20                   |
 
-- **Example:** `GET /auth/student/admin/students?name=riya`
+- **Example:** `GET /auth/admin/students?name=riya`
 - **Success: `200 OK`**
   ```json
   {
@@ -395,7 +395,7 @@ Use this to look up a student's Student ID by name, or to check an account.
   ```
 - **Errors:** 400 (neither `studentId` nor `name` given: `Pass a studentId or a name to search`), 401, 403.
 
-### 5.5 Enrol in a course (super admin): `POST /auth/student/admin/enroll`
+### 5.5 Enrol in a course (super admin): `POST /auth/admin/enroll`
 
 The existing admin "add students" API (`POST /bootcamp/students/:bootcamp_id`) finds students **by email**, so it can't add these students. Use this endpoint for **private** courses instead. Public courses don't need it.
 
@@ -489,21 +489,21 @@ Authorize in Swagger with the student's `access_token` first.
 
 Authorize in Swagger with a **super admin** token first.
 
-| ID    | Steps                                                                                                                     | Expected result                                                                  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| TC-20 | `POST /auth/student/admin/reset-password` with `{"studentId": "<id from TC-02>"}`                                         | **200** with a generated 8-character `password`.                                 |
-| TC-21 | Log in as that student with the **old** password                                                                          | **401**.                                                                         |
-| TC-22 | Log in with the password from TC-20                                                                                       | **200**.                                                                         |
-| TC-23 | Reset with `{"studentId": "<id>", "newPassword": "mychoice1"}`, then log in with `mychoice1`                              | Both **200**.                                                                    |
-| TC-24 | Reset with `{"studentId": "ZVAAAAAA"}`                                                                                    | **404** `Student ID not found`.                                                  |
-| TC-25 | `GET /auth/student/admin/students?name=test student`                                                                      | **200**; both test accounts are listed.                                          |
-| TC-26 | `GET /auth/student/admin/students` with no parameters                                                                     | **400**.                                                                         |
-| TC-27 | `POST /auth/student/admin/enroll` with a **private** course: `{"studentId": "<id>", "bootcampId": <id>, "batchId": <id>}` | **200** "enrolled in ...". As the student, `GET /student/` now lists the course. |
-| TC-28 | Repeat TC-27 exactly                                                                                                      | **409** `Student is already enrolled in this course`.                            |
-| TC-29 | Repeat TC-27 with **another batch** of the same course                                                                    | **200** `Student moved to the selected batch`.                                   |
-| TC-30 | Enrol with a `batchId` from a different course                                                                            | **404** `Batch not found in this course`.                                        |
-| TC-31 | Authorize as a **normal student, admin or instructor** (not a super admin) and call any `/auth/student/admin/*` endpoint  | **403** `Only super admins can manage Student IDs`.                              |
-| TC-32 | Log out of Swagger (no token) and call any `/auth/student/admin/*` endpoint                                               | **401**.                                                                         |
+| ID    | Steps                                                                                                             | Expected result                                                                  |
+| ----- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| TC-20 | `POST /auth/admin/reset-password` with `{"studentId": "<id from TC-02>"}`                                         | **200** with a generated 8-character `password`.                                 |
+| TC-21 | Log in as that student with the **old** password                                                                  | **401**.                                                                         |
+| TC-22 | Log in with the password from TC-20                                                                               | **200**.                                                                         |
+| TC-23 | Reset with `{"studentId": "<id>", "newPassword": "mychoice1"}`, then log in with `mychoice1`                      | Both **200**.                                                                    |
+| TC-24 | Reset with `{"studentId": "ZVAAAAAA"}`                                                                            | **404** `Student ID not found`.                                                  |
+| TC-25 | `GET /auth/admin/students?name=test student`                                                                      | **200**; both test accounts are listed.                                          |
+| TC-26 | `GET /auth/admin/students` with no parameters                                                                     | **400**.                                                                         |
+| TC-27 | `POST /auth/admin/enroll` with a **private** course: `{"studentId": "<id>", "bootcampId": <id>, "batchId": <id>}` | **200** "enrolled in ...". As the student, `GET /student/` now lists the course. |
+| TC-28 | Repeat TC-27 exactly                                                                                              | **409** `Student is already enrolled in this course`.                            |
+| TC-29 | Repeat TC-27 with **another batch** of the same course                                                            | **200** `Student moved to the selected batch`.                                   |
+| TC-30 | Enrol with a `batchId` from a different course                                                                    | **404** `Batch not found in this course`.                                        |
+| TC-31 | Authorize as a **normal student, admin or instructor** (not a super admin) and call any `/auth/admin/*` endpoint  | **403** `Only super admins can manage Student IDs`.                              |
+| TC-32 | Log out of Swagger (no token) and call any `/auth/admin/*` endpoint                                               | **401**.                                                                         |
 
 ### E. Classes and attendance (needs a batch with a Student ID student in it)
 
