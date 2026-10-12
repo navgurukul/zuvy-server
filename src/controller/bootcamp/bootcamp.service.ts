@@ -1569,26 +1569,12 @@ export class BootcampService {
       const lastActiveDateFilter = lastActiveDate
         ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}`
         : undefined;
+
       const statusFilter = status
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
       const careerStatusFilter = careerStatus?.trim()
-        ? exists(
-            db
-              .select()
-              .from(zuvyLearnersRoles)
-              .where(
-                and(
-                  ilike(zuvyLearnersRoles.name, careerStatus.trim()),
-                  // Limitation: Drizzle ORM lacks native case-insensitive matching for elements within a JSONB array
-                  // without using raw SQL. We are using `arrayContains` (which maps to `@>`) here as the closest
-                  // alternative, but note that it performs a case-sensitive match.
-                  arrayContains(zuvyLearnersCompleteProfile.currentStatus, [
-                    careerStatus.trim(),
-                  ]),
-                ),
-              ),
-          )
+        ? ilike(zuvyLearnersCompleteProfile.currentStatus, careerStatus.trim())
         : undefined;
       // Technical skills are stored on the learner profile as the student-to-skill
       // mapping. Match against the existing skills catalogue through EXISTS so a
