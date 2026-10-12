@@ -1831,7 +1831,7 @@ export class BootcampService {
         status: 'success',
         code: 200,
         modifiedStudentInfo,
-        // dropdownOptions,
+        dropdownOptions,
         totalNumberOfStudents,
         currentPage,
         totalPages,
