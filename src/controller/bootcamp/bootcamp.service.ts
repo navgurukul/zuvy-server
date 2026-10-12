@@ -477,6 +477,10 @@ export class BootcampService {
 
   async createBootcamp(bootcampData): Promise<any> {
     try {
+      bootcampData.name =
+        bootcampData.name?.charAt(0).toUpperCase() +
+        bootcampData.name?.slice(1);
+
       const existingBootcamp = await db
         .select()
         .from(zuvyBootcamps)
@@ -507,6 +511,7 @@ export class BootcampService {
         bootcampId: newBootcamp[0].id,
         type: 'Private', // Assuming type is present in bootcampData
         isModuleLocked: false,
+        isChapterLocked: false,
       };
 
       let insertedBootcampType = await db
@@ -647,6 +652,14 @@ export class BootcampService {
         typeOfBootcamp == 'Private'.toLowerCase() ||
         typeOfBootcamp === null
       ) {
+        // Locking/unlocking modules also locks/unlocks chapters in order,
+        // unless the same request sets isChapterLocked explicitly.
+        if (
+          settingData.isModuleLocked !== undefined &&
+          settingData.isChapterLocked === undefined
+        ) {
+          settingData.isChapterLocked = settingData.isModuleLocked;
+        }
         let updatedBootcampSetting = await db
           .update(zuvyBootcampType)
           .set({ ...settingData })
@@ -1094,7 +1107,13 @@ export class BootcampService {
           if (userData[0].name !== users_data[0].name) {
             await db
               .update(users)
-              .set({ name: users_data[0].name })
+              // .set({ name: users_data[0].name })
+              .set({
+                name: users_data[0]['name']
+                  ? users_data[0]['name'].charAt(0).toUpperCase() +
+                    users_data[0]['name'].slice(1)
+                  : users_data[0]['name'],
+              })
               .where(sql`${users.email} = ${users_data[0].email}`);
           }
         }
@@ -1145,7 +1164,12 @@ export class BootcampService {
           newUser['batch_id'] = batchId;
         }
         newUser['email'] = users_data[i]['email'];
-        newUser['name'] = users_data[i]['name'];
+        // newUser['name'] = users_data[i]['name'];
+        newUser['name'] = users_data[i]['name']
+          ? users_data[i]['name'].charAt(0).toUpperCase() +
+            users_data[i]['name'].slice(1)
+          : users_data[i]['name'];
+
         let enroling;
         let userInfo = await db
           .select()
@@ -1156,7 +1180,14 @@ export class BootcampService {
           if (userInfo[0].name !== users_data[i]['name']) {
             await db
               .update(users)
-              .set({ name: users_data[i]['name'] })
+              // .set({ name: users_data[i]['name'] })
+              .set({
+                name: users_data[i]['name']
+                  ? users_data[i]['name'].charAt(0).toUpperCase() +
+                    users_data[i]['name'].slice(1)
+                  : users_data[i]['name'],
+              })
+
               .where(sql`${users.email} = ${users_data[i]['email']}`);
           }
         }

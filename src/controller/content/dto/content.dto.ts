@@ -1435,3 +1435,15 @@ export class deleteQuestionOrVariantDto {
   @Type(() => QuestionIdDto)
   questionIds: QuestionIdDto[];
 }
+
+export class ChapterManualLockDto {
+  @ApiProperty({
+    type: Boolean,
+    example: true,
+    required: true,
+    description: 'true locks this chapter for students, false unlocks it',
+  })
+  @IsNotEmpty()
+  @IsBoolean()
+  isLock: boolean;
+}

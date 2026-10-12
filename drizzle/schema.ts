@@ -474,6 +474,7 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
+  isChapterLocked: boolean('is_chapter_locked').default(false),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
 
     leaderboardEnabled: boolean('leaderboard_enabled')
@@ -928,6 +929,8 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
     mode: 'string',
   }),
   order: integer('order'),
+  // Admin-set manual lock for this chapter, independent of Module/Chapter Lock.
+  isLock: boolean('is_lock').default(false),
   version: varchar('version', { length: 10 })
 }, (table) => ({
   // perf: chapters are always listed/reordered by moduleId, often sorted by order.
@@ -3223,3 +3226,49 @@ export const zuvySubscriptionPlans = main.table('zuvy_subscription_plans', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 });
 
+// Student ID + password credential for learners without an email address
+// (migration 0043). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here.
+export const zuvyStudentCredentials = main.table(
+  'zuvy_student_credentials',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    studentId: varchar('student_id', { length: 16 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+    passwordUpdatedAt: timestamp('password_updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .notNull()
+      .defaultNow(),
+    lastResetBy: bigint('last_reset_by', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    lastResetAt: timestamp('last_reset_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUserId: unique('zuvy_student_credentials_user_id_unique').on(table.userId),
+    uniqStudentId: unique('zuvy_student_credentials_student_id_unique').on(
+      table.studentId,
+    ),
+  }),
+);
+
+export const zuvyStudentCredentialsRelations = relations(
+  zuvyStudentCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyStudentCredentials.userId],
+      references: [users.id],
+    }),
+  }),
+);

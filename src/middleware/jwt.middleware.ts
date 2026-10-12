@@ -28,6 +28,8 @@ export class JwtMiddleware implements NestMiddleware {
     const unrestrictedRoutes = [
       { path: '/auth/login', method: 'POST' },
       { path: '/auth/refresh', method: 'POST' },
+      { path: '/auth/student/signup', method: 'POST' },
+      { path: '/auth/student/login', method: 'POST' },
       { path: '/auth/debug-token', method: 'POST' },
       { path: '/classes', method: 'GET' },
       { path: '/classes/redirect/', method: 'GET' },
@@ -80,11 +82,15 @@ export class JwtMiddleware implements NestMiddleware {
       if (!decoded) {
         throw new UnauthorizedException('Invalid token');
       }
+      // Student ID (email-less) accounts carry email = null in the token;
+      // "email = NULL" never matches in SQL, so match those on IS NULL.
       const user: any[] = await db
         .select()
         .from(users)
         .where(
-          sql`${users.id} = ${decoded.sub} AND ${users.email} = ${decoded.email}`,
+          decoded.email == null
+            ? sql`${users.id} = ${decoded.sub} AND ${users.email} IS NULL`
+            : sql`${users.id} = ${decoded.sub} AND ${users.email} = ${decoded.email}`,
         );
 
       if (user.length === 0) {
