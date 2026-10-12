@@ -15,6 +15,7 @@ import {
   exists,
   ilike,
   arrayContains,
+  isNotNull,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -78,11 +79,12 @@ export class BootcampService {
 
   private buildDropdownOptions(
     rows: BootcampStudentDropdownRow[],
+    globalEducationOptions: string[],
   ): BootcampStudentDropdownOptions {
     const careerStatusSet = new Set<string>();
     const skillsMap = new Map<string, string>();
     const openToRemoteSet = new Set<boolean>();
-    const educationSet = new Set<string>();
+    // const openToRemoteSet = new Set<boolean>();
 
     for (const row of rows) {
       const careerStatusValues = Array.isArray(row.careerStatus)
@@ -115,12 +117,6 @@ export class BootcampService {
       if (typeof row.openToRemote === 'boolean') {
         openToRemoteSet.add(row.openToRemote);
       }
-      if (row.education !== undefined && row.education !== null) {
-        const normalized = String(row.education).trim();
-        if (normalized) {
-          educationSet.add(normalized);
-        }
-      }
     }
 
     return {
@@ -131,7 +127,7 @@ export class BootcampService {
       openToRemote: Array.from(openToRemoteSet).sort(
         (a, b) => Number(a) - Number(b),
       ),
-      education: Array.from(educationSet).sort((a, b) => b.localeCompare(a)),
+      education: globalEducationOptions,
     };
   }
 
@@ -175,8 +171,22 @@ export class BootcampService {
       )
       .where(and(...dropdownConditions));
 
+    const globalGraduationYears = await db
+      .select({ year: zuvyLearnersCompleteProfile.graduationYear })
+      .from(zuvyLearnersCompleteProfile)
+      .where(isNotNull(zuvyLearnersCompleteProfile.graduationYear));
+
+    const uniqueEducationOptions = Array.from(
+      new Set(
+        globalGraduationYears
+          .map((r) => String(r.year).trim())
+          .filter((y) => y !== ''),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+
     return this.buildDropdownOptions(
       dropdownRows as BootcampStudentDropdownRow[],
+      uniqueEducationOptions,
     );
   }
   async enrollData(bootcampId: number) {
@@ -1573,7 +1583,7 @@ export class BootcampService {
                   // Limitation: Drizzle ORM lacks native case-insensitive matching for elements within a JSONB array
                   // without using raw SQL. We are using `arrayContains` (which maps to `@>`) here as the closest
                   // alternative, but note that it performs a case-sensitive match.
-                  arrayContains(zuvyLearnersCompleteProfile.targetRoles, [
+                  arrayContains(zuvyLearnersCompleteProfile.currentStatus, [
                     careerStatus.trim(),
                   ]),
                 ),
@@ -1696,7 +1706,7 @@ export class BootcampService {
           progress: zuvyBootcampTracking.progress,
           zuvyBootcampTrackingId: zuvyBootcampTracking.id,
           zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
-          careerStatus: zuvyLearnersCompleteProfile.targetRoles,
+          careerStatus: zuvyLearnersCompleteProfile.currentStatus,
           skills: zuvyLearnersCompleteProfile.technicalSkills,
           education: zuvyLearnersCompleteProfile.graduationYear,
           openToRemote: zuvyLearnersCompleteProfile.openToRemote,
@@ -1835,7 +1845,7 @@ export class BootcampService {
         status: 'success',
         code: 200,
         modifiedStudentInfo,
-        dropdownOptions,
+        // dropdownOptions,
         totalNumberOfStudents,
         currentPage,
         totalPages,
