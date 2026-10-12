@@ -239,8 +239,12 @@ export class AttendanceWorkerService implements OnModuleInit {
     const invited = Array.isArray(session.invitedStudents)
       ? session.invitedStudents
       : [];
+    // Skip invitees without an email (Student ID accounts): an empty key would
+    // otherwise match Zoom guests who joined without an email.
     const invitedByEmail = new Map(
-      invited.map((i: any) => [(i.email || '').toLowerCase(), i]),
+      invited
+        .filter((i: any) => i?.email)
+        .map((i: any) => [String(i.email).toLowerCase(), i]),
     );
 
     const existingRecordsRaw = await db
@@ -257,6 +261,7 @@ export class AttendanceWorkerService implements OnModuleInit {
 
     for (const att of attendanceArray) {
       const email = (att.email || '').toLowerCase();
+      if (!email) continue;
       const invitedInfo: any = invitedByEmail.get(email);
       if (!invitedInfo || !invitedInfo.userId) continue;
       const uid = invitedInfo.userId;

@@ -1131,7 +1131,12 @@ export const partners = main.table(
   },
 );
 
-const bytea = customType<{ data: string; notNull: false; default: false }>({
+const bytea = customType<{
+  data: string;
+  driverData: Buffer;
+  notNull: false;
+  default: false;
+}>({
   dataType() {
     return 'bytea';
   },
@@ -5367,6 +5372,53 @@ export const zuvyUserFeatureFlagsRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [zuvyUserFeatureFlags.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+// Student ID + password credential for learners without an email address
+// (migration 0043). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here.
+export const zuvyStudentCredentials = main.table(
+  'zuvy_student_credentials',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    studentId: varchar('student_id', { length: 16 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+    passwordUpdatedAt: timestamp('password_updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .notNull()
+      .defaultNow(),
+    lastResetBy: bigint('last_reset_by', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    lastResetAt: timestamp('last_reset_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUserId: unique('zuvy_student_credentials_user_id_unique').on(table.userId),
+    uniqStudentId: unique('zuvy_student_credentials_student_id_unique').on(
+      table.studentId,
+    ),
+  }),
+);
+
+export const zuvyStudentCredentialsRelations = relations(
+  zuvyStudentCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyStudentCredentials.userId],
       references: [users.id],
     }),
   }),

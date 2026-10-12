@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { TRUST_PROXY } from './config/trust-proxy';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { log } from 'console';
 import * as bodyParser from 'body-parser';
@@ -16,7 +18,10 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   };
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Behind nginx: take the client IP from X-Forwarded-For set by nginx only.
+  app.set('trust proxy', TRUST_PROXY);
 
   app.use(
     bodyParser.json({
