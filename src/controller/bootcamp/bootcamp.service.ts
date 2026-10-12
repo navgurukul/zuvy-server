@@ -68,6 +68,38 @@ type BootcampStudentDropdownOptions = {
   education: string[];
 };
 
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function formatGraduationDate(
+  month?: number | string | null,
+  year?: number | string | null,
+): string | null {
+  if (year == null || year === '') return null;
+  const parsedYear = Number(year);
+  if (Number.isNaN(parsedYear) || parsedYear <= 0) return null;
+
+  if (month == null || month === '') return null;
+  const parsedMonth = Number(month);
+  if (Number.isNaN(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+    return null;
+  }
+
+  return `${MONTH_NAMES[parsedMonth - 1]} ${parsedYear}`;
+}
+
 @Injectable()
 export class BootcampService {
   constructor(
@@ -1695,6 +1727,8 @@ export class BootcampService {
           careerStatus: zuvyLearnersCompleteProfile.currentStatus,
           skills: zuvyLearnersCompleteProfile.technicalSkills,
           education: zuvyLearnersCompleteProfile.graduationYear,
+          graduationMonth: zuvyLearnersCompleteProfile.graduationMonth,
+          graduationYear: zuvyLearnersCompleteProfile.graduationYear,
           openToRemote: zuvyLearnersCompleteProfile.openToRemote,
         })
         .from(zuvyBatchEnrollments)
@@ -1796,6 +1830,10 @@ export class BootcampService {
             careerStatus: item.careerStatus ?? [],
             skills: item.skills ?? [],
             education: item.education != null ? String(item.education) : null,
+            graduationDate: formatGraduationDate(
+              item.graduationMonth,
+              item.graduationYear,
+            ),
             openToRemote: item.openToRemote ?? false,
           };
         }),
