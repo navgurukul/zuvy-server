@@ -12,8 +12,12 @@ import {
 } from 'class-validator';
 
 const trim = ({ value }) => (typeof value === 'string' ? value.trim() : value);
+// Student IDs are stored lowercase (e.g. aruneshdharct1); accept any case.
 const toStudentId = ({ value }) =>
-  typeof value === 'string' ? value.trim().toUpperCase() : value;
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+const STUDENT_ID_PATTERN = /^[a-z0-9]{3,40}$/;
+const STUDENT_ID_MESSAGE =
+  'studentId must be 3 to 40 letters and numbers, e.g. aruneshdharct1';
 
 export class StudentSignupDto {
   @ApiProperty({
@@ -47,13 +51,13 @@ export class StudentSignupDto {
 
 export class StudentLoginDto {
   @ApiProperty({
-    description: 'Student ID given at sign-up',
-    example: 'ZV7K3M9Q',
+    description: 'Student ID given at sign-up (any case)',
+    example: 'aruneshdharct1',
   })
   @Transform(toStudentId)
   @IsString()
   @IsNotEmpty()
-  @Length(4, 16)
+  @Matches(STUDENT_ID_PATTERN, { message: STUDENT_ID_MESSAGE })
   studentId: string;
 
   @ApiProperty({ description: 'Password', example: 'riya@2026' })
@@ -64,11 +68,11 @@ export class StudentLoginDto {
 }
 
 export class ResetStudentPasswordDto {
-  @ApiProperty({ example: 'ZV7K3M9Q' })
+  @ApiProperty({ example: 'aruneshdharct1' })
   @Transform(toStudentId)
   @IsString()
   @IsNotEmpty()
-  @Length(4, 16)
+  @Matches(STUDENT_ID_PATTERN, { message: STUDENT_ID_MESSAGE })
   studentId: string;
 
   @ApiPropertyOptional({
@@ -83,11 +87,11 @@ export class ResetStudentPasswordDto {
 }
 
 export class EnrollStudentByIdDto {
-  @ApiProperty({ example: 'ZV7K3M9Q' })
+  @ApiProperty({ example: 'aruneshdharct1' })
   @Transform(toStudentId)
   @IsString()
   @IsNotEmpty()
-  @Length(4, 16)
+  @Matches(STUDENT_ID_PATTERN, { message: STUDENT_ID_MESSAGE })
   studentId: string;
 
   @ApiProperty({ example: 12 })
@@ -105,11 +109,14 @@ export class EnrollStudentByIdDto {
 }
 
 export class FindStudentsQueryDto {
-  @ApiPropertyOptional({ description: 'Exact Student ID', example: 'ZV7K3M9Q' })
+  @ApiPropertyOptional({
+    description: 'Exact Student ID (any case)',
+    example: 'aruneshdharct1',
+  })
   @IsOptional()
   @Transform(toStudentId)
   @IsString()
-  @Matches(/^[A-Z0-9]{4,16}$/)
+  @Matches(STUDENT_ID_PATTERN, { message: STUDENT_ID_MESSAGE })
   studentId?: string;
 
   @ApiPropertyOptional({
