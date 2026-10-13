@@ -3,7 +3,14 @@ jest.mock('src/db', () => ({ db: {} }));
 jest.mock('src/auth/auth.service', () => ({ AuthService: class {} }));
 
 import { ForbiddenException } from '@nestjs/common';
-import { StudentAuthService, canEnrollInCourse } from './student-auth.service';
+import { db } from 'src/db';
+import { zuvyStudentIdCounters } from 'drizzle/schema';
+import {
+  StudentAuthService,
+  canEnrollInCourse,
+  formatStudentId,
+  studentIdBaseFromName,
+} from './student-auth.service';
 
 describe('StudentAuthService (credential helpers)', () => {
   const service = new StudentAuthService({} as any, {} as any) as any;
@@ -31,16 +38,158 @@ describe('StudentAuthService (credential helpers)', () => {
     );
   });
 
-  it('generates readable Student IDs without look-alike characters', () => {
-    for (let i = 0; i < 500; i++) {
-      const id = service.generateStudentId();
-      expect(id).toMatch(/^ZV[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-    }
-  });
-
   it('generates 8-character passwords from a readable alphabet', () => {
     const password = service.generatePassword();
     expect(password).toMatch(/^[abcdefghjkmnpqrstuvwxyz23456789]{8}$/);
+  });
+});
+
+describe('Student ID from the name', () => {
+  it('uses first name + last name in lowercase', () => {
+    expect(studentIdBaseFromName('Arunesh Dhar')).toBe('aruneshdhar');
+    expect(studentIdBaseFromName('ARUNESH DHAR')).toBe('aruneshdhar');
+  });
+
+  it('uses only the first name when there is no last name', () => {
+    expect(studentIdBaseFromName('Arunesh')).toBe('arunesh');
+    expect(studentIdBaseFromName('  Arunesh  ')).toBe('arunesh');
+  });
+
+  it('skips middle names and extra spaces', () => {
+    expect(studentIdBaseFromName('Arunesh Kumar Dhar')).toBe('aruneshdhar');
+    expect(studentIdBaseFromName(' Arunesh   Kumar  Dhar ')).toBe(
+      'aruneshdhar',
+    );
+  });
+
+  it('keeps only letters: accents, dots, hyphens, apostrophes and digits go', () => {
+    expect(studentIdBaseFromName('José Ñúñez')).toBe('josenunez');
+    expect(studentIdBaseFromName("Mary-Ann O'Brien")).toBe('maryannobrien');
+    expect(studentIdBaseFromName('A. P. J. Abdul Kalam')).toBe('akalam');
+    expect(studentIdBaseFromName('Riya2 Sharma')).toBe('riyasharma');
+  });
+
+  it('spells Hindi (Devanagari) names in English letters', () => {
+    expect(studentIdBaseFromName('रवि')).toBe('ravi');
+    expect(studentIdBaseFromName('अरुणेश धर')).toBe('aruneshdhar');
+    expect(studentIdBaseFromName('प्रिया शर्मा')).toBe('priyasharma');
+    expect(studentIdBaseFromName('राहुल कुमार वर्मा')).toBe('rahulvarma');
+    expect(studentIdBaseFromName('Ravi शर्मा')).toBe('ravisharma');
+  });
+
+  it('falls back to "student" when the name has no usable letters', () => {
+    expect(studentIdBaseFromName('ரவி')).toBe('student'); // Tamil
+    expect(studentIdBaseFromName('123')).toBe('student');
+  });
+
+  it('caps very long names at 30 letters', () => {
+    const base = studentIdBaseFromName(`${'a'.repeat(25)} ${'b'.repeat(25)}`);
+    expect(base).toBe(`${'a'.repeat(25)}${'b'.repeat(5)}`);
+  });
+
+  it('adds "ct" and the number, without leading zeros', () => {
+    expect(formatStudentId('aruneshdhar', 1)).toBe('aruneshdharct1');
+    expect(formatStudentId('aruneshdhar', 2)).toBe('aruneshdharct2');
+    expect(formatStudentId('ravi', 900)).toBe('ravict900');
+  });
+
+  it('keeps every ID valid for login: lowercase letters and digits, at most 40', () => {
+    const longest = formatStudentId('z'.repeat(30), 9999999);
+    expect(longest.length).toBeLessThanOrEqual(40);
+    expect(longest).toMatch(/^[a-z0-9]{3,40}$/);
+  });
+});
+
+describe('StudentAuthService Student ID allocation', () => {
+  const mockDb = db as any;
+  const service = new StudentAuthService({} as any, {} as any) as any;
+
+  // insert(counters).values().onConflictDoUpdate().returning() hands out the
+  // next number; insert(credentials).values() stores the account.
+  const setup = (
+    numbers: number[],
+    outcomes: Array<'ok' | 'duplicate' | Error>,
+  ) => {
+    const returning = jest.fn();
+    numbers.forEach((n) =>
+      returning.mockResolvedValueOnce([{ lastNumber: n }]),
+    );
+    const counterValues = jest.fn(() => ({
+      onConflictDoUpdate: () => ({ returning }),
+    }));
+    const credentialValues = jest.fn();
+    outcomes.forEach((outcome) =>
+      outcome === 'ok'
+        ? credentialValues.mockResolvedValueOnce(undefined)
+        : credentialValues.mockRejectedValueOnce(
+            outcome === 'duplicate'
+              ? Object.assign(new Error('duplicate key'), { code: '23505' })
+              : outcome,
+          ),
+    );
+    mockDb.insert = jest.fn((table) =>
+      table === zuvyStudentIdCounters
+        ? { values: counterValues }
+        : { values: credentialValues },
+    );
+    return { counterValues, credentialValues };
+  };
+
+  it('gives the first student with a name number 1', async () => {
+    const { counterValues, credentialValues } = setup([1], ['ok']);
+    await expect(
+      service.insertCredentialWithUniqueId(1n, 'Arunesh Dhar', 'hash'),
+    ).resolves.toBe('aruneshdharct1');
+    expect(counterValues).toHaveBeenCalledWith({
+      base: 'aruneshdhar',
+      lastNumber: 1,
+    });
+    expect(credentialValues).toHaveBeenCalledWith({
+      userId: 1n,
+      studentId: 'aruneshdharct1',
+      passwordHash: 'hash',
+    });
+  });
+
+  it('gives the next same-name student the next number', async () => {
+    setup([2], ['ok']);
+    await expect(
+      service.insertCredentialWithUniqueId(2n, 'Arunesh Dhar', 'hash'),
+    ).resolves.toBe('aruneshdharct2');
+  });
+
+  it('uses only the first name when there is no last name', async () => {
+    const { counterValues } = setup([1], ['ok']);
+    await expect(
+      service.insertCredentialWithUniqueId(3n, 'Arunesh', 'hash'),
+    ).resolves.toBe('aruneshct1');
+    expect(counterValues).toHaveBeenCalledWith({
+      base: 'arunesh',
+      lastNumber: 1,
+    });
+  });
+
+  it('builds the ID for a Hindi name from its English spelling', async () => {
+    setup([3], ['ok']);
+    await expect(
+      service.insertCredentialWithUniqueId(4n, 'रवि', 'hash'),
+    ).resolves.toBe('ravict3');
+  });
+
+  it('takes the next number if the ID already exists (safety net)', async () => {
+    const { credentialValues } = setup([5, 6], ['duplicate', 'ok']);
+    await expect(
+      service.insertCredentialWithUniqueId(5n, 'Arunesh Dhar', 'hash'),
+    ).resolves.toBe('aruneshdharct6');
+    expect(credentialValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry on other database errors', async () => {
+    const { credentialValues } = setup([1], [new Error('db down')]);
+    await expect(
+      service.insertCredentialWithUniqueId(6n, 'Arunesh Dhar', 'hash'),
+    ).rejects.toThrow('db down');
+    expect(credentialValues).toHaveBeenCalledTimes(1);
   });
 });
 

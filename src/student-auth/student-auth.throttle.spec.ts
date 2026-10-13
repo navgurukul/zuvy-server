@@ -15,15 +15,15 @@ import { studentAuthThrottlerOptions } from './student-auth.throttle';
 describe('Student ID rate limits behind nginx', () => {
   let app: INestApplication;
   const signupBody = { name: 'Test Student', password: 'test@123' };
-  const loginBody = { studentId: 'ZVABC234', password: 'test@123' };
+  const loginBody = { studentId: 'aruneshdhar01', password: 'test@123' };
   const service = {
-    signup: jest.fn().mockResolvedValue({ studentId: 'ZVABC234' }),
-    login: jest.fn().mockResolvedValue({ studentId: 'ZVABC234' }),
+    signup: jest.fn().mockResolvedValue({ studentId: 'aruneshdhar01' }),
+    login: jest.fn().mockResolvedValue({ studentId: 'aruneshdhar01' }),
     findStudents: jest.fn().mockResolvedValue({ status: 'success', data: [] }),
     enrollStudent: jest.fn().mockResolvedValue({
       status: 'success',
-      message: 'Student ZVABC234 enrolled in Demo Course',
-      data: { studentId: 'ZVABC234', bootcampName: 'Demo Course' },
+      message: 'Student aruneshdhar01 enrolled in Demo Course',
+      data: { studentId: 'aruneshdhar01', bootcampName: 'Demo Course' },
     }),
   };
   const trackingLog = { logAction: jest.fn().mockResolvedValue(undefined) };
@@ -117,11 +117,11 @@ describe('Student ID rate limits behind nginx', () => {
   it('passes the caller and their current org to enrolment, and logs the action', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/student/admin/enroll')
-      .send({ studentId: 'zvabc234', bootcampId: 12, batchId: 34 });
+      .send({ studentId: 'AruneshDhar01', bootcampId: 12, batchId: 34 });
     expect(res.status).toBe(200);
     expect(service.enrollStudent).toHaveBeenCalledWith(
       { userId: 1, orgId: 7 },
-      'ZVABC234',
+      'aruneshdhar01',
       12,
       34,
     );

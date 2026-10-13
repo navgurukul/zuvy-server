@@ -5378,8 +5378,9 @@ export const zuvyUserFeatureFlagsRelations = relations(
 );
 
 // Student ID + password credential for learners without an email address
-// (migration 0043). The learner itself is a normal "users" row with
-// email = NULL; Google-login users never have a row here.
+// (migrations 0043, 0044). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here. Student IDs are
+// first + last name in lowercase, "ct" and a number, e.g. aruneshdharct1.
 export const zuvyStudentCredentials = main.table(
   'zuvy_student_credentials',
   {
@@ -5387,7 +5388,7 @@ export const zuvyStudentCredentials = main.table(
     userId: bigint('user_id', { mode: 'bigint' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    studentId: varchar('student_id', { length: 16 }).notNull(),
+    studentId: varchar('student_id', { length: 40 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     failedAttempts: integer('failed_attempts').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
@@ -5413,6 +5414,17 @@ export const zuvyStudentCredentials = main.table(
     ),
   }),
 );
+
+// Last number given out per name (migration 0044): base "aruneshdhar" with
+// lastNumber 2 means aruneshdharct1 and aruneshdharct2 exist. Incremented
+// with one atomic upsert, so simultaneous same-name sign-ups never collide.
+export const zuvyStudentIdCounters = main.table('zuvy_student_id_counters', {
+  base: varchar('base', { length: 40 }).primaryKey().notNull(),
+  lastNumber: integer('last_number').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .notNull()
+    .defaultNow(),
+});
 
 export const zuvyStudentCredentialsRelations = relations(
   zuvyStudentCredentials,
