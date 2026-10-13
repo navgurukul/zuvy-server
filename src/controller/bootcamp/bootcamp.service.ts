@@ -40,8 +40,6 @@ import {
   zuvyTrackingLogs,
   zuvyLearnersCompleteProfile,
   zuvyTechnicalSkills,
-  zuvyLearnersRoles,
-  zuvyLearnersDegreeDetails,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -116,7 +114,6 @@ export class BootcampService {
     const careerStatusSet = new Set<string>();
     const skillsMap = new Map<string, string>();
     const openToRemoteSet = new Set<boolean>();
-    // const openToRemoteSet = new Set<boolean>();
 
     for (const row of rows) {
       const careerStatusValues = Array.isArray(row.careerStatus)
@@ -1608,9 +1605,7 @@ export class BootcampService {
       const careerStatusFilter = careerStatus?.trim()
         ? ilike(zuvyLearnersCompleteProfile.currentStatus, careerStatus.trim())
         : undefined;
-      // Technical skills are stored on the learner profile as the student-to-skill
-      // mapping. Match against the existing skills catalogue through EXISTS so a
-      // student with more than one skill still occupies one roster row.
+
       const skillsFilter = skills?.trim()
         ? exists(
             db
@@ -1619,9 +1614,6 @@ export class BootcampService {
               .where(
                 and(
                   ilike(zuvyTechnicalSkills.name, skills.trim()),
-                  // Limitation: Drizzle ORM lacks native case-insensitive matching for elements within a JSONB array
-                  // without using raw SQL. We are using `arrayContains` (which maps to `@>`) here as the closest
-                  // alternative, but note that it performs a case-sensitive match.
                   arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
                     skills.trim(),
                   ]),
