@@ -12,7 +12,6 @@ import {
   asc,
   ne,
   isNull,
-  exists,
   ilike,
   arrayContains,
   isNotNull,
@@ -39,7 +38,6 @@ import {
   zuvyOrganizations,
   zuvyTrackingLogs,
   zuvyLearnersCompleteProfile,
-  zuvyTechnicalSkills,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -109,11 +107,11 @@ export class BootcampService {
 
   private buildDropdownOptions(
     rows: BootcampStudentDropdownRow[],
-    globalEducationOptions: string[],
   ): BootcampStudentDropdownOptions {
     const careerStatusSet = new Set<string>();
     const skillsMap = new Map<string, string>();
     const openToRemoteSet = new Set<boolean>();
+    const educationSet = new Set<string>();
 
     for (const row of rows) {
       const careerStatusValues = Array.isArray(row.careerStatus)
@@ -146,6 +144,13 @@ export class BootcampService {
       if (typeof row.openToRemote === 'boolean') {
         openToRemoteSet.add(row.openToRemote);
       }
+
+      if (row.education != null) {
+        const year = String(row.education).trim();
+        if (year !== '') {
+          educationSet.add(year);
+        }
+      }
     }
 
     return {
@@ -156,7 +161,7 @@ export class BootcampService {
       openToRemote: Array.from(openToRemoteSet).sort(
         (a, b) => Number(a) - Number(b),
       ),
-      education: globalEducationOptions,
+      education: Array.from(educationSet).sort((a, b) => a.localeCompare(b)),
     };
   }
 
@@ -200,22 +205,8 @@ export class BootcampService {
       )
       .where(and(...dropdownConditions));
 
-    const globalGraduationYears = await db
-      .select({ year: zuvyLearnersCompleteProfile.graduationYear })
-      .from(zuvyLearnersCompleteProfile)
-      .where(isNotNull(zuvyLearnersCompleteProfile.graduationYear));
-
-    const uniqueEducationOptions = Array.from(
-      new Set(
-        globalGraduationYears
-          .map((r) => String(r.year).trim())
-          .filter((y) => y !== ''),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-
     return this.buildDropdownOptions(
       dropdownRows as BootcampStudentDropdownRow[],
-      uniqueEducationOptions,
     );
   }
   async enrollData(bootcampId: number) {
@@ -1606,20 +1597,11 @@ export class BootcampService {
         ? ilike(zuvyLearnersCompleteProfile.currentStatus, careerStatus.trim())
         : undefined;
 
-      const skillsFilter = skills?.trim()
-        ? exists(
-            db
-              .select()
-              .from(zuvyTechnicalSkills)
-              .where(
-                and(
-                  ilike(zuvyTechnicalSkills.name, skills.trim()),
-                  arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
-                    skills.trim(),
-                  ]),
-                ),
-              ),
-          )
+      const skillsTrimmed = skills?.trim();
+      const skillsFilter = skillsTrimmed
+        ? arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
+            skillsTrimmed,
+          ])
         : undefined;
       const parsedYear = parseInt(education?.trim() || '', 10);
       const educationFilter =
