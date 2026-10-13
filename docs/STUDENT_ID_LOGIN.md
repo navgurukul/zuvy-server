@@ -1,6 +1,6 @@
 # Student ID Login: Guide for Backend, Frontend, QA and DevOps
 
-Many students (classes 5–10) don't have an email address, so they can't use "Sign in with Google". This feature lets them **create an account with just their name and a password**. The system then gives them a **Student ID** (for example `ZV7K3M9Q`), which they use with their password to log in.
+Many students (classes 5–10) don't have an email address, so they can't use "Sign in with Google". This feature lets them **create an account with just their name and a password**. The system then gives them a **Student ID** made from their name (for example `riyasharmact1`), which they use with their password to log in.
 
 After logging in, these students can do **everything a Google-login student can do**: open courses, watch videos, take quizzes and coding problems, see progress and the leaderboard. Nothing changes for users who log in with Google.
 
@@ -49,7 +49,7 @@ After logging in, these students can do **everything a Google-login student can 
 ### A2. The solution
 
 - A student opens the sign-up page and types **their name and a password**.
-- The system creates their account and shows them a **Student ID** such as `ZV7K3M9Q`.
+- The system creates their account and shows them a **Student ID** made from their name, such as `riyasharmact1` for "Riya Sharma".
 - From then on they log in with **Student ID + password**.
 - Behind the scenes they are normal students, so **all courses and features work for them exactly like for Google users**.
 - **There is no "forgot password" button.** If a student forgets their password, they ask the team. A **super admin** (a developer) sets a new password with an admin API and gives it to the student.
@@ -111,6 +111,7 @@ There are **two keys** from Cloudflare:
 | Backend      | Sign-up, login, Student ID, password hashing, lockout                                                                                                                     | **Done**                     | Backend       |
 | Backend      | Super admin tools: reset password, find student                                                                                                                           | **Done**                     | Backend       |
 | Backend      | Enrol a student by Student ID into a course and batch: super admins (any course), **org admins and ops** (their own organisation's courses), recorded in the activity log | **Done** (not yet committed) | Backend       |
+| Backend      | Student IDs made from the name (`riyasharmact1`, `riyasharmact2`, `riyact1`), Hindi names spelled in English letters, atomic per-name counter, migration `0044`           | **Done** (not yet committed) | Backend       |
 | Backend      | Cloudflare token check, per-IP safety limits, real client IP behind nginx                                                                                                 | **Done**                     | Backend       |
 | Backend      | Fixes so email-less students don't break classes, attendance or login checks                                                                                              | **Done**                     | Backend       |
 | Backend      | Unit tests (25 tests)                                                                                                                                                     | **Done**                     | Backend       |
@@ -130,7 +131,8 @@ There are **two keys** from Cloudflare:
 
 - **Same user table:** the student is a normal row in `users`, with `email` and `google_user_id` both empty (NULL) and `mode = 'student'`.
 - **Separate login table:** the Student ID and the password hash live in a new table, `zuvy_student_credentials`, linked to `users.id`.
-- **Student ID format:** `ZV` + 6 characters, for example `ZV7K3M9Q`. Look-alike characters (0/O, 1/I/L) are never used, so it's easy to read and type. Login is **case-insensitive** (`zv7k3m9q` works too).
+- **Student ID format:** first name + last name in lowercase, then `ct` and a number, with no leading zero. "Riya Sharma" → `riyasharmact1`; the next "Riya Sharma" → `riyasharmact2`; "Riya" with no last name → `riyact1`. The number is counted **per name**, so IDs stay short even with thousands of students (a very common name might reach `ravict900`). Middle names are skipped ("Riya Kumari Sharma" → `riyasharmact1`), accents become plain letters, and spaces, dots, hyphens, apostrophes and digits are dropped. **Hindi (Devanagari) names** are spelled in English letters for the ID only: रवि → `ravict1`, अरुणेश धर → `aruneshdharct1`. The name itself is still saved and shown exactly as typed (रवि). Names in other scripts get `studentct1`. IDs are stored in lowercase and login accepts any case (`RiyaSharmaCT1` works too).
+- **Numbers never clash:** each name has a counter in the `zuvy_student_id_counters` table, increased by one atomic database statement. Two students with the same name signing up at the same moment always get different numbers, and a number is never reused, even if an account is deleted. A unique rule on `student_id` stays as a safety net.
 - **Passwords:** 6–64 characters. Never stored as plain text, only as a salted `scrypt` hash.
 - **Lockout:** after **5 wrong passwords**, that one account is locked for **15 minutes**. Classmates on the same Wi-Fi are not affected.
 - **Captcha:** sign-up needs a valid Cloudflare token (Part A3). Login has no captcha.
@@ -148,19 +150,22 @@ There are **two keys** from Cloudflare:
 
 ### B2. New files
 
-| File                                                          | What it is                                                          |
-| ------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `drizzle/migrations/0043_create_zuvy_student_credentials.sql` | Creates the `zuvy_student_credentials` table                        |
-| `src/student-auth/student-auth.module.ts`                     | New Nest module                                                     |
-| `src/student-auth/student-auth.controller.ts`                 | The 5 new endpoints under `/auth/student`                           |
-| `src/student-auth/student-auth.service.ts`                    | Sign-up, login, lockout, password reset, search and enrol logic     |
-| `src/student-auth/dto/student-auth.dto.ts`                    | Request body and query validation                                   |
-| `src/student-auth/captcha.service.ts`                         | Checks the Cloudflare token with Cloudflare                         |
-| `src/student-auth/student-auth.throttle.ts`                   | Per-IP limits for sign-up and login (read from `.env`)              |
-| `src/config/trust-proxy.ts`                                   | Which proxies (nginx via Docker) are trusted for the real client IP |
-| `src/student-auth/student-auth.service.spec.ts`               | Unit tests: password hashing and Student ID generation              |
-| `src/student-auth/captcha.service.spec.ts`                    | Unit tests: the Cloudflare token check                              |
-| `src/student-auth/student-auth.throttle.spec.ts`              | Tests: per-IP limits behind a proxy, including faked headers        |
+| File                                                          | What it is                                                                                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drizzle/migrations/0043_create_zuvy_student_credentials.sql` | Creates the `zuvy_student_credentials` table                                                                                                                        |
+| `drizzle/migrations/0044_student_id_from_name.sql`            | Name-based Student IDs: widens `student_id` to 40 characters, lowercases existing IDs, creates and back-fills the per-name counter table `zuvy_student_id_counters` |
+| `src/student-auth/student-auth.module.ts`                     | New Nest module                                                                                                                                                     |
+| `src/student-auth/student-auth.controller.ts`                 | The 5 new endpoints under `/auth/student`                                                                                                                           |
+| `src/student-auth/student-auth.service.ts`                    | Sign-up, login, lockout, password reset, search and enrol logic                                                                                                     |
+| `src/student-auth/devanagari.ts`                              | Spells Hindi (Devanagari) names in English letters for the Student ID (रवि → ravi)                                                                                  |
+| `src/student-auth/devanagari.spec.ts`                         | Unit tests for the Hindi spelling                                                                                                                                   |
+| `src/student-auth/dto/student-auth.dto.ts`                    | Request body and query validation                                                                                                                                   |
+| `src/student-auth/captcha.service.ts`                         | Checks the Cloudflare token with Cloudflare                                                                                                                         |
+| `src/student-auth/student-auth.throttle.ts`                   | Per-IP limits for sign-up and login (read from `.env`)                                                                                                              |
+| `src/config/trust-proxy.ts`                                   | Which proxies (nginx via Docker) are trusted for the real client IP                                                                                                 |
+| `src/student-auth/student-auth.service.spec.ts`               | Unit tests: password hashing and Student ID generation                                                                                                              |
+| `src/student-auth/captcha.service.spec.ts`                    | Unit tests: the Cloudflare token check                                                                                                                              |
+| `src/student-auth/student-auth.throttle.spec.ts`              | Tests: per-IP limits behind a proxy, including faked headers                                                                                                        |
 
 ### B3. New table: `zuvy_student_credentials`
 
@@ -168,7 +173,7 @@ There are **two keys** from Cloudflare:
 | --------------------- | ------------------------------------------------ | --------------------------------------- |
 | `id`                  | serial                                           | Primary key                             |
 | `user_id`             | bigint, unique, FK → `users.id` (cascade delete) | The student                             |
-| `student_id`          | varchar(16), unique                              | Login ID, e.g. `ZV7K3M9Q`               |
+| `student_id`          | varchar(40), unique, lowercase                   | Login ID, e.g. `riyasharmact1`          |
 | `password_hash`       | varchar(255)                                     | `scrypt$16384$8$1$<salt>$<hash>`        |
 | `failed_attempts`     | integer, default 0                               | Wrong passwords in a row                |
 | `locked_until`        | timestamptz, nullable                            | Login blocked until this time           |
@@ -176,6 +181,14 @@ There are **two keys** from Cloudflare:
 | `last_reset_by`       | bigint, FK → `users.id`                          | Super admin who last reset the password |
 | `last_reset_at`       | timestamptz                                      | When it was last reset                  |
 | `created_at`          | timestamptz                                      | When the account was created            |
+
+**Counter table: `zuvy_student_id_counters`** (one row per name)
+
+| Column        | Type                     | Meaning                                                                        |
+| ------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| `base`        | varchar(40), primary key | The name part, e.g. `riyasharma`                                               |
+| `last_number` | integer                  | Last number given out, e.g. `2` when `riyasharmact1` and `riyasharmact2` exist |
+| `updated_at`  | timestamptz              | When the last number was given out                                             |
 
 ### B4. Changes to existing files
 
@@ -208,7 +221,7 @@ Do these once per environment (dev first, then stage and production).
    ```sql
    SET search_path TO main;            -- or: SET search_path TO stage_template;
    ```
-3. Run the whole file `drizzle/migrations/0043_create_zuvy_student_credentials.sql`.
+3. Run the whole file `drizzle/migrations/0043_create_zuvy_student_credentials.sql`, then `drizzle/migrations/0044_student_id_from_name.sql` (in this order). If 0043 already ran (e.g. on dev), run only 0044. Both are safe to run twice.
 4. Check that the table exists (you should see 10 columns):
    ```sql
    SELECT column_name, data_type
@@ -536,7 +549,7 @@ const res = await fetch(`${API_URL}/auth/student/login`, {
 
 ### D8. After sign-up and login
 
-- **Student ID card (very important):** there is no "forgot password" and no email, so the Student ID is the student's only way back in. Show it in big letters, ask them to write it down (for example a "I have written it down" checkbox), and offer **Download** and **Print**.
+- **Student ID card (very important):** there is no "forgot password" and no email, so the Student ID is the student's only way back in. Show it in big letters, for example "Your login is **riyasharmact1**", ask them to write it down (for example a "I have written it down" checkbox), and offer **Download** and **Print**.
 - **Remember the last Student ID on the device** (localStorage) and pre-fill it on the login page. Never store the password.
 - **`user.email` is `null`** for these students. Anywhere the UI shows the user's email (header, profile, leaderboard), show the name or the Student ID instead of "null".
 - **Forgot password:** show a short note on the login page, e.g. "Forgot your password? Ask your teacher or the Zuvy team."
@@ -595,13 +608,13 @@ Org admins, ops and super admins need a way to put a Student ID student into a *
 
 **Show the result clearly:**
 
-| Status | Show                                                                                                                                                        |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 200    | "Riya Sharma (ZV7K3M9Q) added to Batch 2", using `data.name` from the response, so the admin can confirm it's the right student. Refresh the students list. |
-| 404    | "No student with this Student ID" (or "Batch not found")                                                                                                    |
-| 409    | "This student is already in this course"                                                                                                                    |
-| 400    | "This batch is full"                                                                                                                                        |
-| 403    | "You can only add students to your own organisation's courses. Switch to the right organisation."                                                           |
+| Status | Show                                                                                                                                                             |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 200    | "Riya Sharma (riyasharmact1) added to Batch 2", using `data.name` from the response, so the admin can confirm it's the right student. Refresh the students list. |
+| 404    | "No student with this Student ID" (or "Batch not found")                                                                                                         |
+| 409    | "This student is already in this course"                                                                                                                         |
+| 400    | "This batch is full"                                                                                                                                             |
+| 403    | "You can only add students to your own organisation's courses. Switch to the right organisation."                                                                |
 
 Show the button only to **admin**, **ops** and **super admin** users. Hide it for instructors (they would get 403).
 
@@ -665,7 +678,7 @@ No super admin account on dev? Ask an existing super admin to add your email wit
 
 Use `CAPTCHA_DISABLED="true"` on dev for steps 1–13. The `TC-xx` numbers point to the full test cases in Part G3.
 
-1. **Sign up** a student (TC-01). Check: status 201, `studentId` like `ZV7K3M9Q`, `user.email` is `null`, `user.rolesList` is `["student"]`. Note the `studentId`, `access_token` and `refresh_token`.
+1. **Sign up** a student (TC-01). Check: status 201, `studentId` like `riyasharmact1`, `user.email` is `null`, `user.rolesList` is `["student"]`. Note the `studentId`, `access_token` and `refresh_token`.
 2. **Check validation** (TC-03 to TC-05): short name, short password and an extra `email` field each return 400.
 3. **Log in** with the Student ID (TC-06) and with it in lowercase (TC-07). Both 200; `showTooltip` is `false`.
 4. **Wrong password and unknown ID** (TC-08, TC-09): both 401 with the **same** message.
@@ -691,7 +704,7 @@ Use `CAPTCHA_DISABLED="true"` on dev for steps 1–13. The `TC-xx` numbers point
 
 ## Part F: API reference
 
-All examples use `ZV7K3M9Q` as the Student ID. Use the ID you actually receive.
+All examples use `riyasharmact1` as the Student ID. Use the ID you actually receive.
 
 ### F1. Sign up: `POST /auth/student/signup`
 
@@ -716,7 +729,7 @@ Creates the account and logs the student in straight away.
 
   ```json
   {
-    "studentId": "ZV7K3M9Q",
+    "studentId": "riyasharmact1",
     "access_token": "eyJhbGciOi...",
     "refresh_token": "eyJhbGciOi...",
     "showTooltip": true,
@@ -756,7 +769,7 @@ Creates the account and logs the student in straight away.
 - **Request body:**
   ```json
   {
-    "studentId": "ZV7K3M9Q",
+    "studentId": "riyasharmact1",
     "password": "riya@2026"
   }
   ```
@@ -779,14 +792,14 @@ Use this when a student forgets their password.
 - **Request body: set a specific password**
   ```json
   {
-    "studentId": "ZV7K3M9Q",
+    "studentId": "riyasharmact1",
     "newPassword": "newpass123"
   }
   ```
 - **Request body: let the server generate one** (8 easy-to-read characters)
   ```json
   {
-    "studentId": "ZV7K3M9Q"
+    "studentId": "riyasharmact1"
   }
   ```
 - **Success: `200 OK`**
@@ -795,7 +808,7 @@ Use this when a student forgets their password.
     "status": "success",
     "message": "Password updated. Share it with the student; it is not shown again.",
     "data": {
-      "studentId": "ZV7K3M9Q",
+      "studentId": "riyasharmact1",
       "userId": "48213",
       "name": "Riya Sharma",
       "password": "k7mq4x2d"
@@ -819,11 +832,11 @@ Use this to look up a student's Student ID by name, or to check an account.
 - **Login needed:** yes, as a **super admin**
 - **Query parameters** (pass `studentId` or `name`, or both):
 
-  | Param       | Example    | Meaning                             |
-  | ----------- | ---------- | ----------------------------------- |
-  | `studentId` | `ZV7K3M9Q` | Exact Student ID                    |
-  | `name`      | `riya`     | Part of the name (case-insensitive) |
-  | `limit`     | `20`       | 1–100, default 20                   |
+  | Param       | Example         | Meaning                             |
+  | ----------- | --------------- | ----------------------------------- |
+  | `studentId` | `riyasharmact1` | Exact Student ID                    |
+  | `name`      | `riya`          | Part of the name (case-insensitive) |
+  | `limit`     | `20`            | 1–100, default 20                   |
 
 - **Example:** `GET /auth/student/admin/students?name=riya`
 - **Success: `200 OK`**
@@ -833,7 +846,7 @@ Use this to look up a student's Student ID by name, or to check an account.
     "data": [
       {
         "userId": "48213",
-        "studentId": "ZV7K3M9Q",
+        "studentId": "riyasharmact1",
         "name": "Riya Sharma",
         "createdAt": "2026-10-08 10:15:22.481+00",
         "lastLoginAt": "2026-10-08 10:20:03.112+00",
@@ -862,7 +875,7 @@ The existing admin "add students" API (`POST /bootcamp/students/:bootcamp_id`) f
 - **Request body:**
   ```json
   {
-    "studentId": "ZV7K3M9Q",
+    "studentId": "riyasharmact1",
     "bootcampId": 12,
     "batchId": 34
   }
@@ -873,9 +886,9 @@ The existing admin "add students" API (`POST /bootcamp/students/:bootcamp_id`) f
   ```json
   {
     "status": "success",
-    "message": "Student ZV7K3M9Q enrolled in Full Stack Web Development",
+    "message": "Student riyasharmact1 enrolled in Full Stack Web Development",
     "data": {
-      "studentId": "ZV7K3M9Q",
+      "studentId": "riyasharmact1",
       "userId": "48213",
       "name": "Riya Sharma",
       "bootcampId": 12,
@@ -930,7 +943,7 @@ Test in this order: **G2** (in the browser, once the frontend is ready), **G3** 
 | UI-02 | Enter a name and password, click "Create account"                                                                             | Account created. A big Student ID card appears with Download / Print. The student is logged in.    |
 | UI-03 | Download or print the Student ID card                                                                                         | The file or printout shows the correct Student ID.                                                 |
 | UI-04 | Log out, then "Login with Student ID" with the ID and password                                                                | Logged in; dashboard loads.                                                                        |
-| UI-05 | Log in with the Student ID typed in lowercase                                                                                 | Works.                                                                                             |
+| UI-05 | Log in with the Student ID typed in capitals                                                                                  | Works.                                                                                             |
 | UI-06 | Log in with a wrong password                                                                                                  | "Wrong Student ID or password." No hint about which one was wrong.                                 |
 | UI-07 | Enter a wrong password 5 times, then the correct one                                                                          | A message says the account is locked and how many minutes to wait.                                 |
 | UI-08 | While UI-07's account is locked, log in to **another** Student ID account from the same Wi-Fi                                 | Works: the lock only affects one account.                                                          |
@@ -950,17 +963,17 @@ Write down the `studentId`, `access_token` and `refresh_token` from TC-01; later
 
 #### G3.1 Sign-up and login
 
-| ID    | Steps                                                                                   | Expected result                                                                                                                                                                 |
-| ----- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TC-01 | `POST /auth/student/signup` with `{"name": "Test Student One", "password": "test@123"}` | **201**. The response has a `studentId` starting with `ZV` and 8 characters long, plus `access_token`, `refresh_token`, `user.email = null` and `user.rolesList = ["student"]`. |
-| TC-02 | Sign up again with the **same** name and password                                       | **201** with a **different** `studentId`. Names don't have to be unique.                                                                                                        |
-| TC-03 | Sign up with `{"name": "A", "password": "test@123"}`                                    | **400**: the name is too short.                                                                                                                                                 |
-| TC-04 | Sign up with `{"name": "Test", "password": "123"}`                                      | **400**: the password is too short.                                                                                                                                             |
-| TC-05 | Sign up with `{"name": "Test", "password": "test@123", "email": "a@b.com"}`             | **400**: `property email should not exist`.                                                                                                                                     |
-| TC-06 | `POST /auth/student/login` with the Student ID from TC-01 and `test@123`                | **200**. Same shape as TC-01, and `showTooltip` is `false`.                                                                                                                     |
-| TC-07 | Log in with the Student ID in **lowercase**                                             | **200**.                                                                                                                                                                        |
-| TC-08 | Log in with the right ID and a **wrong** password                                       | **401** `Invalid Student ID or password`.                                                                                                                                       |
-| TC-09 | Log in with an ID that doesn't exist (e.g. `ZVAAAAAA`)                                  | **401** with the **same** message as TC-08.                                                                                                                                     |
+| ID    | Steps                                                                                   | Expected result                                                                                                                                                                  |
+| ----- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC-01 | `POST /auth/student/signup` with `{"name": "Test Student One", "password": "test@123"}` | **201**. The response has `studentId` = `testonect1` (first + last name + number), plus `access_token`, `refresh_token`, `user.email = null` and `user.rolesList = ["student"]`. |
+| TC-02 | Sign up again with the **same** name and password                                       | **201** with `studentId` = `testonect2`: the same name gets the next number.                                                                                                     |
+| TC-03 | Sign up with `{"name": "A", "password": "test@123"}`                                    | **400**: the name is too short.                                                                                                                                                  |
+| TC-04 | Sign up with `{"name": "Test", "password": "123"}`                                      | **400**: the password is too short.                                                                                                                                              |
+| TC-05 | Sign up with `{"name": "Test", "password": "test@123", "email": "a@b.com"}`             | **400**: `property email should not exist`.                                                                                                                                      |
+| TC-06 | `POST /auth/student/login` with the Student ID from TC-01 and `test@123`                | **200**. Same shape as TC-01, and `showTooltip` is `false`.                                                                                                                      |
+| TC-07 | Log in with the Student ID in **capitals** (`TESTONECT1`)                               | **200**.                                                                                                                                                                         |
+| TC-08 | Log in with the right ID and a **wrong** password                                       | **401** `Invalid Student ID or password`.                                                                                                                                        |
+| TC-09 | Log in with an ID that doesn't exist (e.g. `nobody99`)                                  | **401** with the **same** message as TC-08.                                                                                                                                      |
 
 #### G3.2 Lockout
 
@@ -994,7 +1007,7 @@ Authorize in Swagger with a **super admin** token first.
 | TC-21 | Log in as that student with the **old** password                                                                                      | **401**.                                                                                                                |
 | TC-22 | Log in with the password from TC-20                                                                                                   | **200**.                                                                                                                |
 | TC-23 | Reset with `{"studentId": "<id>", "newPassword": "mychoice1"}`, then log in with `mychoice1`                                          | Both **200**.                                                                                                           |
-| TC-24 | Reset with `{"studentId": "ZVAAAAAA"}`                                                                                                | **404** `Student ID not found`.                                                                                         |
+| TC-24 | Reset with `{"studentId": "nobody99"}`                                                                                                | **404** `Student ID not found`.                                                                                         |
 | TC-25 | `GET /auth/student/admin/students?name=test student`                                                                                  | **200**; both test accounts are listed.                                                                                 |
 | TC-26 | `GET /auth/student/admin/students` with no parameters                                                                                 | **400**.                                                                                                                |
 | TC-27 | `POST /auth/student/admin/enroll` with a **private** course: `{"studentId": "<id>", "bootcampId": <id>, "batchId": <id>}`             | **200** "enrolled in ...", with `data.name` = the student's name. As the student, `GET /student/` now lists the course. |
@@ -1107,7 +1120,7 @@ Expected: every value starts with `scrypt$16384$8$1$`.
 SELECT e.bootcamp_id, e.batch_id, e.status, e.enrolled_date
 FROM zuvy_batch_enrollments e
 JOIN zuvy_student_credentials c ON c.user_id = e.user_id
-WHERE c.student_id = 'ZV7K3M9Q';
+WHERE c.student_id = 'riyasharmact1';
 ```
 
 **Unlock an account by hand** (the reset API does the same):
@@ -1115,7 +1128,7 @@ WHERE c.student_id = 'ZV7K3M9Q';
 ```sql
 UPDATE zuvy_student_credentials
 SET failed_attempts = 0, locked_until = NULL
-WHERE student_id = 'ZV7K3M9Q';
+WHERE student_id = 'riyasharmact1';
 ```
 
 **Delete test accounts** (deleting the user also deletes the credential row):
@@ -1124,7 +1137,7 @@ WHERE student_id = 'ZV7K3M9Q';
 DELETE FROM users
 WHERE id IN (
   SELECT user_id FROM zuvy_student_credentials
-  WHERE student_id IN ('ZV7K3M9Q')
+  WHERE student_id IN ('riyasharmact1')
 );
 ```
 
@@ -1134,20 +1147,22 @@ If the delete fails because of rows in other tables (enrolments, submissions and
 
 ## Part I: Known limitations
 
-| Limitation                                                                                                                                                                                                               | Workaround or plan                                                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **Live-class attendance is not recorded automatically** for Student ID students. Zoom and Google Meet identify people by email, and these students join as guests.                                                       | An admin marks them with `POST /bootcamp/attendance/mark` (TC-36).                                                                        |
-| Students without an email get **no calendar or Zoom invites**.                                                                                                                                                           | They join from the class link in the Zuvy app.                                                                                            |
-| Old sessions stay valid after a password reset, until the tokens expire (up to 7 days through refresh). Student tokens are not stored on the server, so they can't be cancelled.                                         | Acceptable for forgotten passwords.                                                                                                       |
-| A student who forgets their Student ID may sign up again and get a second account, splitting their progress.                                                                                                             | Frontend: Student ID card + remembered ID on the device (D8). Later: match on date of birth and school.                                   |
-| Rate-limit counters are kept **in the container's memory**. They reset when the container restarts, and if the API is scaled to several containers, each one counts separately.                                          | Fine for one container. For several, switch the throttler to Redis storage.                                                               |
-| A very large school (more than about 300 sign-ups an hour from one public IP) could reach the sign-up ceiling.                                                                                                           | Raise `SIGNUP_LIMIT_PER_HOUR` / `SIGNUP_LIMIT_PER_MINUTE` in `.env`. No code change is needed.                                            |
-| Sign-up depends on Cloudflare. If Cloudflare is unreachable, sign-up returns 503. Login is not affected.                                                                                                                 | Rare. Students can retry a few minutes later.                                                                                             |
-| A determined person can still solve captchas by hand and create accounts slowly.                                                                                                                                         | Watch for spikes. Class join codes with seat limits would stop this completely (future work).                                             |
-| These accounts **must stay students**. Giving them an admin or instructor role breaks their login, because staff sessions are stored with an email column that can't be empty.                                           | Don't assign roles to Student ID accounts.                                                                                                |
-| Only **super admins** can reset passwords and search Student ID accounts. (Enrolment is also open to org admins and ops.) Searching is not org-limited, because these students belong to no organisation until enrolled. | Org admins ask a super admin for resets and lookups; for enrolment they ask the student or teacher for the Student ID (from the ID card). |
-| The existing **"add students" API and CSV upload** still work only by email.                                                                                                                                             | Use "Add by Student ID" (Part D12 / F5) for these students.                                                                               |
-| There is no parental consent step, which the DPDP Act requires for under-18 learners.                                                                                                                                    | Product or legal to decide (for example a consent checkbox on sign-up).                                                                   |
+| Limitation                                                                                                                                                                                                               | Workaround or plan                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live-class attendance is not recorded automatically** for Student ID students. Zoom and Google Meet identify people by email, and these students join as guests.                                                       | An admin marks them with `POST /bootcamp/attendance/mark` (TC-36).                                                                                                                            |
+| Students without an email get **no calendar or Zoom invites**.                                                                                                                                                           | They join from the class link in the Zuvy app.                                                                                                                                                |
+| Old sessions stay valid after a password reset, until the tokens expire (up to 7 days through refresh). Student tokens are not stored on the server, so they can't be cancelled.                                         | Acceptable for forgotten passwords.                                                                                                                                                           |
+| Student IDs are **predictable** (name + number), so a classmate could guess another student's ID.                                                                                                                        | The password is what protects the account: 5 wrong passwords lock that account for 15 minutes, and the per-IP limit stops mass guessing. Ask students to keep their password private.         |
+| **Spelling variants** become separate series: "Ravi", "Ravee" and "Raavi" give `ravict1`, `raveect1` and `raavict1`.                                                                                                     | Harmless, because the student is shown their exact ID, but a child may later misremember the spelling. The Student ID card (Part D8) and the super admin search by name (Part F4) cover this. |
+| A student who forgets their Student ID may sign up again and get a second account, splitting their progress.                                                                                                             | Frontend: Student ID card + remembered ID on the device (D8). Later: match on date of birth and school.                                                                                       |
+| Rate-limit counters are kept **in the container's memory**. They reset when the container restarts, and if the API is scaled to several containers, each one counts separately.                                          | Fine for one container. For several, switch the throttler to Redis storage.                                                                                                                   |
+| A very large school (more than about 300 sign-ups an hour from one public IP) could reach the sign-up ceiling.                                                                                                           | Raise `SIGNUP_LIMIT_PER_HOUR` / `SIGNUP_LIMIT_PER_MINUTE` in `.env`. No code change is needed.                                                                                                |
+| Sign-up depends on Cloudflare. If Cloudflare is unreachable, sign-up returns 503. Login is not affected.                                                                                                                 | Rare. Students can retry a few minutes later.                                                                                                                                                 |
+| A determined person can still solve captchas by hand and create accounts slowly.                                                                                                                                         | Watch for spikes. Class join codes with seat limits would stop this completely (future work).                                                                                                 |
+| These accounts **must stay students**. Giving them an admin or instructor role breaks their login, because staff sessions are stored with an email column that can't be empty.                                           | Don't assign roles to Student ID accounts.                                                                                                                                                    |
+| Only **super admins** can reset passwords and search Student ID accounts. (Enrolment is also open to org admins and ops.) Searching is not org-limited, because these students belong to no organisation until enrolled. | Org admins ask a super admin for resets and lookups; for enrolment they ask the student or teacher for the Student ID (from the ID card).                                                     |
+| The existing **"add students" API and CSV upload** still work only by email.                                                                                                                                             | Use "Add by Student ID" (Part D12 / F5) for these students.                                                                                                                                   |
+| There is no parental consent step, which the DPDP Act requires for under-18 learners.                                                                                                                                    | Product or legal to decide (for example a consent checkbox on sign-up).                                                                                                                       |
 
 ---
 
