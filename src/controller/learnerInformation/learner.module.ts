@@ -23,6 +23,8 @@ import { LearnerProfileService } from './learner.profile.service';
     JwtService,
   ],
 })
+
+//
 export class LearnerModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(JwtMiddleware).forRoutes('*');
