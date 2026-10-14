@@ -12,6 +12,9 @@ import {
   asc,
   ne,
   isNull,
+  ilike,
+  arrayContains,
+  isNotNull,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -34,6 +37,7 @@ import {
   zuvyUserRolesAssigned,
   zuvyOrganizations,
   zuvyTrackingLogs,
+  zuvyLearnersCompleteProfile,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -46,6 +50,52 @@ import { AttendanceCalculationService } from 'src/services/attendance/attendance
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
+type BootcampStudentDropdownRow = {
+  careerStatus?: string[] | string | null;
+  skills?: string[] | string | null;
+  openToRemote?: boolean | null;
+  education?: string | number | null;
+};
+
+type BootcampStudentDropdownOptions = {
+  careerStatus: string[];
+  skills: string[];
+  openToRemote: boolean[];
+  education: string[];
+};
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function formatGraduationDate(
+  month?: number | string | null,
+  year?: number | string | null,
+): string | null {
+  if (year == null || year === '') return null;
+  const parsedYear = Number(year);
+  if (Number.isNaN(parsedYear) || parsedYear <= 0) return null;
+
+  if (month == null || month === '') return null;
+  const parsedMonth = Number(month);
+  if (Number.isNaN(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+    return null;
+  }
+
+  return `${MONTH_NAMES[parsedMonth - 1]} ${parsedYear}`;
+}
+
 @Injectable()
 export class BootcampService {
   constructor(
@@ -54,6 +104,111 @@ export class BootcampService {
     private rbacService: RbacService,
     private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
+
+  private buildDropdownOptions(
+    rows: BootcampStudentDropdownRow[],
+  ): BootcampStudentDropdownOptions {
+    const careerStatusSet = new Set<string>();
+    const skillsMap = new Map<string, string>();
+    const openToRemoteSet = new Set<boolean>();
+    const educationSet = new Set<string>();
+
+    for (const row of rows) {
+      const careerStatusValues = Array.isArray(row.careerStatus)
+        ? row.careerStatus
+        : typeof row.careerStatus === 'string' && row.careerStatus.trim()
+          ? [row.careerStatus]
+          : [];
+      for (const value of careerStatusValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          careerStatusSet.add(normalized);
+        }
+      }
+
+      const skillValues = Array.isArray(row.skills)
+        ? row.skills
+        : typeof row.skills === 'string' && row.skills.trim()
+          ? [row.skills]
+          : [];
+      for (const value of skillValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          const key = normalized.toLowerCase();
+          if (!skillsMap.has(key)) {
+            skillsMap.set(key, normalized);
+          }
+        }
+      }
+
+      if (typeof row.openToRemote === 'boolean') {
+        openToRemoteSet.add(row.openToRemote);
+      }
+
+      if (row.education != null) {
+        const year = String(row.education).trim();
+        if (year !== '') {
+          educationSet.add(year);
+        }
+      }
+    }
+
+    return {
+      careerStatus: Array.from(careerStatusSet).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+      skills: Array.from(skillsMap.values()).sort((a, b) => a.localeCompare(b)),
+      openToRemote: Array.from(openToRemoteSet).sort(
+        (a, b) => Number(a) - Number(b),
+      ),
+      education: Array.from(educationSet).sort((a, b) => a.localeCompare(b)),
+    };
+  }
+
+  private async getStudentDropdownOptions(
+    bootcampId: number,
+    batchId: number,
+    roleName: string[],
+    instructorId?: number,
+  ): Promise<BootcampStudentDropdownOptions> {
+    const batchIdNum = Number.isFinite(Number(batchId))
+      ? Number(batchId)
+      : undefined;
+    const normalizedRoleName =
+      typeof roleName?.[0] === 'string' ? roleName[0].toLowerCase().trim() : '';
+    const isInstructor = normalizedRoleName === 'instructor';
+
+    const dropdownConditions = [
+      eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+    ];
+
+    if (batchIdNum !== undefined) {
+      dropdownConditions.push(eq(zuvyBatchEnrollments.batchId, batchIdNum));
+    }
+
+    if (isInstructor && instructorId) {
+      dropdownConditions.push(eq(zuvyBatches.instructorId, instructorId));
+    }
+
+    const dropdownRows = await db
+      .select({
+        careerStatus: zuvyLearnersCompleteProfile.currentStatus,
+        skills: zuvyLearnersCompleteProfile.technicalSkills,
+        openToRemote: zuvyLearnersCompleteProfile.openToRemote,
+        education: zuvyLearnersCompleteProfile.graduationYear,
+      })
+      .from(zuvyBatchEnrollments)
+      .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+      .leftJoin(
+        zuvyLearnersCompleteProfile,
+        eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+      )
+      .where(and(...dropdownConditions));
+
+    return this.buildDropdownOptions(
+      dropdownRows as BootcampStudentDropdownRow[],
+    );
+  }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -1381,6 +1536,10 @@ export class BootcampService {
     orderDirection?: string,
     instructorId?: number, // Add instructor ID parameter
     orgId?: number,
+    careerStatus?: string,
+    skills?: string,
+    education?: string,
+    openToRemote?: boolean,
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1430,9 +1589,29 @@ export class BootcampService {
       const lastActiveDateFilter = lastActiveDate
         ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}`
         : undefined;
+
       const statusFilter = status
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
+      const careerStatusFilter = careerStatus?.trim()
+        ? ilike(zuvyLearnersCompleteProfile.currentStatus, careerStatus.trim())
+        : undefined;
+
+      const skillsTrimmed = skills?.trim();
+      const skillsFilter = skillsTrimmed
+        ? arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
+            skillsTrimmed,
+          ])
+        : undefined;
+      const parsedYear = parseInt(education?.trim() || '', 10);
+      const educationFilter =
+        !isNaN(parsedYear) && parsedYear >= 1000 && parsedYear <= 9999
+          ? eq(zuvyLearnersCompleteProfile.graduationYear, parsedYear)
+          : undefined;
+      const openToRemoteFilter =
+        openToRemote === undefined
+          ? undefined
+          : eq(zuvyLearnersCompleteProfile.openToRemote, openToRemote);
 
       // Normalize roleName for comparison (handle case sensitivity and whitespace)
       const normalizedRoleName =
@@ -1477,6 +1656,10 @@ export class BootcampService {
         statusFilter,
         attendanceFilter,
         instructorBatchFilter, // Add instructor filter to WHERE clause
+        careerStatusFilter,
+        skillsFilter,
+        educationFilter,
+        openToRemoteFilter,
       );
 
       const hasPagination =
@@ -1492,6 +1675,10 @@ export class BootcampService {
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
         .where(whereClause);
       const totalNumberOfStudents = countResult[0]?.count ?? 0;
 
@@ -1511,10 +1698,22 @@ export class BootcampService {
           progress: zuvyBootcampTracking.progress,
           zuvyBootcampTrackingId: zuvyBootcampTracking.id,
           zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
+          careerStatus: zuvyLearnersCompleteProfile.currentStatus,
+          skills: zuvyLearnersCompleteProfile.technicalSkills,
+          education: zuvyLearnersCompleteProfile.graduationYear,
+          graduationMonth: zuvyLearnersCompleteProfile.graduationMonth,
+          graduationYear: zuvyLearnersCompleteProfile.graduationYear,
+          openToRemote: zuvyLearnersCompleteProfile.openToRemote,
         })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        // Complete profile has a unique user_id, and skills are filtered with
+        // EXISTS above; neither can multiply the enrolled-student rows.
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
         .leftJoin(
           zuvyBootcampTracking,
           and(
@@ -1602,8 +1801,22 @@ export class BootcampService {
             status: item.status || null,
             zuvyBatchEnrollmentsId: item.zuvyBatchEnrollmentsId || null,
             zuvyBootcampTrackingId: item.zuvyBootcampTrackingId || null,
+            careerStatus: item.careerStatus ?? [],
+            skills: item.skills ?? [],
+            education: item.education != null ? String(item.education) : null,
+            graduationDate: formatGraduationDate(
+              item.graduationMonth,
+              item.graduationYear,
+            ),
+            openToRemote: item.openToRemote ?? false,
           };
         }),
+      );
+      const dropdownOptions = await this.getStudentDropdownOptions(
+        bootcampId,
+        batchId,
+        roleName,
+        instructorId,
       );
       const currentPage = hasPagination
         ? Math.floor(offsetNum / limitNum) + 1
@@ -1630,6 +1843,7 @@ export class BootcampService {
         status: 'success',
         code: 200,
         modifiedStudentInfo,
+        dropdownOptions,
         totalNumberOfStudents,
         currentPage,
         totalPages,

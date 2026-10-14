@@ -1131,7 +1131,12 @@ export const partners = main.table(
   },
 );
 
-const bytea = customType<{ data: string; notNull: false; default: false }>({
+const bytea = customType<{
+  data: string;
+  driverData: Buffer;
+  notNull: false;
+  default: false;
+}>({
   dataType() {
     return 'bytea';
   },
@@ -5367,6 +5372,65 @@ export const zuvyUserFeatureFlagsRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [zuvyUserFeatureFlags.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+// Student ID + password credential for learners without an email address
+// (migrations 0043, 0044). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here. Student IDs are
+// first + last name in lowercase, "ct" and a number, e.g. aruneshdharct1.
+export const zuvyStudentCredentials = main.table(
+  'zuvy_student_credentials',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    studentId: varchar('student_id', { length: 40 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+    passwordUpdatedAt: timestamp('password_updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .notNull()
+      .defaultNow(),
+    lastResetBy: bigint('last_reset_by', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    lastResetAt: timestamp('last_reset_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUserId: unique('zuvy_student_credentials_user_id_unique').on(table.userId),
+    uniqStudentId: unique('zuvy_student_credentials_student_id_unique').on(
+      table.studentId,
+    ),
+  }),
+);
+
+// Last number given out per name (migration 0044): base "aruneshdhar" with
+// lastNumber 2 means aruneshdharct1 and aruneshdharct2 exist. Incremented
+// with one atomic upsert, so simultaneous same-name sign-ups never collide.
+export const zuvyStudentIdCounters = main.table('zuvy_student_id_counters', {
+  base: varchar('base', { length: 40 }).primaryKey().notNull(),
+  lastNumber: integer('last_number').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .notNull()
+    .defaultNow(),
+});
+
+export const zuvyStudentCredentialsRelations = relations(
+  zuvyStudentCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyStudentCredentials.userId],
       references: [users.id],
     }),
   }),
