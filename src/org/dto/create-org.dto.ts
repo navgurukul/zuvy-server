@@ -6,12 +6,13 @@ import {
   IsBoolean,
   MaxLength,
 } from 'class-validator';
+
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateOrgDto {
   @ApiProperty({
     type: String,
-    example: 'The title of the organization',
+    example: 'The title of the newwwww organization',
     required: true,
   })
   @IsString()
