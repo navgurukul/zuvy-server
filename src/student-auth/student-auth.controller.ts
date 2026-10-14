@@ -8,10 +8,13 @@ import {
   Query,
   Req,
   UseGuards,
+  UseInterceptors,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { SkipThrottle, ThrottlerGuard } from '@nestjs/throttler';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -119,15 +122,36 @@ export class StudentAuthController {
 
   @Post('admin/enroll')
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'enroll_student',
+    resourceType: 'bootcamp',
+    permissionName: 'createStudent',
+    displayType: 'the student',
+    getResourceName: (result, params) => {
+      const studentId = result?.data?.studentId || params?.studentId || '';
+      const bootcampName = result?.data?.bootcampName || '';
+      return bootcampName
+        ? `${studentId} in the bootcamp ${bootcampName}`
+        : studentId;
+    },
+  })
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'Super admin: enrol a Student ID account in a course or batch',
+    summary:
+      'Super admin, or admin/ops of the course organisation: enrol a Student ID account in a course or batch',
     description:
-      'For private courses. Public courses enrol students automatically when they open them.',
+      'For private courses. Public courses enrol students automatically when they open them. Admins and ops can only enrol into courses of the organisation they are currently logged into; super admins into any course.',
+  })
+  @ApiResponse({ status: 200, description: 'Enrolled, or moved to the batch' })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Not a super admin, or not admin/ops of the course's organisation",
   })
   async enroll(@Req() req, @Body() dto: EnrollStudentByIdDto) {
     return this.studentAuthService.enrollStudent(
-      Number(req.user[0].id),
+      { userId: Number(req.user[0].id), orgId: req.user[0]?.orgId ?? null },
       dto.studentId,
       dto.bootcampId,
       dto.batchId,
