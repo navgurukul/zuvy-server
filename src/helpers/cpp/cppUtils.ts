@@ -1,3 +1,3 @@
-export function cppEscape(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
+// export function cppEscape(str: string): string {
+//   return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+// }
