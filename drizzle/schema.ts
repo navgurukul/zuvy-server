@@ -337,7 +337,7 @@ export const partnerAssessments = main.table('partner_assessments', {
   partnerId: integer('partner_id').notNull(),
   createdAt: varchar('created_at', { length: 45 }).notNull(),
 });
-
+//
 export const partnerGroupUser = main.table('partner_group_user', {
   id: serial('id').primaryKey().notNull(),
   userId: integer('user_id'),
