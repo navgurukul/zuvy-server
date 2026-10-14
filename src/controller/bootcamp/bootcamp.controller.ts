@@ -570,7 +570,7 @@ export class BootcampController {
         });
       }
     }
-
+    //
     let openToRemoteNormalized: boolean | undefined;
     if (openToRemote !== undefined && openToRemote !== null) {
       if (openToRemote === true || openToRemote === 'true') {
