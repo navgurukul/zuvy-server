@@ -50,7 +50,7 @@ const MAX_RETRIES = 5;
 // filesystems across its own retry history). Stale after this many minutes
 // with no activity, so a closed laptop / crashed instance doesn't strand a
 // job forever — any instance may then reclaim it.
-const WORKER_AFFINITY_STALE_MINUTES = 30;
+const WORKER_AFFINITY_STALE_MINUTES = 20;
 
 type RecordingJob = {
   id: number;
