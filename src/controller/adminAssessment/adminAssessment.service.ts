@@ -46,8 +46,10 @@ import {
   zuvyLearnersCompleteProfile,
   zuvyBootcamps,
   zuvyMentorSlotBooking,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { helperVariable } from 'src/constants/helper';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
@@ -1667,12 +1669,17 @@ Team Zuvy`;
                   db
                     .select({ _: users.id })
                     .from(users)
+                    .leftJoin(
+                      zuvyStudentCredentials,
+                      eq(zuvyStudentCredentials.userId, users.id),
+                    )
                     .where(
                       and(
                         eq(users.id, track.userId),
                         or(
                           ilike(users.name, pattern),
                           ilike(users.email, pattern),
+                          ilike(zuvyStudentCredentials.studentId, pattern),
                         ),
                       ),
                     ),
@@ -1728,6 +1735,7 @@ Team Zuvy`;
 
         enrollmentMap = new Map(enrollments.map((e) => [Number(e.userId), e]));
       }
+      const studentIdMap = await getStudentIdsByUserId(userIds);
 
       const submittedStudents = chapterTrackingDetails
         .filter((tracking) => tracking['user'] != null)
@@ -1738,6 +1746,7 @@ Team Zuvy`;
             id: uid,
             name: tracking['user'].name,
             email: tracking['user'].email,
+            studentId: studentIdMap.get(String(uid)) ?? null,
             profilePicture: tracking['user'].profilePicture ?? null,
             completedAt: tracking.completedAt,
             batchId: enrollment ? Number(enrollment.batchId) : null,

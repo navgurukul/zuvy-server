@@ -39,6 +39,7 @@ import {
   zuvySessions,
   zuvySessionRecordViews,
   zuvyStudentAttendanceRecords,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import {
   InstructorFeedbackDto,
@@ -47,6 +48,7 @@ import {
   SubmissionassessmentDto,
 } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { helperVariable } from 'src/constants/helper';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
@@ -2100,12 +2102,20 @@ export class SubmissionService {
                   db
                     .select({ _: users.id })
                     .from(users)
+                    .leftJoin(
+                      zuvyStudentCredentials,
+                      eq(zuvyStudentCredentials.userId, users.id),
+                    )
                     .where(
                       and(
                         eq(users.id, be.userId),
                         or(
                           ilike(users.name, searchStudent + '%'),
                           ilike(users.email, searchStudent + '%'),
+                          ilike(
+                            zuvyStudentCredentials.studentId,
+                            searchStudent + '%',
+                          ),
                         ),
                       ),
                     ),
@@ -2163,12 +2173,20 @@ export class SubmissionService {
                   db
                     .select({ _: users.id })
                     .from(users)
+                    .leftJoin(
+                      zuvyStudentCredentials,
+                      eq(zuvyStudentCredentials.userId, users.id),
+                    )
                     .where(
                       and(
                         eq(users.id, ct.userId),
                         or(
                           ilike(users.name, searchStudent + '%'),
                           ilike(users.email, searchStudent + '%'),
+                          ilike(
+                            zuvyStudentCredentials.studentId,
+                            searchStudent + '%',
+                          ),
                         ),
                       ),
                     ),
@@ -2241,6 +2259,11 @@ export class SubmissionService {
         });
       }
 
+      const studentIdMap = await getStudentIdsByUserId([
+        ...completedUserIds,
+        ...statusOfIncompletedStudentForm.map((s) => s['user'].id),
+      ]);
+
       const data1 = statusOfCompletedStudentFormRaw
         .filter((s) => s['user'])
         .map((s) => {
@@ -2249,6 +2272,7 @@ export class SubmissionService {
             id: Number(s['user'].id),
             name: s['user'].name,
             email: s['user'].email,
+            studentId: studentIdMap.get(uid) ?? null,
             profilePicture: s['user'].profilePicture ?? null,
             status: 'Submitted',
             batchId: completedEnrollmentMap[uid]?.batchId ?? null,
@@ -2266,6 +2290,7 @@ export class SubmissionService {
           id: Number(s['user'].id),
           name: s['user'].name,
           email: s['user'].email,
+          studentId: studentIdMap.get(String(s['user'].id)) ?? null,
           profilePicture: s['user'].profilePicture ?? null,
           status: 'Not Submitted',
           batchId: s.batchId ?? null,
