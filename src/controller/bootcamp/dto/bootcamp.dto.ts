@@ -157,6 +157,17 @@ export class PatchBootcampSettingDto {
     type: Boolean,
     example: false,
     required: false,
+    description:
+      'Lock chapters inside each module so they must be completed in order',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isChapterLocked?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
   })
   @IsOptional()
   @IsBoolean()

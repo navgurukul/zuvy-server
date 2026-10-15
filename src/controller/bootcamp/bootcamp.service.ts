@@ -511,6 +511,7 @@ export class BootcampService {
         bootcampId: newBootcamp[0].id,
         type: 'Private', // Assuming type is present in bootcampData
         isModuleLocked: false,
+        isChapterLocked: false,
       };
 
       let insertedBootcampType = await db
@@ -651,6 +652,14 @@ export class BootcampService {
         typeOfBootcamp == 'Private'.toLowerCase() ||
         typeOfBootcamp === null
       ) {
+        // Locking/unlocking modules also locks/unlocks chapters in order,
+        // unless the same request sets isChapterLocked explicitly.
+        if (
+          settingData.isModuleLocked !== undefined &&
+          settingData.isChapterLocked === undefined
+        ) {
+          settingData.isChapterLocked = settingData.isModuleLocked;
+        }
         let updatedBootcampSetting = await db
           .update(zuvyBootcampType)
           .set({ ...settingData })

@@ -726,6 +726,7 @@ export class ContentService {
           chapterTitle: zuvyModuleChapter.title,
           topicId: zuvyModuleChapter.topicId,
           order: zuvyModuleChapter.order,
+          isLock: zuvyModuleChapter.isLock,
         })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.moduleId, moduleId))
@@ -748,6 +749,7 @@ export class ContentService {
           topicId: ch.topicId,
           topicName: topicInfo?.topicName || 'Unknown',
           order: ch.order,
+          isLock: ch.isLock ?? false,
         };
       });
       const targetPermissions = [
@@ -1501,6 +1503,30 @@ export class ContentService {
     } catch (err) {
       throw err;
     }
+  }
+
+  async updateChapterLock(chapterId: number, isLock: boolean) {
+    const [chapter] = await db
+      .update(zuvyModuleChapter)
+      .set({ isLock } as any)
+      .where(eq(zuvyModuleChapter.id, chapterId))
+      .returning({
+        id: zuvyModuleChapter.id,
+        title: zuvyModuleChapter.title,
+        moduleId: zuvyModuleChapter.moduleId,
+        isLock: zuvyModuleChapter.isLock,
+      });
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found!');
+    }
+    return {
+      status: 'success',
+      code: 200,
+      message: isLock
+        ? 'Chapter locked successfully'
+        : 'Chapter unlocked successfully',
+      chapter,
+    };
   }
 
   async editChapter(
