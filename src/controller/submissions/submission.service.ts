@@ -29,6 +29,8 @@ import {
   zuvyQuizTracking,
   zuvyModuleChapter,
   zuvyFormTracking,
+  zuvyModuleForm,
+  zuvyQuestionTypes,
   zuvyPracticeCode,
   zuvyOutsourseQuizzes,
   zuvyModuleQuizVariants,
@@ -2337,12 +2339,18 @@ export class SubmissionService {
         ? Math.ceil(combinedData.length / limitNum)
         : 1;
 
+      const responseData = await this.attachFormAnswers(
+        paginatedData,
+        chapterId,
+        moduleId,
+      );
+
       return {
         status: 'Success',
         code: 200,
         moduleId,
         chapterId,
-        combinedData: paginatedData,
+        combinedData: responseData,
         totalPages,
         // totalStudentsCount: combinedData.length,
         // totalAllStudents
@@ -2352,6 +2360,115 @@ export class SubmissionService {
     } catch (err) {
       throw err;
     }
+  }
+
+  // Adds each student's form answers (question + selected options / text answer)
+  // to the given rows. Only the current page is looked up, so the cost stays
+  // bounded by the page size.
+  private async attachFormAnswers(
+    rows: any[],
+    chapterId: number,
+    moduleId: number,
+  ) {
+    const submittedUserIds = rows
+      .filter((r) => r.status === 'Submitted')
+      .map((r) => Number(r.id));
+
+    if (submittedUserIds.length === 0) {
+      return rows.map((r) => ({ ...r, formResponses: [] }));
+    }
+
+    const [chapter] = await db
+      .select({ formQuestions: zuvyModuleChapter.formQuestions })
+      .from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.id, chapterId));
+
+    const formQuestionIds = chapter?.formQuestions
+      ? Object.values(chapter.formQuestions as Record<string, number>)
+          .map(Number)
+          .filter((id) => Number.isFinite(id))
+      : [];
+
+    const [questions, trackingRows] = await Promise.all([
+      db
+        .select({
+          id: zuvyModuleForm.id,
+          question: zuvyModuleForm.question,
+          options: zuvyModuleForm.options,
+          typeId: zuvyModuleForm.typeId,
+          questionType: zuvyQuestionTypes.questionType,
+          isRequired: zuvyModuleForm.isRequired,
+        })
+        .from(zuvyModuleForm)
+        .leftJoin(
+          zuvyQuestionTypes,
+          eq(zuvyQuestionTypes.id, zuvyModuleForm.typeId),
+        )
+        .where(
+          formQuestionIds.length > 0
+            ? inArray(zuvyModuleForm.id, formQuestionIds)
+            : eq(zuvyModuleForm.chapterId, chapterId),
+        )
+        .orderBy(asc(zuvyModuleForm.id)),
+      db
+        .select({
+          userId: zuvyFormTracking.userId,
+          questionId: zuvyFormTracking.questionId,
+          chosenOptions: zuvyFormTracking.chosenOptions,
+          answer: zuvyFormTracking.answer,
+          updatedAt: zuvyFormTracking.updatedAt,
+        })
+        .from(zuvyFormTracking)
+        .where(
+          and(
+            eq(zuvyFormTracking.chapterId, chapterId),
+            eq(zuvyFormTracking.moduleId, moduleId),
+            inArray(zuvyFormTracking.userId, submittedUserIds),
+          ),
+        ),
+    ]);
+
+    // Keep the question order defined on the chapter when available.
+    if (formQuestionIds.length > 0) {
+      const position = new Map(formQuestionIds.map((id, i) => [id, i]));
+      questions.sort(
+        (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+      );
+    }
+
+    const answersByUser = new Map<number, Map<number, any>>();
+    trackingRows.forEach((t) => {
+      const uid = Number(t.userId);
+      if (!answersByUser.has(uid)) answersByUser.set(uid, new Map());
+      answersByUser.get(uid).set(Number(t.questionId), t);
+    });
+
+    return rows.map((r) => {
+      if (r.status !== 'Submitted') return { ...r, formResponses: [] };
+
+      const userAnswers = answersByUser.get(Number(r.id)) ?? new Map();
+      const formResponses = questions.map((q) => {
+        const tracked = userAnswers.get(q.id);
+        const options = (q.options ?? {}) as Record<string, string>;
+        const chosenOptions: number[] = tracked?.chosenOptions ?? [];
+        return {
+          questionId: q.id,
+          question: q.question,
+          typeId: q.typeId,
+          questionType: q.questionType ?? null,
+          isRequired: q.isRequired,
+          options,
+          chosenOptions,
+          selectedAnswers: chosenOptions
+            .map((key) => options[String(key)])
+            .filter((v) => v !== undefined),
+          answer: tracked?.answer ?? null,
+          answeredAt: tracked?.updatedAt ?? null,
+        };
+      });
+
+      return { ...r, formResponses };
+    });
   }
 
   async getFormDetailsById(
