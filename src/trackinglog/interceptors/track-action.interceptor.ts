@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
@@ -416,11 +417,11 @@ export class TrackActionInterceptor implements NestInterceptor {
 
                 logWithTimeout().catch((error) => {
                   // Logging errors should never affect the application
-                  console.error('[TrackAction] Failed:', error?.message);
+                  Logger.error('[TrackAction] Failed:', error?.message);
                 });
               } catch (error) {
                 // Don't throw error to avoid breaking the main flow
-                console.error(
+                Logger.error(
                   '[INTERCEPTOR] Error in TrackActionInterceptor:',
                   error,
                 );
@@ -428,7 +429,7 @@ export class TrackActionInterceptor implements NestInterceptor {
             })
             .catch((err) => {
               // Outer promise catch - ensure logging never breaks the app
-              console.error('[TrackAction] Unexpected error:', err?.message);
+              Logger.error('[TrackAction] Unexpected error:', err?.message);
             });
         },
         (error) => {
@@ -478,21 +479,56 @@ export class TrackActionInterceptor implements NestInterceptor {
                   permissionName = verb + resourceCamel;
                 }
 
-                const userData = Array.isArray(user) ? user[0] : user;
-                const actorUserId =
-                  typeof userData.id === 'string'
-                    ? parseInt(userData.id)
-                    : userData.id;
+                let rawUser = Array.isArray(user) ? user[0] : user;
+
+                if (!rawUser) {
+                  try {
+                    const authHeader = request.headers?.authorization as string;
+                    if (authHeader?.startsWith('Bearer ')) {
+                      const token = authHeader.slice(7);
+                      const payloadBase64 = token.split('.')[1];
+                      if (payloadBase64) {
+                        const decoded = JSON.parse(
+                          Buffer.from(payloadBase64, 'base64url').toString(
+                            'utf8',
+                          ),
+                        );
+                        rawUser = {
+                          id: decoded.sub,
+                          email: decoded.email,
+                          orgId: decoded.orgId,
+                          orgName: decoded.orgName,
+                        };
+                      }
+                    }
+                  } catch {
+                    // Unreadable token — rawUser stays null, fields will be null in log
+                  }
+                }
+
+                const userData = rawUser;
+                const actorUserId = (() => {
+                  const raw = userData?.id;
+                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                })();
 
                 let actorName = 'User';
-                if (userData.email) {
+                if (userData?.email) {
                   actorName = userData.email;
                 }
 
-                const orgId =
-                  typeof userData.orgId === 'string'
-                    ? parseInt(userData.orgId)
-                    : userData.orgId;
+                const orgId = (() => {
+                  const raw = userData?.orgId;
+                  const fromUser =
+                    typeof raw === 'string' ? parseInt(raw) : raw;
+                  if (fromUser != null) return fromUser;
+                  // super_admin has no orgId in JWT — fall back to request context
+                  const fromReq =
+                    request.params?.orgId ??
+                    request.query?.orgId ??
+                    request.body?.orgId;
+                  return fromReq != null ? Number(fromReq) : null;
+                })();
 
                 // Use getBootcampId from metadata if available (handles snake_case params too)
                 let bootcampId: number | null = null;

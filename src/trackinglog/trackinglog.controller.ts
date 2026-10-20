@@ -148,8 +148,11 @@ export class TrackinglogController {
       query.action = undefined;
     }
 
-    // Extract user role from request (assumes JWT payload contains role)
-    const userRole = req.user?.role;
-    return this.trackinglogService.findAll(query, userRole);
+    // Extract user role and orgId from request (assumes JWT payload contains role)
+    const userData = req.user?.[0] || {};
+    const userRoles = userData.roles || [];
+    const userOrgId = userData.orgId;
+
+    return this.trackinglogService.findAll(query, userRoles, userOrgId);
   }
 }
