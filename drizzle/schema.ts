@@ -5451,3 +5451,60 @@ export const zuvyUserFeatureFlagsRelations = relations(
     }),
   }),
 );
+
+// ============================================
+// Gmail-based monitoring for YouTube violation notifications (Content ID
+// claims, strikes, etc.) the Data API can't surface for a normal channel —
+// see youtube-recording-durability-and-restore-strategy.md §11.
+// ============================================
+export const zuvyGmailWatchState = main.table('zuvy_gmail_watch_state', {
+  id: serial('id').primaryKey().notNull(),
+  emailAddress: text('email_address').notNull(),
+  historyId: text('history_id'),
+  watchExpiration: timestamp('watch_expiration', {
+    withTimezone: true,
+    mode: 'string',
+  }),
+  lastRenewedAt: timestamp('last_renewed_at', {
+    withTimezone: true,
+    mode: 'string',
+  }),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+}, (table) => ({
+  uniqEmailAddress: unique('zuvy_gmail_watch_state_email_address_unique').on(
+    table.emailAddress,
+  ),
+}));
+
+export const zuvyYoutubeViolationEmails = main.table(
+  'zuvy_youtube_violation_emails',
+  {
+    id: serial('id').primaryKey().notNull(),
+    gmailMessageId: text('gmail_message_id').notNull(),
+    fromAddress: text('from_address'),
+    subject: text('subject'),
+    receivedAt: timestamp('received_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    classification: varchar('classification', { length: 50 }),
+    rawHeaders: jsonb('raw_headers'),
+    reviewed: boolean('reviewed').default(false),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqGmailMessageId: unique(
+      'zuvy_youtube_violation_emails_gmail_message_id_unique',
+    ).on(table.gmailMessageId),
+  }),
+);

@@ -152,6 +152,223 @@ single clean process was confirmed running (confirmed via a literal duplicate
 the redundant `providers` entries from `app.module.ts` — `RecordingWorkerModule`'s
 export is now the only source of these two services.
 
+**Sixth bug, and the most consequential for data quality — S3 verification wasn't
+cleared on a re-merge (2026-09-21, session 2223 / job 2109):** `ingestRecordingCompleted()`
+predates the S3 feature. Its three "reopen this job for new segments" branches (row
+already `COMPLETED`, row `FAILED`/`PERMANENT_FAILED`, row still mid-pipeline) already
+correctly clear the YouTube fields (`drive_file_id`/`drive_link` → `previous_drive_file_id`)
+when a second Zoom recording instance arrives (e.g., the host's connection dropped and
+the meeting was restarted) — but none of them cleared `s3_verified`/`s3_key`/etc.
+Confirmed live: job 2109 uploaded segment 1 alone to S3 successfully
+(`s3_verified = TRUE`), then segment 2 arrived and reopened the job for a combined
+2-segment merge — but `s3_verified` stayed `TRUE` from the single-segment upload.
+Once the (unrelated, see fifth-bug-adjacent ffmpeg issue below) merge eventually
+succeeds, `uploadToS3()`'s idempotency guard (`if (job.s3_verified === true) return;`)
+would see that stale flag and skip re-uploading — YouTube would get the correct,
+complete video, but **the Glacier copy would permanently and silently contain only
+the first, incomplete segment**, for exactly the sessions most likely to need a good
+backup (the ones with a connectivity hiccup mid-class). Fixed by clearing all seven
+S3-related columns in all three reopen branches. Job 2109's already-corrupted row was
+manually corrected (S3 fields cleared, status reset from `PERMANENT_FAILED` back to
+`METADATA_READY` for a fresh attempt) rather than left to silently misrepresent its
+backup status.
+
+**Root cause of the race behind the above, fixed at the source (2026-09-21):**
+`uploadToS3()` previously started as soon as a row reached `MERGED`, with no check for
+whether the underlying Zoom meeting might still be running or still processing on
+Zoom's side — meaning a host reconnect mid-class could produce a "complete" first
+segment, get it merged and uploaded to S3 (`s3_verified = TRUE`) before the second
+segment even existed. `uploadToS3()` now calls the same `checkPreUploadEligibility()`
+gate `uploadToYoutube()` already used (session end time + 5-minute buffer, meeting not
+currently live, Zoom not still processing the cloud recording) before starting any
+upload, deferring (`status = 'MERGED'`, retry via `next_retry_at` in 3 minutes, no
+error/retry-count cost) if any of those aren't satisfied. This doesn't just delay the
+S3 leg — it removes the reason a same-owner row would ever be mid-upload when a new
+segment arrives in the first place. The field-clearing fix above remains as a safety
+net for whatever narrow timing window still exists between "eligibility passed" and
+"upload completed," not the primary defense anymore.
+
+**Still open:** the third `ingestRecordingCompleted()` reopen branch (row still
+mid-pipeline) still doesn't reset `status`, so if a new segment somehow does arrive
+after `PROCESSING_S3_UPLOAD` has already started (the narrow window above), it's folded
+into the manifest but doesn't force a fresh merge. Now a much rarer edge case than
+before this fix, but not impossible — worth a deliberate decision later, not a silent
+guess.
+
+**Separately observed during this same investigation, not a code bug:** `spawnSync
+ffmpeg ENOENT` on job 2109's concat attempt — the machine that picked up that job
+(evidenced by its `merged_file_path` pointing at a different Windows user profile than
+the one used for every other fix in this document) doesn't have `ffmpeg` on its `PATH`.
+Worth deciding, now that multiple local machines can apparently pick up the same shared
+job queue, whether that's intentional for this testing phase or whether only one
+designated environment should run the worker until it's stable.
+
+## 10. Edge-case audit: what happens when YouTube fails, at upload time or days later
+
+Requested directly: verify (a) a job whose YouTube upload fails outright still leaves a
+usable S3 copy for manual recovery, and (b) a video YouTube removes days/weeks after
+`COMPLETED` gets detected and restored automatically. Both were audited against **real
+failures already sitting in the database from this week's testing** — not synthetic
+scenarios — which surfaced two more real bugs.
+
+### 10.1 The architectural gap this closed
+
+`checkYoutubeChannelHealth()` / `runYoutubeHealthCheckRotation()` (§5–§6) only ever
+looked at rows already `status = 'COMPLETED'`. A row whose **first** YouTube upload
+attempt exhausted all 5 retries (`PERMANENT_FAILED`) never had a `drive_file_id` to
+compare against, so it was invisible to that detection — even though the S3 leg (which
+always runs first) had very likely already succeeded. This was a real, not
+hypothetical, gap: **`checkPermanentlyFailedUploads()`** is a new third detection phase
+in the nightly job, added specifically for this case. It needs no YouTube API call at
+all — `status = 'PERMANENT_FAILED' AND drive_file_id IS NULL AND s3_verified IS TRUE`
+is already conclusive — and feeds into the _same_ `initiateRestoreForRow()` /
+`pollAndCompleteRestores()` pair the other two detection phases use, rather than a
+parallel implementation. `pollAndCompleteRestores()` now also sets `status = 'COMPLETED'`
+on success (a no-op for the already-`COMPLETED` case it originally handled, necessary
+for this new one).
+
+### 10.2 Real failures found and fixed while auditing this
+
+Querying for every row with a verified S3 copy surfaced six non-cleanly-completed rows.
+Four told a clear, previously-unknown story:
+
+- **Jobs 2110, 2111, 2117 — `last_error: "Insufficient Permission"`.** All three had
+  already gotten a genuine, working YouTube video (`drive_file_id`/`drive_link` set).
+  Root cause: `updateYoutubeTitleIfNeeded()` — called on every retry of an
+  already-uploaded job to keep the YouTube title in sync — calls `videos.update`, which
+  needs the broader `youtube`/`youtube.force-ssl` OAuth scope, not just
+  `youtube.upload`. Uncaught, this **permanently failed jobs that had already fully
+  succeeded**, purely over a cosmetic title sync. This is the same OAuth-scope class of
+  issue the multi-instance-merge doc already flagged for the superseded-video-delete
+  call — confirms that concern was real, just manifesting on a second call site. Fixed
+  by wrapping the call in the same best-effort try/catch the delete call already uses.
+  2110/2111 (still `FAILED`, not yet exhausted) will self-heal on their next scheduled
+  retry once this ships; 2117 (already `PERMANENT_FAILED`) was manually reset to
+  `YOUTUBE_PROCESSING` so `verifyYoutubeProcessing()` properly confirms its
+  already-working video rather than assuming it's fine.
+- **Job 2115 — `last_error: "Downloaded file too small (22792 bytes)"`, and a second,
+  more serious finding: its `s3_verified = TRUE` was stale.** `segments_count = 3` but
+  `is_final_merged = false` — this row had been reopened (a third recording instance
+  arrived) but never successfully remerged the full set; its S3 flag still reflected an
+  earlier, incomplete upload from before the reopen(s). Root cause of the download
+  failure itself: `metadata_verified = TRUE` short-circuits `fetchZoomMetadata()` from
+  ever refreshing Zoom's download URLs (see recording-merge-fix-architecture.md §2), and
+  by the time this failure was investigated (>24h later) those URLs had almost
+  certainly expired — explaining a corrupted/error-page-sized download on every retry.
+  This is a second real instance of the same "stale `s3_verified` post-reopen" family
+  as job 2109 (§ above) — the timing suggests it happened before that fix was deployed
+  and the process restarted, not a gap in the fix itself, but there was no way to be
+  sure of that without checking, so it's called out rather than assumed. Manually reset:
+  `status = 'DISCOVERED'`, `metadata_verified = FALSE` (forces a genuine Zoom re-fetch),
+  S3 fields cleared.
+
+### 10.3 What this means for the two scenarios asked about
+
+- **YouTube upload fails at upload time**: confirmed structurally guaranteed, not just
+  hoped for — S3 always runs before YouTube (§1), so by the time `uploadToYoutube()` can
+  fail at all, `s3_verified` is already `TRUE`. What was missing was the automated path
+  from "permanently gave up on YouTube" back to a working video — that's
+  §10.1's new phase. A job that permanently fails now self-heals the next night the
+  health check runs (once `RECORDING_HEALTH_CHECK_ENABLED=true`), the same as a video
+  YouTube deletes after the fact — no separate manual runbook needed for the common
+  case, though `initiateRestoreForRow()`/`pollAndCompleteRestores()` remain safe to
+  invoke directly for an urgent one-off.
+- **YouTube removes/flags a video days later**: the existing §5–§6 mechanism already
+  covered this structurally. **Now actually tested end to end against real infrastructure
+  (2026-09-23)**, with explicit go-ahead: job 2098's real video was deleted via YouTube
+  Studio, and the full recovery chain was run manually (mirroring
+  `runYoutubeHealthCheckRotation()` → `initiateRestoreForRow()` → `pollAndCompleteRestores()`
+  exactly) —
+
+  1. `videos.list` on the deleted video's ID correctly returned zero items — the
+     unambiguous "lost" signal §5.1 relies on.
+  2. `RestoreObjectCommand` against the real `zuvy-prod` Glacier object succeeded
+     (Expedited tier, ~2 minutes to complete — confirms the mechanics `computeRestoreTier()`
+     depends on work as designed, independent of which tier is chosen).
+  3. The restored file's SHA-256 checksum matched the originally-stored
+     `s3_checksum_sha256` exactly — proof the Glacier copy was never silently corrupted.
+  4. Re-upload to YouTube succeeded, producing a new working video.
+  5. The DB update (`drive_file_id`, `drive_link`, `restore_status = 'AVAILABLE'`,
+     `status = 'COMPLETED'`, plus `zuvy_sessions.youtube_video_id`/`s3link`/`final_uploaded`)
+     landed correctly.
+
+  **This test also surfaced the real reason the earlier "Insufficient Permission" bugs
+  existed at all**: the YouTube OAuth refresh token had actually expired account-wide
+  (affecting local, dev, and prod identically — confirmed via the shared dev database:
+  no successful upload anywhere after 2026-09-21, two days before this was caught),
+  consistent with the OAuth consent screen being in "Testing" publishing status
+  (7-day token expiry). A fresh token was issued with the broader `youtube` scope
+  (not `youtube.upload`), which fixes the delete/title-sync bugs from earlier
+  permanently, not just the try/catch workarounds — confirmed live via a `videos.delete`
+  call correctly returning `videoNotFound` (proving the permission check now passes)
+  rather than `insufficientPermissions`. **Action item, not yet done**: the same token
+  needs updating on the actual hosted dev and prod deployments — this fix only landed
+  locally so far. If the consent screen stays in Testing mode, this will recur every
+  7 days; worth a deliberate decision (publish the app vs. accept a recurring
+  regeneration cadence) rather than rediscovering this the same way next time.
+
+### 10.4 A third scenario, distinct from both above: YouTube rejects the content itself
+
+Neither §10.1 (upload never succeeds) nor the video-later-deleted case is what happens
+when YouTube's own async review actively **rejects** a video (`uploadStatus: 'rejected'`,
+with a `rejectionReason` — copyright/policy/legal/etc.) — the upload call itself
+succeeded, `drive_file_id` exists, but the _content_ was refused. This is meaningfully
+different, and the original handling got it wrong in two ways at once, not just
+"untested":
+
+- **It fell through every safety net.** A rejected video never reaches `COMPLETED`
+  (so `runYoutubeHealthCheckRotation()`, which only looks at `COMPLETED` rows, never
+  sees it) and keeps its `drive_file_id` forever (so §10.1's `checkPermanentlyFailedUploads()`,
+  which requires `drive_file_id IS NULL`, never sees it either). Nothing surfaced it —
+  it would sit `PERMANENT_FAILED` indefinitely with no one aware.
+- **The 5 retries it did burn through were pointless.** `verifyYoutubeProcessing()`
+  previously threw a generic error for `rejected`, which fed into the same
+  `markFailed()` retry cycle every other failure uses — re-fetching metadata,
+  re-downloading, re-merging, all irrelevant to a content-based rejection, only to
+  reach the identical rejection again (or a misleading `last_error` from whatever
+  the last wasted retry attempt happened to hit).
+
+**Fixed by treating this as its own terminal category** (migration
+`0045_add_youtube_rejection_tracking.sql`, new `youtube_rejection_reason` column):
+`verifyYoutubeProcessing()` no longer throws for `uploadStatus: 'rejected'` — it goes
+straight to `PERMANENT_FAILED` with the reason captured, **never touching
+`retry_count`**, and — since the S3 copy already exists — immediately kicks off a
+Standard-tier Glacier restore so the durable copy is actually retrievable the moment a
+human looks, rather than someone having to remember to request one after the fact.
+Deliberately **does not** auto-re-upload to YouTube: identical content that was already
+rejected would just be rejected again, matching §2's own "Act + escalate to a human,
+never fully automate" guidance for exactly this category. Surfaced via the existing
+hourly `auditS3Coverage()` job (already running independently of
+`RECORDING_HEALTH_CHECK_ENABLED`), which now also reports any row carrying a
+`youtube_rejection_reason`.
+
+**Tested (2026-09-24)**, deliberately not against a real rejection — manufacturing one
+for real means deliberately tripping Content ID or a policy violation on the real
+channel, which isn't something to do just to test a code path. Instead: a synthetic row
+was inserted in exactly the state a real rejection leaves behind (real, already-verified
+S3 key reused read-only; fake Zoom/video IDs), the exact DB write the fix performs was
+applied, and the **real** `RestoreObjectCommand` was issued against the real `zuvy-prod`
+object — not mocked. Both detection queries were then run for real against the live
+table: `auditS3Coverage()`'s new block correctly found the row; `checkPermanentlyFailedUploads()`
+correctly excluded it (both because it retains a `drive_file_id` and because
+`restore_status` is no longer `NULL`, the same condition set §10.1's phase also checks).
+Confirms the fix's two claims hold: a rejection gets surfaced, and it does not get
+auto-restored-and-reuploaded. Test row deleted afterward; the real S3 object was
+untouched (a restore doesn't modify the archived object, and the temporary restored
+copy expires on its own after the requested day count).
+
+**Related bug found while fixing this, left as a known limitation, not fixed**: the
+adjacent case — `processingStatus: 'failed'` (a technical transcode/codec failure,
+plausibly transient, unlike a content rejection) — still goes through the generic
+retry path, which turns out not to actually retry anything useful. Once a job reaches
+`YOUTUBE_PROCESSING`, `uploadToYoutube()`'s idempotency check (`if (job.drive_link)`)
+short-circuits past `verifyYoutubeProcessing()` on every subsequent pickJob cycle — so
+a retry here restarts the whole metadata/download/merge pipeline for nothing and never
+actually re-checks whether processing eventually succeeded. Real fix would keep status
+at `YOUTUBE_PROCESSING` across a retry instead of routing through the generic
+pipeline-restart path `markFailed()` forces today; deliberately out of scope for this
+change since it's a broader retry-semantics decision, not a one-line fix.
+
 This already satisfies the core principle end to end for the upload path.
 Everything below is about (a) making the S3 copy cheaper to hold at scale,
 and (b) closing the loop when YouTube later loses a video that was fine at
@@ -180,9 +397,21 @@ Recordings are organized to mirror the LMS hierarchy, by ID (not name —
 names change):
 
 ```
-bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{recordingId}.mp4
-mentor-sessions/{organizationId}/{bookingId}/recordings/{recordingId}.mp4
+bootcamps/{bootcampId}/modules/{moduleId}/chapters/{chapterId}/recordings/{sanitizedTitle} [{recordingId}].mp4
+mentor-sessions/{organizationId}/{bookingId}/recordings/{sanitizedTitle} [{recordingId}].mp4
 ```
+
+**Filename updated (2026-09-23)** to reuse `getYoutubeUploadTitle()` — the exact same
+title the YouTube upload itself uses — so the S3/Glacier console reads as
+`S38 - Recursion With Array - 20-09-2026 - Group 2 [2098].mp4` instead of a bare
+`2098.mp4`. The `[{recordingId}]` suffix stays mandatory, not cosmetic: a session
+title is free text (creators routinely include `/` via dates, plus quotes/colons/etc.)
+and isn't guaranteed unique, so `sanitizeForS3FileName()` replaces filesystem-unsafe
+characters and the numeric ID remains the actual collision-proof guarantee this key
+structure depends on. This only affects new uploads going forward — existing objects
+already in the bucket keep their original `{recordingId}.mp4` naming; nothing
+retroactively renames them, and nothing needs to, since `s3_key` is always read from
+the database row, never reconstructed from the naming convention.
 
 (An earlier revision of this key structure nested these under top-level
 `Course Recordings/` / `Mentors-Recordings/` prefixes to match folders
@@ -398,3 +627,103 @@ itself.
   just long enough to re-feed YouTube, then lets the object return to being
   Glacier-only — cheaper, and consistent with YouTube staying the playback
   layer), and whether/when to spread uploads across multiple channels.
+
+## 11. A fourth category, found by manually checking Studio: Content ID claims/blocks are invisible to every automated check above
+
+Discovered 2026-09-24 by manually browsing YouTube Studio's Content tab (filtered to
+"Claims") — 5 real videos on the channel already carry Content ID claims, two fully
+`Blocked`, others `Partially blocked` (regional). This is a genuinely different failure
+category from everything in §2's table and everything built in §10: the video uploaded
+fine, is not `rejected`, is not deleted — it's just unwatchable, wholly or in some
+regions, because a claim was placed on it after the fact.
+
+**Confirmed live, not assumed:** called `videos.list` for one of these five ("YT 1.0",
+`kwZIc2v5m6k`) directly against the real Data API. The response:
+
+```
+status.uploadStatus: "processed"          <- looks completely normal
+status.privacyStatus: "unlisted"          <- looks completely normal
+contentDetails.regionRestriction.blocked: ["RU"]   <- the only visible hint anything is wrong
+```
+
+Nothing here would trip `runYoutubeHealthCheckRotation()` (checks only for a missing
+video or `uploadStatus: 'rejected'`) or any other check in this pipeline. This isn't a
+gap in what was built — **the public YouTube Data API does not expose Content ID claim
+status to a normal (non-Partner) channel at all**, confirming what was found in earlier
+research (a separate policy-violation review, not part of this codebase's docs) with a
+real example instead of a general claim. `regionRestriction` happening to be visible
+here is incidental — it doesn't say _why_ the region is blocked (Content ID vs. a
+government order look identical this way), and a fully `Blocked` video (not merely
+regional) likely wouldn't expose even this much.
+
+**Per §2's own reasoning, this category was never meant to be auto-restored anyway** —
+re-uploading the identical, fingerprint-matching file just gets re-claimed instantly.
+The value of detecting it isn't automating a fix; it's making sure a human finds out at
+all, rather than discovering it by chance browsing Studio (as happened here) with no
+idea how long it had already been blocked.
+
+### 11.1 The only viable automatable path: watch the channel's Gmail inbox
+
+YouTube does send Content ID claim notifications by email to the channel-owning
+Google account — the Gmail API's push-notification mechanism (`users.watch()` +
+Cloud Pub/Sub) is the one real way to catch this without a human manually checking
+Studio. Researched (not yet built) 2026-09-24:
+
+**Mechanics**, confirmed against current docs:
+
+- `users.watch()` requires a Cloud Pub/Sub topic the same GCP project owns, with
+  `Pub/Sub Publisher` granted to Google's `gmail-api-push@system.gserviceaccount.com`
+  — without that grant, `watch()` succeeds but nothing is ever delivered.
+- The watch expires in **7 days, always** (Google explicitly recommends renewing
+  daily, not waiting for the deadline) — needs its own cron, and failure is silent.
+- The push payload is minimal (`{emailAddress, historyId}`) — a follow-up
+  `history.list()` → `messages.get(format=metadata)` is required to actually read
+  sender/subject and classify the email.
+- **`gmail.metadata` is the correct scope** — enough to read headers, not body, and
+  deliberately narrower than `gmail.readonly`. Can reuse the existing GCP project
+  (already used for the YouTube API) without quota conflicts; a separate project is
+  optional isolation, not required.
+- Since this only ever watches one Google account the org itself owns (not
+  third-party end users), the OAuth consent screen can stay in **Testing** mode —
+  skipping Google's formal restricted-scope verification/security review that a
+  published app normally triggers for `gmail.metadata`.
+- Setup, concretely: one Pub/Sub topic, one subscription (push to Zuvy's existing
+  backend endpoint, or pull — push needs a public HTTPS endpoint, which already
+  exists), one daily renewal cron, application logic to classify by header, and a
+  **fallback poll** independent of push — Google's own docs concede notifications
+  "might be delayed or dropped," capped around 1/second per mailbox with excess
+  coalesced, so push alone isn't a complete solution on its own.
+- **The one real, unavoidable risk**: no Google documentation specifies the actual
+  sender/subject/body format of a Content ID claim notification email — it must be
+  reverse-engineered from real examples and treated as unstable; Google could reword
+  it without notice and silently break the classifier. Mitigate by logging every
+  candidate match's raw headers (not just alerting on ones that parse), so format
+  drift is caught quickly rather than silently.
+
+**Cost, researched against current pricing (2026-09-24) — bottom line: effectively
+$0/month at this org's volume.**
+
+- Gmail API itself has no per-call charge today; quota headroom (tens of millions of
+  units/day) is enormously larger than a single mailbox's traffic could ever use.
+  One real caveat: Google's own quota page states overage billing is "planned" to be
+  introduced later in 2026 with 90 days' notice — not priced yet, worth re-checking
+  before relying on this long-term, not a reason to avoid building it now.
+- Cloud Pub/Sub's Always Free tier is 10 GiB of message throughput/month; at a few
+  hundred emails/month (each a sub-1KB notification), this workload would need to be
+  roughly 3–4 orders of magnitude larger to leave the free tier.
+- A Google Cloud billing account with a payment method **must** be attached to use
+  Pub/Sub at all, even at $0 actual charge — a real, mandatory setup step, not a cost.
+- Routing the push straight to Zuvy's already-running backend (rather than a new
+  Cloud Function/Run service) avoids introducing any separate serverless cost
+  category entirely.
+
+**Status (2026-10-05): code built** — `src/services/gmail-monitor/` (migration `0046`,
+`GmailMonitorService`, `GmailMonitorController`), compiling clean, wired into `AppModule`'s
+`imports` only (not `providers` — learned from §9's duplicate-instance bug). Runs in
+audit-only mode as planned: every candidate email is logged to
+`zuvy_youtube_violation_emails` for human review, nothing is auto-actioned. **Not yet
+connected to real infrastructure** — `GMAIL_MONITOR_ENABLED="false"` everywhere until the
+Google Cloud side (Pub/Sub topic, billing account, push subscription, a fresh OAuth token
+scoped to `gmail.metadata`) is set up per
+[gmail-content-id-monitoring-setup.md](gmail-content-id-monitoring-setup.md). Until that's
+done this is inert code with zero effect on the running system.
