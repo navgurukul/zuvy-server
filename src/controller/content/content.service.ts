@@ -40,7 +40,6 @@ import {
   zuvyLearnerLeaderboard,
 } from '../../../drizzle/schema';
 
-import { error, log } from 'console';
 import {
   sql,
   eq,
@@ -105,7 +104,7 @@ export class ContentService {
   private s3: S3Client;
   private bucket: string;
   private region: string;
-  logger: any;
+  private readonly logger = new Logger(ContentService.name);
   constructor(
     private config: ConfigService,
     private sseService: SseService,
@@ -374,7 +373,7 @@ export class ContentService {
       if (deletedProject.length > 0) {
         await db
           .delete(zuvyProjectTracking)
-          .where(eq(zuvyProjectTracking.id, projectId));
+          .where(eq(zuvyProjectTracking.projectId, projectId));
         let data = await db
           .delete(zuvyCourseModules)
           .where(eq(zuvyCourseModules.id, moduleId))
@@ -705,8 +704,10 @@ export class ContentService {
       );
       return { modules, ...grantedPermission };
     } catch (err) {
-      console.error(err);
-      return [];
+      this.logger.error(
+        `Failed to get all modules for bootcamp ${bootcampId}: ${err.message}`,
+      );
+      throw err;
     }
   }
 
@@ -1285,7 +1286,7 @@ export class ContentService {
         return 'No Chapter found';
       }
     } catch (err) {
-      console.log(err);
+      Logger.log(err);
       throw err;
     }
   }
@@ -1762,7 +1763,7 @@ export class ContentService {
 
       return newAssessment;
     } catch (err) {
-      console.error({ err });
+      Logger.error({ err });
       throw err;
     }
   }
@@ -1910,6 +1911,10 @@ export class ContentService {
           description,
           ...OutsourseAssessmentData__
         } = assessmentBody;
+
+        mcqIds = mcqIds ?? [];
+        openEndedQuestionIds = openEndedQuestionIds ?? [];
+        codingProblemIds = codingProblemIds ?? [];
 
         let assessment_id = ModuleAssessment.id;
 
@@ -2242,37 +2247,34 @@ export class ContentService {
   }
 
   async deleteModule(moduleId: number, bootcampId: number): Promise<any> {
-    // 1. Find all chapters for this module
-    let chapterIds: number[] = [];
-    try {
-      const chapters = await db
-        .select({ id: zuvyModuleChapter.id })
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.moduleId, moduleId));
-      chapterIds = chapters.map((ch) => ch.id);
-    } catch (err) {
+    const moduleInfo = await db
+      .select({
+        id: zuvyCourseModules.id,
+        name: zuvyCourseModules.name,
+        order: zuvyCourseModules.order,
+      })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, moduleId))
+      .limit(1);
+
+    if (moduleInfo.length === 0) {
       return [
-        {
-          status: 'error',
-          message: `Failed to fetch chapters: ${err.message}`,
-          code: 500,
-        },
+        { status: 'error', message: 'Module not found', code: 404 },
         null,
       ];
     }
-    const zuvySessionIds = await db
-      .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId })
-      .from(zuvySessions)
-      .where(eq(zuvySessions.moduleId, moduleId));
-    if (zuvySessionIds.length > 0) {
-      const sessionIds = zuvySessionIds.map((r) => r.id);
-      const meetingIds = zuvySessionIds.map((s) => s.meetingId);
-      await db
-        .update(zuvySessions)
-        .set({ chapterId: null, moduleId: null })
-        .where(inArray(zuvySessions.id, sessionIds));
-    }
-    // 2. Cascade delete all related records for each chapter
+
+    let courseName = '';
+    try {
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      courseName = courseRes[0]?.name || '';
+    } catch (_) {}
+
+    // Cascade delete all related records for each chapter
     const cascadeChapterTables = [
       {
         table: zuvyOutsourseQuizzes,
@@ -2325,40 +2327,7 @@ export class ContentService {
         name: 'zuvyRecentBootcamp',
       },
     ];
-    for (const { table, column, name } of cascadeChapterTables) {
-      try {
-        if (chapterIds.length > 0) {
-          await db.delete(table).where(inArray(column, chapterIds));
-        }
-      } catch (err) {
-        return [
-          {
-            status: 'error',
-            message: `Failed to delete from ${name}: ${err.message}`,
-            code: 500,
-          },
-          null,
-        ];
-      }
-    }
-    // 3. Delete chapters
-    try {
-      if (chapterIds.length > 0) {
-        await db
-          .delete(zuvyModuleChapter)
-          .where(inArray(zuvyModuleChapter.id, chapterIds));
-      }
-    } catch (err) {
-      return [
-        {
-          status: 'error',
-          message: `Failed to delete chapters: ${err.message}`,
-          code: 500,
-        },
-        null,
-      ];
-    }
-    // 4. Cascade delete all related records for the module itself
+
     const cascadeModuleTables = [
       {
         table: zuvyOutsourseAssessments,
@@ -2381,59 +2350,74 @@ export class ContentService {
         name: 'zuvyModuleTracking',
       },
     ];
-    for (const { table, column, name } of cascadeModuleTables) {
-      try {
-        await db.delete(table).where(eq(column, moduleId));
-      } catch (err) {
-        return [
-          {
-            status: 'error',
-            message: `Failed to delete from ${name}: ${err.message}`,
-            code: 500,
-          },
-          null,
-        ];
-      }
-    }
-    // 5. Delete the module itself
-    let deletedModuleOrder = null;
-    let courseName = '';
+
     try {
-      const courseRes = await db
-        .select({ name: zuvyBootcamps.name })
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, bootcampId))
-        .limit(1);
-      courseName = courseRes[0]?.name || '';
-    } catch (_) {}
-    try {
-      const deleted = await db
-        .delete(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId))
-        .returning();
-      if (!deleted.length) {
-        return [
-          { status: 'error', message: 'Module not found', code: 404 },
-          null,
-        ];
-      }
-      deletedModuleOrder = deleted[0].order;
-      // Update order of remaining modules in the bootcamp
-      await db
-        .update(zuvyCourseModules)
-        .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
-        .where(
-          sql`${zuvyCourseModules.order} > ${deletedModuleOrder} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
-        );
+      await db.transaction(async (tx) => {
+        // 1. Find all chapters for this module
+        const chapters = await tx
+          .select({ id: zuvyModuleChapter.id })
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.moduleId, moduleId));
+        const chapterIds = chapters.map((ch) => ch.id);
+
+        const zuvySessionIds = await tx
+          .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId })
+          .from(zuvySessions)
+          .where(eq(zuvySessions.moduleId, moduleId));
+        if (zuvySessionIds.length > 0) {
+          const sessionIds = zuvySessionIds.map((r) => r.id);
+          await tx
+            .update(zuvySessions)
+            .set({ chapterId: null, moduleId: null })
+            .where(inArray(zuvySessions.id, sessionIds));
+        }
+
+        // 2. Cascade delete all related records for each chapter
+        if (chapterIds.length > 0) {
+          for (const { table, column } of cascadeChapterTables) {
+            await tx.delete(table).where(inArray(column, chapterIds));
+          }
+
+          // 3. Delete chapters
+          await tx
+            .delete(zuvyModuleChapter)
+            .where(inArray(zuvyModuleChapter.id, chapterIds));
+        }
+
+        // 4. Cascade delete all related records for the module itself
+        for (const { table, column } of cascadeModuleTables) {
+          await tx.delete(table).where(eq(column, moduleId));
+        }
+
+        // 5. Delete the module itself
+        const deleted = await tx
+          .delete(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, moduleId))
+          .returning();
+
+        if (!deleted.length) {
+          throw new Error('Module not found');
+        }
+
+        const deletedModuleOrder = deleted[0].order;
+        // Update order of remaining modules in the bootcamp
+        await tx
+          .update(zuvyCourseModules)
+          .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
+          .where(
+            sql`${zuvyCourseModules.order} > ${deletedModuleOrder} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+          );
+      });
+
       return {
         status: 'success',
         message: 'Module and all related data deleted successfully',
         code: 200,
-        moduleName: deleted[0].name,
+        moduleName: moduleInfo[0].name,
         courseName,
       };
     } catch (error) {
-      log(`error: ${error.message}`);
+      Logger.error(`Failed to delete module: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
@@ -2778,7 +2762,7 @@ export class ContentService {
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
-        console.error('Error fetching user permissions:', permissionError);
+        Logger.error('Error fetching user permissions:', permissionError);
         userPermissions = { error: 'Failed to fetch permissions' };
       }
 
@@ -3123,16 +3107,21 @@ export class ContentService {
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
+          const deletedIds = deletedQuestions.map((q) => q.id);
           return {
             status: 'success',
             code: 200,
-            message: `Quiz questions which is used in other places like chapters and assessment cannot be deleted`,
+            message: `Quiz questions deleted successfully. Questions in use cannot be deleted`,
+            deletedIds,
+            skippedIds: usedIds,
           };
         } else {
           return {
             status: 'error',
             code: 400,
-            message: `Questions cannot be deleted`,
+            message: `Questions cannot be deleted as they are currently in use`,
+            deletedIds: [],
+            skippedIds: usedIds,
           };
         }
       }
@@ -3146,16 +3135,21 @@ export class ContentService {
         )
         .returning();
       if (deletedQuestions.length > 0) {
+        const deletedIds = deletedQuestions.map((q) => q.id);
         return {
           status: 'success',
           code: 200,
           message: 'The quiz questions has been deleted successfully',
+          deletedIds,
+          skippedIds: [],
         };
       } else {
         return {
           status: 'error',
           code: 400,
           message: `Questions cannot be deleted`,
+          deletedIds: [],
+          skippedIds: [],
         };
       }
     } catch (err) {
@@ -3195,16 +3189,26 @@ export class ContentService {
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
+          const deletedIds = deletedQuestions.map((q) => q.id);
+          const deletedTitles = deletedQuestions.map(
+            (question) => question.title,
+          );
           return {
             status: 'success',
             code: 200,
-            message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
+            message: `Coding questions deleted successfully. Questions in use cannot be deleted`,
+            deletedIds,
+            skippedIds: usedIds,
+            questionTitle:
+              deletedTitles.length === 1 ? deletedTitles[0] : deletedTitles,
           };
         } else {
           return {
             status: 'error',
             code: 400,
-            message: `Questions cannot be deleted`,
+            message: `Questions cannot be deleted as they are currently in use`,
+            deletedIds: [],
+            skippedIds: usedIds,
           };
         }
       }
@@ -3218,6 +3222,7 @@ export class ContentService {
         )
         .returning();
       if (deletedQuestions.length > 0) {
+        const deletedIds = deletedQuestions.map((q) => q.id);
         const deletedTitles = deletedQuestions.map(
           (question) => question.title,
         );
@@ -3225,6 +3230,8 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'The coding question has been deleted successfully',
+          deletedIds,
+          skippedIds: [],
           questionTitle:
             deletedTitles.length === 1 ? deletedTitles[0] : deletedTitles,
         };
@@ -3233,6 +3240,8 @@ export class ContentService {
           status: 'error',
           code: 400,
           message: `Questions cannot be deleted`,
+          deletedIds: [],
+          skippedIds: [],
         };
       }
     } catch (err) {
@@ -3286,17 +3295,22 @@ export class ContentService {
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
+          const deletedIds = deletedQuestions.map((q) => q.id);
           return {
             status: 'success',
             code: 200,
-            message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+            message: `Open ended questions deleted successfully. Questions in use cannot be deleted`,
+            deletedIds,
+            skippedIds: usedIds,
             questionText,
           };
         } else {
           return {
             status: 'error',
             code: 400,
-            message: `Questions cannot be deleted`,
+            message: `Questions cannot be deleted as they are currently in use`,
+            deletedIds: [],
+            skippedIds: usedIds,
           };
         }
       }
@@ -3310,10 +3324,13 @@ export class ContentService {
         )
         .returning();
       if (deletedQuestions.length > 0) {
+        const deletedIds = deletedQuestions.map((q) => q.id);
         return {
           status: 'success',
           code: 200,
           message: 'The open ended question has been deleted successfully',
+          deletedIds,
+          skippedIds: [],
           questionText,
         };
       } else {
@@ -3321,6 +3338,8 @@ export class ContentService {
           status: 'error',
           code: 400,
           message: `Questions cannot be deleted`,
+          deletedIds: [],
+          skippedIds: [],
         };
       }
     } catch (err) {
@@ -3563,7 +3582,7 @@ export class ContentService {
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
-        console.error('Error fetching user permissions:', permissionError);
+        Logger.error('Error fetching user permissions:', permissionError);
         userPermissions = { error: 'Failed to fetch permissions' };
       }
 
@@ -3821,7 +3840,6 @@ export class ContentService {
     try {
       // Fetching the combined results with a join
       let questions;
-      assessmentSubmissionId = undefined;
       if (assessmentSubmissionId != undefined) {
         questions = await db
           .select({
@@ -3909,7 +3927,7 @@ export class ContentService {
 
       return questions;
     } catch (error) {
-      console.error('Error in getCodingQuestionsByDifficulty: ', error);
+      Logger.error('Error in getCodingQuestionsByDifficulty: ', error);
       throw error;
     }
   }
@@ -4033,7 +4051,7 @@ export class ContentService {
             sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`,
           );
       }
-      let assessmentSubmissionId;
+      const assessmentSubmissionId = submission?.[0]?.id;
       // Fetching all coding questions at once
       const [err, codingQuestions] =
         await this.getCodingQuestionsByAllDifficulties(
@@ -4175,7 +4193,7 @@ export class ContentService {
       }
       return quizzes;
     } catch (err) {
-      console.error('Error fetching quiz questions: ', err);
+      Logger.error('Error fetching quiz questions: ', err);
       return { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST };
     }
   }
@@ -4210,7 +4228,7 @@ export class ContentService {
 
       return [null, questionsByDifficulty];
     } catch (error) {
-      console.error('Error fetching questions by all difficulties: ', error);
+      Logger.error('Error fetching questions by all difficulties: ', error);
       return [error, {}];
     }
   }
@@ -4255,8 +4273,8 @@ export class ContentService {
       if (err) {
         Logger.error(JSON.stringify(err));
         return [
-          null,
           { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+          null,
         ];
       }
 
@@ -4301,8 +4319,8 @@ export class ContentService {
     } catch (err) {
       Logger.error(JSON.stringify(err));
       return [
-        null,
         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
       ];
     }
   }
@@ -4575,10 +4593,7 @@ export class ContentService {
 
       for (const formQuestion of editFormQuestions) {
         if (formQuestion.id) {
-          // Looked up from the already-fetched existingFormRecords instead of
-          // a redundant per-row SELECT. Kept as a (possibly empty) array,
-          // matching the previous .select() result shape/truthiness exactly.
-          const existingRecord = existingFormRecords.filter(
+          const existingRecord = existingFormRecords.find(
             (record) => record.id === formQuestion.id,
           );
 
