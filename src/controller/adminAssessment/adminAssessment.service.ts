@@ -2228,6 +2228,7 @@ Team Zuvy`;
       }
 
       const enrolledUserIds = enrollments.map((e) => Number(e.userId));
+      const studentIdMap = await getStudentIdsByUserId(enrolledUserIds);
 
       // 3. Fetch all assessments for this bootcamp ordered by 'order'
       const assessments = await db
@@ -2365,6 +2366,7 @@ Team Zuvy`;
             : null;
 
         return {
+          studentId: studentIdMap.get(String(userId)) ?? null,
           name: enrollment.name,
           email: enrollment.email,
           overAllAttendance: enrollment.attendance ?? null,
