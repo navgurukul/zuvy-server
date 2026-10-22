@@ -252,144 +252,7 @@ export class AuthService {
           .where(eq(users.id, user.id));
       }
 
-      // Get User Org
-      // Fetch user's organizations
-      const userOrgs = await db
-        .select({
-          orgId: zuvyOrganizations.id,
-          orgName: zuvyOrganizations.displayName,
-          pocEmail: zuvyOrganizations.pocEmail,
-        })
-        .from(zuvyUserRolesAssigned)
-        .innerJoin(
-          zuvyOrganizations,
-          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
-        )
-        .where(eq(zuvyUserRolesAssigned.userId, user.id));
-
-      let selectedOrg = null;
-      if (userOrgs.length > 0) {
-        // Default to first one or use logic to pick preferred
-        selectedOrg = userOrgs[0];
-      }
-
-      const orgId = selectedOrg?.orgId ?? null;
-
-      // Regular users with no organization membership always log in as a
-      // plain student, regardless of any stray global-scoped role
-      // assignment. Super admins are global by design (they have no
-      // orgId) and must keep their role.
-      let roles: string[];
-      if (orgId === null) {
-        const globalRoles = await this.getUserRoles(Number(user.id), null);
-        roles = globalRoles.includes('super_admin') ? globalRoles : ['student'];
-      } else {
-        roles = await this.getUserRoles(Number(user.id), orgId);
-      }
-
-      // Get formatted permissions
-      const permissions = await this.getFormattedPermissions(
-        Number(user.id),
-        orgId,
-        roles,
-      );
-
-      const jwtPayload = {
-        sub: user.id.toString(),
-        email: user.email,
-        googleUserId: user.googleUserId,
-        role: user.mode,
-        rolesList: roles,
-        permissions: permissions,
-        orgId: orgId,
-        orgName: selectedOrg?.orgName || null,
-        isPoc: selectedOrg?.pocEmail === user.email,
-      };
-
-      const access_token = this.jwtService.sign(jwtPayload, {
-        expiresIn: '24h',
-      });
-      const refresh_token = this.jwtService.sign(jwtPayload, {
-        expiresIn: '7d',
-      });
-
-      // Store tokens only for organization-scoped users. Student tokens are
-      // deliberately not persisted in zuvyUserOrganizations.
-      const setTokenData = {
-        accessToken: access_token,
-        refreshToken: refresh_token,
-      } as any;
-
-      const isStudentOnly =
-        roles.length > 0 && roles.every((role) => role === 'student');
-
-      const isSuperAdmin = roles.includes('super_admin');
-
-      // Store tokens only for non-student users
-      if (!isStudentOnly && (selectedOrg || isSuperAdmin)) {
-        await db
-          .insert(zuvyUserOrganizations)
-          .values({
-            userId: Number(user.id),
-            organizationId: orgId,
-            userEmail: user.email,
-            accessToken: access_token,
-            refreshToken: refresh_token,
-          } as any)
-          .onConflictDoUpdate({
-            target: [
-              zuvyUserOrganizations.userId,
-              zuvyUserOrganizations.organizationId,
-            ],
-            set: setTokenData,
-          });
-      } else if (!isStudentOnly && roles.length > 0) {
-        this.logger.warn(
-          `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
-            `but is not linked to any organization. Session token was not saved. ` +
-            `Please assign this user to a valid organization to allow proper login.`,
-        );
-      }
-
-      // Legacy userTokens table update removed/commented out as per requirement
-      /*
-      await db
-        .insert(userTokens)
-        .values({
-          userId: Number(user.id),
-          userEmail: user.email,
-          accessToken: access_token,
-          refreshToken: refresh_token,
-        })
-        .onConflictDoUpdate({
-          target: userTokens.userId,
-          set: {
-            accessToken: access_token,
-            refreshToken: refresh_token,
-          },
-        });
-      */
-
-      const showTooltip = await this.resolveTooltipFlag(user.id);
-
-      return {
-        access_token,
-        refresh_token,
-        showTooltip,
-        user: {
-          id: user.id.toString(),
-          email: user.email,
-          name: user.name,
-          profilePicture: user.profilePicture,
-          role: user.mode,
-          center: user.center,
-          rolesList: roles,
-          orgId: orgId,
-          orgName: selectedOrg?.orgName || null,
-          isPoc: selectedOrg?.pocEmail === user.email,
-          permissions: permissions,
-        },
-      };
+      return await this.issueLoginSession(user);
     } catch (error) {
       if (error.message.includes('Wrong recipient')) {
         throw new UnauthorizedException(
@@ -405,6 +268,155 @@ export class AuthService {
         );
       }
     }
+  }
+
+  /**
+   * Resolves the user's org, roles and permissions and issues the access and
+   * refresh tokens. Shared by Google login and Student ID login so both
+   * produce exactly the same session.
+   */
+  async issueLoginSession(user: typeof users.$inferSelect) {
+    // Get User Org
+    // Fetch user's organizations
+    const userOrgs = await db
+      .select({
+        orgId: zuvyOrganizations.id,
+        orgName: zuvyOrganizations.displayName,
+        pocEmail: zuvyOrganizations.pocEmail,
+      })
+      .from(zuvyUserRolesAssigned)
+      .innerJoin(
+        zuvyOrganizations,
+        eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
+      )
+      .where(eq(zuvyUserRolesAssigned.userId, user.id));
+
+    let selectedOrg = null;
+    if (userOrgs.length > 0) {
+      // Default to first one or use logic to pick preferred
+      selectedOrg = userOrgs[0];
+    }
+
+    const orgId = selectedOrg?.orgId ?? null;
+
+    // Regular users with no organization membership always log in as a
+    // plain student, regardless of any stray global-scoped role
+    // assignment. Super admins are global by design (they have no
+    // orgId) and must keep their role.
+    let roles: string[];
+    if (orgId === null) {
+      const globalRoles = await this.getUserRoles(Number(user.id), null);
+      roles = globalRoles.includes('super_admin') ? globalRoles : ['student'];
+    } else {
+      roles = await this.getUserRoles(Number(user.id), orgId);
+    }
+
+    // Get formatted permissions
+    const permissions = await this.getFormattedPermissions(
+      Number(user.id),
+      orgId,
+      roles,
+    );
+
+    // Email-less (Student ID) users must never match an org with no POC email.
+    const isPoc = !!user.email && selectedOrg?.pocEmail === user.email;
+
+    const jwtPayload = {
+      sub: user.id.toString(),
+      email: user.email,
+      googleUserId: user.googleUserId,
+      role: user.mode,
+      rolesList: roles,
+      permissions: permissions,
+      orgId: orgId,
+      orgName: selectedOrg?.orgName || null,
+      isPoc,
+    };
+
+    const access_token = this.jwtService.sign(jwtPayload, {
+      expiresIn: '24h',
+    });
+    const refresh_token = this.jwtService.sign(jwtPayload, {
+      expiresIn: '7d',
+    });
+
+    // Store tokens only for organization-scoped users. Student tokens are
+    // deliberately not persisted in zuvyUserOrganizations.
+    const setTokenData = {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    } as any;
+
+    const isStudentOnly =
+      roles.length > 0 && roles.every((role) => role === 'student');
+
+    const isSuperAdmin = roles.includes('super_admin');
+
+    // Store tokens only for non-student users
+    if (!isStudentOnly && (selectedOrg || isSuperAdmin)) {
+      await db
+        .insert(zuvyUserOrganizations)
+        .values({
+          userId: Number(user.id),
+          organizationId: orgId,
+          userEmail: user.email,
+          accessToken: access_token,
+          refreshToken: refresh_token,
+        } as any)
+        .onConflictDoUpdate({
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setTokenData,
+        });
+    } else if (!isStudentOnly && roles.length > 0) {
+      this.logger.warn(
+        `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
+          `but is not linked to any organization. Session token was not saved. ` +
+          `Please assign this user to a valid organization to allow proper login.`,
+      );
+    }
+
+    // Legacy userTokens table update removed/commented out as per requirement
+    /*
+    await db
+      .insert(userTokens)
+      .values({
+        userId: Number(user.id),
+        userEmail: user.email,
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      })
+      .onConflictDoUpdate({
+        target: userTokens.userId,
+        set: {
+          accessToken: access_token,
+          refreshToken: refresh_token,
+        },
+      });
+    */
+
+    const showTooltip = await this.resolveTooltipFlag(user.id);
+
+    return {
+      access_token,
+      refresh_token,
+      showTooltip,
+      user: {
+        id: user.id.toString(),
+        email: user.email,
+        name: user.name,
+        profilePicture: user.profilePicture,
+        role: user.mode,
+        center: user.center,
+        rolesList: roles,
+        orgId: orgId,
+        orgName: selectedOrg?.orgName || null,
+        isPoc,
+        permissions: permissions,
+      },
+    };
   }
 
   async logout(userId: bigint, token: string) {
@@ -679,7 +691,7 @@ export class AuthService {
         permissions: permissions,
         orgId: orgId,
         orgName: orgName,
-        isPoc: pocEmail === user.email,
+        isPoc: !!user.email && pocEmail === user.email,
       };
 
       const newAccessToken = this.jwtService.sign(newPayload, {
@@ -802,6 +814,8 @@ export class AuthService {
       roles,
     );
 
+    const isPoc = !!user.email && org?.pocEmail === user.email;
+
     const payload = {
       sub: user.id.toString(),
       email: user.email,
@@ -811,7 +825,7 @@ export class AuthService {
       permissions: permissions,
       orgId: targetOrgId,
       orgName: org?.displayName,
-      isPoc: org?.pocEmail === user.email,
+      isPoc,
     };
 
     const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
@@ -851,7 +865,7 @@ export class AuthService {
         rolesList: roles,
         orgId: targetOrgId,
         orgName: org?.displayName,
-        isPoc: org?.pocEmail === user.email,
+        isPoc,
         permissions: permissions,
       },
     };
