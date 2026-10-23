@@ -1573,6 +1573,8 @@ Team Zuvy`;
           id: true,
           title: true,
           description: true,
+          topicId: true,
+          videoDurationSeconds: true,
         },
         with: {
           courseModulesData: {
@@ -1805,6 +1807,11 @@ Team Zuvy`;
           description: chapterDetails.description,
           totalStudentsCount,
           totalSubmittedStudents,
+          totalwatchedtime:
+            chapterDetails.topicId === 1
+              ? totalSubmittedStudents *
+                (chapterDetails.videoDurationSeconds ?? 0)
+              : 0,
         },
         totalRows,
         totalPages,

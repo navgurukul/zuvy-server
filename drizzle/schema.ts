@@ -2934,6 +2934,8 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
     withTimezone: true,
     mode: 'string',
   }),
+  // Video length in seconds; only applicable to video chapters (topicId 1).
+  videoDurationSeconds: integer('video_duration_seconds'),
   order: integer('order'),
   // Admin-set manual lock for this chapter, independent of Module/Chapter Lock.
   isLock: boolean('is_lock').default(false),
