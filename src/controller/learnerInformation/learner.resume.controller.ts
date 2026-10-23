@@ -5,6 +5,7 @@ import {
   Get,
   Post,
   Req,
+  Logger,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @SkipOrgCheck()
 @Controller('resume')
 export class LearnerResumeController {
+  private readonly logger = new Logger(LearnerResumeController.name);
   constructor(private readonly learnerResumeService: LearnerResumeService) {}
 
   @Post('parse')
@@ -67,7 +69,12 @@ export class LearnerResumeController {
   async parseResume(
     @Req() req,
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<{ success: boolean; data: ResumeResponseDto; resumeUrl: string }> {
+  ): Promise<{
+    success: boolean;
+    data: ResumeResponseDto;
+    resumeUrl: string;
+    resumeSaved: boolean;
+  }> {
     if (!file) {
       throw new BadRequestException('Resume file is required (PDF or DOCX)');
     }
@@ -77,6 +84,7 @@ export class LearnerResumeController {
     const parseResult = await this.learnerResumeService.parseResume(file);
 
     let resumeUrl = '';
+    let resumeSaved = true;
     try {
       const uploadResult = await this.learnerResumeService.uploadResumeAndSave(
         file,
@@ -84,11 +92,14 @@ export class LearnerResumeController {
         parseResult.data.projects || [],
       );
       resumeUrl = uploadResult.resumeUrl;
-    } catch {}
-
+    } catch (error) {
+      this.logger.error('Failed to save learner resume', error);
+      resumeSaved = false;
+    }
     return {
       ...parseResult,
       resumeUrl,
+      resumeSaved,
     };
   }
 
