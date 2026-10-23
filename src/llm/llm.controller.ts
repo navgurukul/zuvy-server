@@ -1,24 +1,34 @@
 import {
   Controller,
-  Get,
   Post,
   Body,
-  Patch,
-  Param,
-  Delete,
+  UseGuards,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { LlmService } from './llm.service';
-import { GenerateResponseDto } from './dto/generate-response.dto';
 
-@ApiTags('llm')
 @Controller('llm')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 export class LlmController {
   constructor(private readonly llmService: LlmService) {}
 
   @Post()
-  generateResponse(@Body() generateResponseDto: GenerateResponseDto) {
-    return this.llmService.generate(generateResponseDto);
+  async generateResponse(@Body('prompt') prompt: string) {
+    if (!prompt?.trim()) {
+      throw new HttpException('Prompt is required', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      return await this.llmService.generateCompletion(prompt);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to generate response',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

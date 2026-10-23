@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,14 +15,18 @@ import {
   ApiResponse,
   ApiBody,
   ApiParam,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { QuestionsByLlmService } from './questions-by-llm.service';
 import { CreateQuestionsByLlmDto } from './dto/create-questions-by-llm.dto';
 import { UpdateQuestionsByLlmDto } from './dto/update-questions-by-llm.dto';
 import { QuestionEvaluationService } from './question-evaluation.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @ApiTags('questions-by-llm')
 @Controller('questions-by-llm/evaluation')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 export class QuestionsEvaluationController {
   constructor(
     private readonly questionsByLlmService: QuestionsByLlmService,
