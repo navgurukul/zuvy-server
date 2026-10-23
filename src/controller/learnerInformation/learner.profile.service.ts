@@ -252,7 +252,7 @@ export class LearnerProfileService {
     };
   }
 
-  // ─── DELETE API: Delete Profile by User ID ─────────────────────
+  // ─── DELETE API: Delete Profile by User ID ─────────────────────//
 
   async deleteProfile(userId: number) {
     await this.ensureCompleteProfileTableReady();
