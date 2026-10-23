@@ -38,10 +38,12 @@ import {
   zuvyOrganizations,
   zuvyTrackingLogs,
   zuvyLearnersCompleteProfile,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -1197,7 +1199,8 @@ export class BootcampService {
       var a = 0,
         b = 0,
         c = 0,
-        d = 0;
+        d = 0,
+        e = 0;
       let enrollments = [];
       let bootcampData = await db
         .select()
@@ -1253,23 +1256,26 @@ export class BootcampService {
       }
 
       if (users_data.length == 1) {
-        let userData = await db
-          .select()
-          .from(users)
-          .where(sql`${users.email} = ${users_data[0].email}`);
+        const resolved = await this.findStudentForEnrollment(users_data[0]);
+        if (resolved.error) {
+          return [
+            { status: 'error', message: resolved.error, code: 400 },
+            null,
+          ];
+        }
+        let userData = resolved.user ? [resolved.user] : [];
         if (userData.length >= 1) {
           // Update name if different
-          if (userData[0].name !== users_data[0].name) {
+          if (users_data[0].name && userData[0].name !== users_data[0].name) {
             await db
               .update(users)
               // .set({ name: users_data[0].name })
               .set({
-                name: users_data[0]['name']
-                  ? users_data[0]['name'].charAt(0).toUpperCase() +
-                    users_data[0]['name'].slice(1)
-                  : users_data[0]['name'],
+                name:
+                  users_data[0]['name'].charAt(0).toUpperCase() +
+                  users_data[0]['name'].slice(1),
               })
-              .where(sql`${users.email} = ${users_data[0].email}`);
+              .where(eq(users.id, userData[0].id));
           }
         }
         if (userData.length >= 1 && batchId) {
@@ -1326,24 +1332,33 @@ export class BootcampService {
           : users_data[i]['name'];
 
         let enroling;
-        let userInfo = await db
-          .select()
-          .from(users)
-          .where(sql`${users.email} = ${users_data[i]['email']}`);
+        const resolved = await this.findStudentForEnrollment(users_data[i]);
+        if (resolved.error) {
+          e += 1;
+          userReport.push({
+            email: users_data[i]['email'] ?? null,
+            studentId: users_data[i]['studentId'] ?? null,
+            message: resolved.error,
+          });
+          continue;
+        }
+        let userInfo = resolved.user ? [resolved.user] : [];
+        const studentId = resolved.studentId;
         if (userInfo.length > 0) {
           // Update name if different
-          if (userInfo[0].name !== users_data[i]['name']) {
+          if (
+            users_data[i]['name'] &&
+            userInfo[0].name !== users_data[i]['name']
+          ) {
             await db
               .update(users)
               // .set({ name: users_data[i]['name'] })
               .set({
-                name: users_data[i]['name']
-                  ? users_data[i]['name'].charAt(0).toUpperCase() +
-                    users_data[i]['name'].slice(1)
-                  : users_data[i]['name'],
+                name:
+                  users_data[i]['name'].charAt(0).toUpperCase() +
+                  users_data[i]['name'].slice(1),
               })
-
-              .where(sql`${users.email} = ${users_data[i]['email']}`);
+              .where(eq(users.id, userInfo[0].id));
           }
         }
         if (userInfo.length === 0) {
@@ -1362,6 +1377,7 @@ export class BootcampService {
           }
           userReport.push({
             email: userInfo[0].email,
+            studentId,
             message: `enrolled successfully`,
           });
           enrollments.push(enroling);
@@ -1397,6 +1413,7 @@ export class BootcampService {
               a += 1;
               userReport.push({
                 email: userInfo[0].email,
+                studentId,
                 message: `The student has been assigned to ${batch[0].name}`,
               });
               continue;
@@ -1410,12 +1427,14 @@ export class BootcampService {
             d += 1;
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `The student has been already assigned to ${batch[0].name}`,
             });
           } else if (userEnrolled.length > 0 && isNaN(batchId)) {
             b += 1;
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `The students have been already enrolled!!!`,
             });
           } else if (userEnrolled.length == 0) {
@@ -1433,6 +1452,7 @@ export class BootcampService {
             }
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `enrolled successfully`,
             });
             enrollments.push(enroling);
@@ -1473,6 +1493,10 @@ export class BootcampService {
         );
       }
 
+      if (e > 0) {
+        messageParts.push(`${e} students could not be enrolled`);
+      }
+
       let message = messageParts.join(' & ');
       const targetePermission = [
         ResourceList.student.read,
@@ -1502,6 +1526,101 @@ export class BootcampService {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
+  }
+
+  /**
+   * Finds the existing account for an enrolment row. A row may carry an
+   * email, a Student ID, or both:
+   * - email only: matched by email (user is null if it doesn't exist yet,
+   *   so the caller creates one, as before).
+   * - Student ID only: matched by Student ID; it must exist, since a
+   *   Student ID account can't be created without a password.
+   * - both: each is looked up, and they must not point at two different
+   *   accounts, so the same student never ends up with two records. If
+   *   the email is new and the Student ID account has no email yet, the
+   *   email is saved on that account (so it is found by email from then
+   *   on, and gets class invites). Its current session ends, because the
+   *   JWT middleware matches tokens on email; Student ID login still works.
+   */
+  private async findStudentForEnrollment(student: {
+    email?: string;
+    studentId?: string;
+  }): Promise<{
+    user: typeof users.$inferSelect | null;
+    studentId: string | null;
+    error?: string;
+  }> {
+    const email = student.email?.trim() || null;
+    const studentId = student.studentId?.trim() || null;
+    if (!email && !studentId) {
+      return {
+        user: null,
+        studentId: null,
+        error: 'Either email or studentId is required',
+      };
+    }
+
+    const [byEmail] = email
+      ? await db.select().from(users).where(eq(users.email, email)).limit(1)
+      : [];
+
+    let byStudentId: typeof users.$inferSelect | undefined;
+    if (studentId) {
+      [byStudentId] = (
+        await db
+          .select({ user: users })
+          .from(zuvyStudentCredentials)
+          .innerJoin(users, eq(users.id, zuvyStudentCredentials.userId))
+          .where(eq(zuvyStudentCredentials.studentId, studentId))
+          .limit(1)
+      ).map((r) => r.user);
+      if (!byStudentId) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} not found`,
+        };
+      }
+    }
+
+    if (byEmail && byStudentId && byEmail.id !== byStudentId.id) {
+      return {
+        user: null,
+        studentId: null,
+        error: `Email ${email} and Student ID ${studentId} belong to different students`,
+      };
+    }
+
+    if (email && !byEmail && byStudentId) {
+      if (byStudentId.email) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} is registered with a different email`,
+        };
+      }
+      const [updated] = await db
+        .update(users)
+        .set({ email })
+        .where(and(eq(users.id, byStudentId.id), isNull(users.email)))
+        .returning();
+      // Null only if another request set an email in the meantime.
+      if (!updated) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} is registered with a different email`,
+        };
+      }
+      return { user: updated, studentId };
+    }
+
+    const user = byEmail ?? byStudentId ?? null;
+    if (!user) return { user: null, studentId: null };
+    if (studentId) return { user, studentId };
+    // Matched by email: report its Student ID too, if it has one.
+    const ids = await getStudentIdsByUserId([user.id]);
+    return { user, studentId: ids.get(String(user.id)) ?? null };
   }
 
   async BootcampOrBatchEnrollments(
@@ -1581,7 +1700,7 @@ export class BootcampService {
           : undefined;
       const searchFilter =
         searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== ''
-          ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`
+          ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${zuvyStudentCredentials.studentId}) LIKE ${searchTerm.toLowerCase()} || '%')`
           : undefined;
       const enrolledDateFilter = enrolledDate
         ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}`
@@ -1679,6 +1798,10 @@ export class BootcampService {
           zuvyLearnersCompleteProfile,
           eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
         )
+        .leftJoin(
+          zuvyStudentCredentials,
+          eq(zuvyBatchEnrollments.userId, zuvyStudentCredentials.userId),
+        )
         .where(whereClause);
       const totalNumberOfStudents = countResult[0]?.count ?? 0;
 
@@ -1687,6 +1810,7 @@ export class BootcampService {
           userId: users.id,
           name: users.name,
           email: users.email,
+          studentId: zuvyStudentCredentials.studentId,
           profilePicture: users.profilePicture,
           bootcampId: zuvyBatchEnrollments.bootcampId,
           attendance: zuvyBatchEnrollments.attendance,
@@ -1713,6 +1837,11 @@ export class BootcampService {
         .leftJoin(
           zuvyLearnersCompleteProfile,
           eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
+        // user_id is unique on credentials, so this can't multiply rows either.
+        .leftJoin(
+          zuvyStudentCredentials,
+          eq(zuvyBatchEnrollments.userId, zuvyStudentCredentials.userId),
         )
         .leftJoin(
           zuvyBootcampTracking,
@@ -1789,6 +1918,7 @@ export class BootcampService {
           return {
             ...item,
             userId: Number(item.userId),
+            studentId: item.studentId ?? null,
             attendance: liveAttendance,
             batchName: item.batchId != null ? item.batchName : 'unassigned',
             progress: item.progress != null ? item.progress : 0,

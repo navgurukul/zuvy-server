@@ -404,7 +404,7 @@ export class BootcampController {
       const bootcampName = result?.bootcampName || '';
       const suffix = bootcampName ? ` in the bootcamp ${bootcampName}` : '';
       if (Array.isArray(enrolled) && enrolled.length === 1) {
-        return `${enrolled[0].email || 'student'}${suffix}`;
+        return `${enrolled[0].email || enrolled[0].studentId || 'student'}${suffix}`;
       }
       if (Array.isArray(enrolled) && enrolled.length > 1) {
         return `${enrolled.length} students${suffix}`;
@@ -457,7 +457,7 @@ export class BootcampController {
     name: 'searchTerm',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by name, email or Student ID',
   })
   @ApiQuery({
     name: 'enrolledDate',
