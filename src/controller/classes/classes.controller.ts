@@ -90,10 +90,11 @@ export class ClassesController {
   @Public()
   @Get('/redirect')
   @ApiOperation({ summary: 'Google authentication redirect' })
-  async googleAuthRedirectOld(@Req() request) {
+  async googleAuthRedirectOld(@Req() request, @Res() response) {
     return this.classesService.googleAuthenticationRedirect(
       request,
-      request.user,
+      response,
+      // request.user,
     );
   }
 
@@ -779,9 +780,14 @@ export class ClassesController {
       .where(eq(zuvyBootcamps.id, bootcampId))
       .limit(1);
     const bootcampName = courseRes[0]?.name || '';
-
-    this.classesService.migrateCompletedAttendancesByBootcamp(bootcampId);
-
+    this.classesService
+      .migrateCompletedAttendancesByBootcamp(bootcampId)
+      .catch((error) => {
+        console.error(
+          `Attendance migration failed for bootcampId ${bootcampId}:`,
+          error,
+        );
+      });
     return {
       statusCode: 200,
       message: `Attendance migration started for bootcampId: ${bootcampId}. This process will run in the background.`,

@@ -1388,7 +1388,13 @@ export class LearnerResumeService {
           ContentType: file.mimetype,
         }),
       );
-      return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+      const encodedKey = key
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+
+      // return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+      return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${encodedKey}`;
     } catch (err) {
       throw new InternalServerErrorException('Error uploading resume to S3');
     }
@@ -1469,7 +1475,9 @@ export class LearnerResumeService {
     for await (const chunk of response.Body as any) {
       chunks.push(Buffer.from(chunk) as Uint8Array);
     }
-    const buffer = Buffer.from(chunks.flatMap((chunk) => Array.from(chunk)));
+    // const buffer = Buffer.from(chunks.flatMap((chunk) => Array.from(chunk)));
+
+    const buffer = Buffer.concat(chunks);
 
     const mimetype = originalFilename?.toLowerCase().endsWith('.docx')
       ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -1493,7 +1501,11 @@ export class LearnerResumeService {
   private extractS3KeyFromUrl(url: string): string {
     const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
     if (url.startsWith(bucketPrefix)) {
-      return decodeURIComponent(url.slice(bucketPrefix.length));
+      try {
+        return decodeURIComponent(url.slice(bucketPrefix.length));
+      } catch (error) {
+        throw new BadRequestException('Invalid S3 resume URL');
+      }
     }
     throw new BadRequestException('Invalid S3 resume URL');
   }
