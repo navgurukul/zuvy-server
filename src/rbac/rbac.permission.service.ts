@@ -223,6 +223,11 @@ export class RbacPermissionService {
     }
   }
 
+  /** Roles the user holds in the given org (plus any global roles). */
+  async getUserRolesInOrg(userId: number, orgId: number): Promise<string[]> {
+    return this.authService.getUserRoles(Number(userId), orgId);
+  }
+
   async getUserPermissions(
     userId: number,
     orgId: number | null,

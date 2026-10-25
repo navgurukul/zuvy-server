@@ -5,6 +5,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
@@ -499,28 +500,45 @@ export class OrgService {
     return org;
   }
 
-  async getOrgByUserId(userId: number, searchTerm?: string) {
-    try {
-      const globalRoles = await this.authService.getUserRoles(
-        Number(userId),
-        null,
+  async getOrgByUserId(
+    userId: number,
+    searchTerm?: string,
+    requester?: { id: number | string; roles?: string[] },
+  ) {
+    const globalRoles = await this.authService.getUserRoles(
+      Number(userId),
+      null,
+    );
+    const isSuperAdmin = globalRoles.includes('super_admin');
+
+    // A user's org memberships (and their role in each) are private: only the
+    // user themselves or a super admin may list them.
+    if (
+      requester &&
+      Number(requester.id) !== Number(userId) &&
+      !(requester.roles ?? []).includes('super_admin')
+    ) {
+      throw new ForbiddenException(
+        "You are not allowed to view another user's organizations",
       );
-      const isSuperAdmin = globalRoles.includes('super_admin');
+    }
+
+    try {
+      const searchLike = searchTerm ? `%${searchTerm}%` : null;
+      const matchesSearch = (org: { title: string; orgName: string }) =>
+        !searchTerm ||
+        [org.title, org.orgName].some((v) =>
+          v?.toLowerCase().includes(searchTerm.toLowerCase()),
+        );
+
+      // Role(s) the user holds in each org they belong to.
+      const memberships =
+        await this.authService.getUserOrganizationsWithRoles(userId);
+      const rolesByOrg = new Map(memberships.map((m) => [m.orgId, m.roles]));
 
       let orgs;
-
       if (isSuperAdmin) {
-        let adminWhereClause: any = undefined;
-
-        if (searchTerm) {
-          const searchLike = `%${searchTerm}%`;
-          adminWhereClause = or(
-            ilike(zuvyOrganizations.title, searchLike),
-            ilike(zuvyOrganizations.displayName, searchLike),
-          );
-        }
-
-        orgs = await db
+        const allOrgs = await db
           .select({
             id: zuvyOrganizations.id,
             title: zuvyOrganizations.title,
@@ -530,38 +548,44 @@ export class OrgService {
             joinedAt: zuvyOrganizations.createdAt,
           })
           .from(zuvyOrganizations)
-          .where(adminWhereClause)
+          .where(
+            searchLike
+              ? or(
+                  ilike(zuvyOrganizations.title, searchLike),
+                  ilike(zuvyOrganizations.displayName, searchLike),
+                )
+              : undefined,
+          )
           .orderBy(asc(zuvyOrganizations.title));
+
+        orgs = allOrgs.map((org) => ({
+          ...org,
+          roles: [
+            ...new Set([...(rolesByOrg.get(org.id) ?? []), 'super_admin']),
+          ],
+        }));
       } else {
-        let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
-
-        if (searchTerm) {
-          const searchLike = `%${searchTerm}%`;
-          whereClause = and(
-            whereClause,
-            or(
-              ilike(zuvyOrganizations.title, searchLike),
-              ilike(zuvyOrganizations.displayName, searchLike),
-            ),
-          );
-        }
-
-        orgs = await db
+        const joinedAtRows = await db
           .select({
-            id: zuvyOrganizations.id,
-            title: zuvyOrganizations.title,
-            code: zuvyOrganizations.displayName,
-            logoUrl: zuvyOrganizations.logoUrl,
-            isVerified: zuvyOrganizations.isVerified,
-            joinedAt: zuvyUserRolesAssigned.createdAt,
+            orgId: zuvyUserRolesAssigned.organizationId,
+            joinedAt: sql<string>`min(${zuvyUserRolesAssigned.createdAt})`,
           })
           .from(zuvyUserRolesAssigned)
-          .innerJoin(
-            zuvyOrganizations,
-            eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
-          )
-          .where(whereClause)
-          .orderBy(asc(zuvyOrganizations.title));
+          .where(eq(zuvyUserRolesAssigned.userId, BigInt(userId)))
+          .groupBy(zuvyUserRolesAssigned.organizationId);
+        const joinedAtByOrg = new Map(
+          joinedAtRows.map((r) => [Number(r.orgId), r.joinedAt]),
+        );
+
+        orgs = memberships.filter(matchesSearch).map((m) => ({
+          id: m.orgId,
+          title: m.title,
+          code: m.orgName,
+          logoUrl: m.logoUrl,
+          isVerified: m.isVerified,
+          joinedAt: joinedAtByOrg.get(m.orgId) ?? null,
+          roles: m.roles,
+        }));
       }
 
       return {

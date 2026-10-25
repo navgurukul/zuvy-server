@@ -41,15 +41,35 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
-    const userRoles = Array.isArray(user.roles) ? user.roles : [];
-    const roleSet = new Set<string>(userRoles);
+    let userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
 
     // Super Admin bypass
-    if (roleSet.has('super_admin')) {
+    if (userRoles.includes('super_admin')) {
       return true;
     }
 
     const requestOrgId = await this.resolveRequestOrgId(request);
+
+    // The token's roles belong to the user's active org. A user can hold a
+    // different role in every org, so when the request targets another org
+    // evaluate it with the roles held in *that* org — never let a role from
+    // one org grant (or relax checks on) access in another.
+    if (requestOrgId && Number(user.orgId) !== requestOrgId) {
+      userRoles = await this.rbacPermissionService.getUserRolesInOrg(
+        user.id,
+        requestOrgId,
+      );
+      user.roles = userRoles;
+      if (user.roleInfo) {
+        user.roleInfo = {
+          roles: userRoles,
+          isAdmin: userRoles.includes('admin'),
+          isInstructor: userRoles.includes('instructor'),
+          hasRole: (role: string) => userRoles.includes(role),
+        };
+      }
+    }
+    const roleSet = new Set<string>(userRoles);
     const bootcampId = this.extractBootcampId(request);
     const batchIds = this.extractBatchIds(request);
 

@@ -61,10 +61,30 @@ export class AuthController {
             },
           },
         },
+        organizations: {
+          type: 'array',
+          description:
+            'Every organization the user belongs to, with their role(s) in each. Use with POST /org/switch-org to change the active organization.',
+          items: {
+            type: 'object',
+            properties: {
+              orgId: { type: 'number' },
+              orgName: { type: 'string' },
+              title: { type: 'string' },
+              logoUrl: { type: 'string', nullable: true },
+              isVerified: { type: 'boolean' },
+              roles: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
       },
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'User is not a member of the requested orgId',
+  })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }

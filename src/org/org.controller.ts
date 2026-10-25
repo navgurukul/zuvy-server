@@ -130,7 +130,10 @@ export class OrgController {
 
   // create a endpoint  to get org by user id
   @Get('/getOrgByUserId/:userId')
-  @ApiOperation({ summary: 'Get organization by user ID' })
+  @ApiOperation({
+    summary:
+      "Get a user's organizations with their role in each (self or super admin only)",
+  })
   @ApiResponse({
     status: 200,
     description: 'The organization has been successfully retrieved.',
@@ -141,10 +144,12 @@ export class OrgController {
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
   @ApiBearerAuth('JWT-auth')
   async getOrgByUserId(
+    @Request() req,
     @Param('userId') userId: number,
     @Query('searchTerm') searchTerm?: string,
   ) {
-    return await this.orgService.getOrgByUserId(userId, searchTerm);
+    const requester = Array.isArray(req.user) ? req.user[0] : req.user;
+    return await this.orgService.getOrgByUserId(userId, searchTerm, requester);
   }
 
   @Patch('/complete-setup/:id')

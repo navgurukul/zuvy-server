@@ -1273,7 +1273,14 @@ export class UsersService {
           .from(users)
           .leftJoin(
             zuvyUserRolesAssigned,
-            eq(users.id, zuvyUserRolesAssigned.userId),
+            // A user holds a separate role per org; report the one for the
+            // org being edited rather than an arbitrary org's role.
+            updateUserDto.orgId
+              ? and(
+                  eq(users.id, zuvyUserRolesAssigned.userId),
+                  eq(zuvyUserRolesAssigned.organizationId, updateUserDto.orgId),
+                )
+              : eq(users.id, zuvyUserRolesAssigned.userId),
           )
           .leftJoin(
             zuvyUserRoles,

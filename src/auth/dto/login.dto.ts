@@ -1,5 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class LoginDto {
   @ApiProperty({
@@ -17,4 +25,15 @@ export class LoginDto {
   @IsString()
   @IsNotEmpty()
   googleIdToken: string;
-} 
+
+  @ApiPropertyOptional({
+    description:
+      'Organization to log into. Must be one the user belongs to. When omitted, the first organization (by name) is selected.',
+    example: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  orgId?: number;
+}

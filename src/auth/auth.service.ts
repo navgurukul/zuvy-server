@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
@@ -15,7 +20,7 @@ import {
   zuvyPermissionsRoles,
   zuvyUserFeatureFlags,
 } from '../../drizzle/schema';
-import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
+import { eq, inArray, and, isNull, or, isNotNull, asc } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -106,6 +111,53 @@ export class AuthService {
       this.logger.error('Error fetching user roles:', error);
       return ['student'];
     }
+  }
+
+  /**
+   * Lists every organization the user belongs to together with the role(s)
+   * they hold in each one. A user can hold a different role in every org,
+   * so roles are always reported per org and never merged across orgs.
+   */
+  async getUserOrganizationsWithRoles(userId: number | bigint): Promise<
+    {
+      orgId: number;
+      orgName: string;
+      title: string;
+      logoUrl: string | null;
+      isVerified: boolean;
+      roles: string[];
+    }[]
+  > {
+    const rows = await db
+      .select({
+        orgId: zuvyOrganizations.id,
+        orgName: zuvyOrganizations.displayName,
+        title: zuvyOrganizations.title,
+        logoUrl: zuvyOrganizations.logoUrl,
+        isVerified: zuvyOrganizations.isVerified,
+        roleName: zuvyUserRoles.name,
+      })
+      .from(zuvyUserRolesAssigned)
+      .innerJoin(
+        zuvyOrganizations,
+        eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
+      )
+      .innerJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+      )
+      .where(eq(zuvyUserRolesAssigned.userId, BigInt(userId)))
+      .orderBy(asc(zuvyOrganizations.title), asc(zuvyOrganizations.id));
+
+    const byOrg = new Map<number, any>();
+    for (const { roleName, ...org } of rows) {
+      if (!byOrg.has(org.orgId)) {
+        byOrg.set(org.orgId, { ...org, roles: [] });
+      }
+      const roles = byOrg.get(org.orgId).roles;
+      if (!roles.includes(roleName)) roles.push(roleName);
+    }
+    return [...byOrg.values()];
   }
 
   async getFormattedPermissions(
@@ -252,8 +304,11 @@ export class AuthService {
           .where(eq(users.id, user.id));
       }
 
-      return await this.issueLoginSession(user);
+      return await this.issueLoginSession(user, loginDto.orgId);
     } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       if (error.message.includes('Wrong recipient')) {
         throw new UnauthorizedException(
           'Invalid Google client ID configuration',
@@ -275,29 +330,36 @@ export class AuthService {
    * refresh tokens. Shared by Google login and Student ID login so both
    * produce exactly the same session.
    */
-  async issueLoginSession(user: typeof users.$inferSelect) {
-    // Get User Org
-    // Fetch user's organizations
-    const userOrgs = await db
-      .select({
-        orgId: zuvyOrganizations.id,
-        orgName: zuvyOrganizations.displayName,
-        pocEmail: zuvyOrganizations.pocEmail,
-      })
-      .from(zuvyUserRolesAssigned)
-      .innerJoin(
-        zuvyOrganizations,
-        eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
-      )
-      .where(eq(zuvyUserRolesAssigned.userId, user.id));
+  async issueLoginSession(
+    user: typeof users.$inferSelect,
+    preferredOrgId?: number,
+  ) {
+    const organizations = await this.getUserOrganizationsWithRoles(user.id);
 
-    let selectedOrg = null;
-    if (userOrgs.length > 0) {
-      // Default to first one or use logic to pick preferred
-      selectedOrg = userOrgs[0];
+    // A user may belong to several orgs with a different role in each. Log
+    // into the org the client asked for (only if the user belongs to it),
+    // otherwise fall back to the first org by name.
+    let selectedOrg = organizations[0] ?? null;
+    if (preferredOrgId) {
+      selectedOrg = organizations.find(
+        (org) => org.orgId === Number(preferredOrgId),
+      );
+      if (!selectedOrg) {
+        throw new ForbiddenException(
+          'User is not a member of the requested organization',
+        );
+      }
     }
 
     const orgId = selectedOrg?.orgId ?? null;
+    let pocEmail: string | null = null;
+    if (orgId !== null) {
+      const [org] = await db
+        .select({ pocEmail: zuvyOrganizations.pocEmail })
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.id, orgId));
+      pocEmail = org?.pocEmail ?? null;
+    }
 
     // Regular users with no organization membership always log in as a
     // plain student, regardless of any stray global-scoped role
@@ -319,7 +381,7 @@ export class AuthService {
     );
 
     // Email-less (Student ID) users must never match an org with no POC email.
-    const isPoc = !!user.email && selectedOrg?.pocEmail === user.email;
+    const isPoc = !!user.email && pocEmail === user.email;
 
     const jwtPayload = {
       sub: user.id.toString(),
@@ -416,6 +478,7 @@ export class AuthService {
         isPoc,
         permissions: permissions,
       },
+      organizations,
     };
   }
 
@@ -868,6 +931,7 @@ export class AuthService {
         isPoc,
         permissions: permissions,
       },
+      organizations: await this.getUserOrganizationsWithRoles(userId),
     };
   }
 
