@@ -3,11 +3,12 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import {
   generateMcqPromptFromSpec,
-  parseExerciseTypes,
+  parseCoveragePlan,
   parseVerifierVerdict,
-  planExerciseTypesPrompt,
+  planCoveragePrompt,
   verifyMcqAnswerPrompt,
 } from 'src/ai-assessment/system_prompts/system_prompts';
+import type { CoverageCell } from 'src/ai-assessment/system_prompts/system_prompts';
 import {
   GenerationRefusedError,
   parseLlmMcq,
@@ -20,6 +21,7 @@ import { QuestionsService } from './questions.service';
 import { shuffleMcqOptionOrder } from './mcq-option-shuffle.util';
 import {
   describeQuestionText,
+  findConceptRepeats,
   findDuplicateQuestions,
   findTemplateRepeats,
   isSemanticDuplicate,
@@ -134,9 +136,113 @@ const MAX_GENERATION_ROUNDS = Math.max(
   Number(process.env.MAX_GENERATION_ROUNDS ?? 5) || 5,
 );
 
+/**
+ * How many spare questions a round asks for, over what it needs to keep.
+ *
+ * Set from the losses actually seen. A fifty-question request came back at 47
+ * to 49 across several runs before the fairness checks existed, and those
+ * checks only remove more, so a fifth again of the round is the margin that
+ * covers an ordinary round's drops without a second one. The floor matters
+ * most on a top-up of one or two, where a ratio alone rounds to nothing and
+ * leaves the round with no cover at all.
+ *
+ * The cost is real and bounded: the spare questions are generated in the same
+ * call, and only the ones that survive far enough to be verified cost a
+ * verifier call. That is cheaper than the extra round it saves.
+ */
+const GENERATION_MARGIN_RATIO = Math.max(
+  0,
+  Number(process.env.GENERATION_MARGIN_RATIO ?? 0.2) || 0.2,
+);
+const GENERATION_MARGIN_MIN = Math.max(
+  0,
+  Number(process.env.GENERATION_MARGIN_MIN ?? 2) || 2,
+);
+
+/**
+ * Longest coverage plan to ask for in one call.
+ *
+ * A plan covers the whole request, so a 200-question request would otherwise
+ * ask for 200 cells in a single reply. Past this the list stops being a plan
+ * and starts being padding, and the slices wrap instead.
+ */
+const PLAN_CELLS_MAX = 60;
+
+/**
+ * This batch's share of a plan covering the whole request.
+ *
+ * Contiguous rather than interleaved: a model asked to enumerate a subject
+ * works outward from its fundamentals, so neighbouring cells are related and
+ * distant ones are not. Giving each batch a contiguous run therefore puts the
+ * batches in genuinely different parts of the topic, which is the point.
+ *
+ * Wraps when the plan is shorter than the request. A narrow topic honestly
+ * has fewer cells than a large request has questions, and repeating a cell
+ * with everything else still in force beats dropping the plan entirely.
+ */
+export function sliceCoverage(
+  cells: CoverageCell[],
+  batchIndex: number,
+  batchCount: number,
+  size: number,
+): CoverageCell[] {
+  if (!cells.length || size <= 0) return [];
+
+  const per = Math.max(1, Math.ceil(cells.length / Math.max(1, batchCount)));
+  const start = batchIndex * per;
+
+  const out: CoverageCell[] = [];
+  for (let i = 0; i < size; i++) {
+    out.push(cells[(start + i) % cells.length]);
+  }
+  return out;
+}
+
 type DifficultyCounts = { easy: number; medium: number; hard: number };
 
 const DIFFICULTIES: Array<keyof DifficultyCounts> = ['easy', 'medium', 'hard'];
+
+/**
+ * Spreads a margin across a difficulty mix, largest share first.
+ *
+ * The spare questions have to be spread the way the batch is, or the surplus
+ * covers drops in one difficulty and not the others: a mix of 5 easy and 1
+ * hard given all its margin as easy still ends a hard question short the
+ * moment the hard one is dropped.
+ */
+function inflateCounts(
+  counts: DifficultyCounts,
+  margin: number,
+): DifficultyCounts {
+  const total = DIFFICULTIES.reduce((sum, d) => sum + counts[d], 0);
+  if (total <= 0 || margin <= 0) return { ...counts };
+
+  const inflated = { ...counts };
+  let left = margin;
+
+  // Proportional share first, then the remainder to the largest groups, so a
+  // margin smaller than the number of difficulties still lands somewhere.
+  for (const difficulty of DIFFICULTIES) {
+    if (left <= 0) break;
+    if (counts[difficulty] <= 0) continue;
+    const share = Math.min(
+      left,
+      Math.floor((counts[difficulty] / total) * margin),
+    );
+    inflated[difficulty] += share;
+    left -= share;
+  }
+
+  const bySize = [...DIFFICULTIES]
+    .filter((d) => counts[d] > 0)
+    .sort((a, b) => counts[b] - counts[a]);
+  for (let i = 0; left > 0 && bySize.length; i++) {
+    inflated[bySize[i % bySize.length]] += 1;
+    left -= 1;
+  }
+
+  return inflated;
+}
 
 /** Null when no difficulty split was requested, so callers can skip the checks. */
 function normalizeDifficultyCounts(
@@ -417,40 +523,63 @@ export class QuestionsProcessor extends WorkerHost {
    * already said what to cover, and skipped when planning fails: a plan is an
    * improvement on generating blind, not a precondition for it.
    */
-  private async planExerciseTypes(
+  /**
+   * Plans what each question in this batch will cover, before any is written.
+   *
+   * Two things changed here, both from the same finding. A reviewer reported
+   * that duplication fell sharply when the context fields were filled in by
+   * hand - the fields were doing the planning - and that it returned as soon
+   * as a topic name was all the service had. An instructor cannot be asked to
+   * write a long brief every time, so the service plans for itself.
+   *
+   * Each planned cell is a pair: the sub-concept the question tests and the
+   * exercise it asks for. Planning only the exercise, which is what this used
+   * to do, leaves the subject matter free to repeat, and a batch then covers
+   * one corner of a topic in seven different ways with every check passing.
+   *
+   * Sub-concepts named in the request are used as the first column. Naming
+   * them used to switch planning off altogether, so the richest input produced
+   * the least structure.
+   *
+   * The plan covers the whole request and this job takes its own slice, so the
+   * five jobs of a fifty-question request work on different parts of the topic
+   * instead of each planning the same ten cells.
+   */
+  private async planCoverage(
     job: Job<GenerateTopicBatchJobPayload, void, string>,
     topicName: string,
     topicDescription: string,
     existingTexts: string[],
     count: number,
-  ): Promise<string[]> {
-    if (Array.isArray(job.data.subtopics) && job.data.subtopics.length) {
-      return [];
-    }
+  ): Promise<CoverageCell[]> {
+    const batchCount = Math.max(1, Number(job.data.batchCount ?? 1) || 1);
+    const batchIndex = Math.min(
+      batchCount - 1,
+      Math.max(0, Number(job.data.batchIndex ?? 0) || 0),
+    );
+    const totalCount = Math.max(
+      count,
+      Number(job.data.totalCount ?? 0) || count,
+    );
 
-    const prompt = planExerciseTypesPrompt({
+    // Capped so a very large request does not ask for a plan longer than the
+    // model will hold together; the slice wraps when the plan runs short.
+    const planSize = Math.min(totalCount, PLAN_CELLS_MAX);
+
+    const prompt = planCoveragePrompt({
       topic: topicName,
       topicDescription,
-      count,
+      subtopics: job.data.subtopics,
+      learningObjectives: job.data.learningObjectives,
       targetAudience: job.data.targetAudience,
+      count: planSize,
       existingQuestions: existingTexts,
     });
 
+    let cells: CoverageCell[] = [];
     try {
       const response = await this.llmService.generateCompletion(prompt);
-      const types = parseExerciseTypes(response?.text);
-      if (types.length) {
-        this.logger.log(
-          `Job ${job.id}: planned ${types.length} kind(s) of exercise for topic ` +
-            `"${topicName}": ${types.join('; ')}`,
-        );
-      } else {
-        this.logger.warn(
-          `Job ${job.id}: could not read a coverage plan for topic "${topicName}"; ` +
-            `generating without one.`,
-        );
-      }
-      return types;
+      cells = parseCoveragePlan(response?.text);
     } catch (err) {
       this.logger.warn(
         `Job ${job.id}: coverage planning failed for topic "${topicName}", ` +
@@ -459,6 +588,22 @@ export class QuestionsProcessor extends WorkerHost {
       );
       return [];
     }
+
+    if (!cells.length) {
+      this.logger.warn(
+        `Job ${job.id}: could not read a coverage plan for topic "${topicName}"; ` +
+          `generating without one.`,
+      );
+      return [];
+    }
+
+    const slice = sliceCoverage(cells, batchIndex, batchCount, count);
+    this.logger.log(
+      `Job ${job.id}: planned ${cells.length} cell(s) for topic "${topicName}" ` +
+        `across ${batchCount} batch(es); batch ${batchIndex + 1} takes ` +
+        `${slice.length}: ${slice.map((c) => `${c.subtopic}/${c.exercise}`).join('; ')}`,
+    );
+    return slice;
   }
 
   private async solveIndependently(
@@ -527,6 +672,54 @@ export class QuestionsProcessor extends WorkerHost {
       }
 
       const keyed = Number(q.correctOption);
+
+      // Whether the question is answerable at all, asked before whether the
+      // stored answer is right.
+      //
+      // Both of these are invisible to the answer check, because in both the
+      // keyed option can be one a reasonable person would choose. They are
+      // still broken questions: the first has no single answer to key, and the
+      // second marks a student wrong for picking an option that is correct.
+      //
+      // Confirmed by a second solve before acting. One reviewer calling a
+      // question unfair is a claim, not a finding, and dropping on it alone
+      // would cost sound questions in a batch that already struggles to reach
+      // its count. Only a defect two independent solves agree on is acted on,
+      // and the second call is paid for only when the first one complains.
+      const illPosed =
+        verdict.answerIsForced === false
+          ? 'no-unique-answer'
+          : verdict.correctOptionCount !== null &&
+              verdict.correctOptionCount > 1
+            ? 'multiple-correct-options'
+            : null;
+
+      if (illPosed) {
+        const confirm = TIEBREAK_ON_DISAGREEMENT
+          ? await this.solveIndependently(prompt, index, jobId)
+          : null;
+
+        const agrees =
+          illPosed === 'no-unique-answer'
+            ? confirm?.answerIsForced === false
+            : (confirm?.correctOptionCount ?? 0) > 1;
+
+        if (confirm && agrees) {
+          rejected.add(index);
+          this.logger.warn(
+            `[generation-rejected] job=${jobId} question=${index + 1} reason=${illPosed} ` +
+              `keyed=${keyed} correctOptions=${verdict.correctOptionCount ?? '?'} ` +
+              `verifierAnswer=${JSON.stringify(verdict.computedAnswer)} ` +
+              `question=${JSON.stringify(String(q.question ?? '').slice(0, 120))}`,
+          );
+          return;
+        }
+
+        this.logger.log(
+          `Job ${jobId}: question ${index + 1} was called ${illPosed} by one check and ` +
+            `kept, because a second solve did not agree.`,
+        );
+      }
 
       if (verdict.correctOption !== keyed) {
         // Two sources disagree and neither is reliable enough to decide alone,
@@ -675,6 +868,12 @@ export class QuestionsProcessor extends WorkerHost {
     candidates: Array<{ q: Record<string, any>; index: number }>,
     orgId: number | undefined,
     jobId: string | number | undefined,
+    /**
+     * Filled in with the vector used for each candidate, so the concept check
+     * can group the batch without embedding it a second time. Left empty when
+     * embedding fails, which is what tells the caller to skip that check.
+     */
+    vectorsOut?: number[][],
   ): Promise<Map<number, string>> {
     const found = new Map<number, string>();
     if (!candidates.length) return found;
@@ -684,6 +883,7 @@ export class QuestionsProcessor extends WorkerHost {
       vectors = await this.embeddingsService.embedMany(
         candidates.map(({ q }) => String(q.question ?? '')),
       );
+      if (vectorsOut) vectors.forEach((v, i) => (vectorsOut[i] = v));
     } catch (err) {
       this.logger.warn(
         `Job ${jobId}: could not embed generated questions, skipping the ` +
@@ -914,11 +1114,35 @@ export class QuestionsProcessor extends WorkerHost {
      */
     relaxPreferences: boolean,
     avoidExercises: ExerciseLike[],
-    /** Kinds of exercise planned for this batch; empty when planning was skipped. */
-    exerciseTypes: string[],
+    /**
+     * One planned cell per question in this batch - the sub-concept it tests
+     * and the exercise it asks for. Empty when planning failed.
+     */
+    coverage: CoverageCell[],
   ): Promise<Array<Record<string, any>>> {
     const { topicName, topicDescription, orgId } = ctx;
     const avoidTexts = avoidExercises.map((e) => e.question);
+
+    // Ask for more than the round needs, and let the surplus absorb the
+    // round's own losses.
+    //
+    // Every quality check here removes questions, so a round that asks for
+    // exactly what it needs can only come back short, and the shortfall costs
+    // another full round: another generation call, another set of verifier
+    // calls, and one of the few rounds available. Five rounds of that still
+    // ended at 47 to 49 of 50 often enough for a tester to file it twice.
+    //
+    // The surplus is cheaper than the round it replaces, and it is the reason
+    // the stricter checks added alongside it do not make the count worse. What
+    // is not needed is trimmed at the end rather than at the start - trimming
+    // first, which is what used to happen, threw away the very questions that
+    // would have covered the drops.
+    const margin = Math.max(
+      GENERATION_MARGIN_MIN,
+      Math.ceil(need * GENERATION_MARGIN_RATIO),
+    );
+    const ask = need + margin;
+    const askCounts = needCounts ? inflateCounts(needCounts, margin) : null;
 
     const prompt = generateMcqPromptFromSpec(
       {
@@ -926,9 +1150,13 @@ export class QuestionsProcessor extends WorkerHost {
         topic: topicName,
         topicName,
         topicDescription,
-        count: need,
-        batchQuestionCounts: needCounts ?? undefined,
-        exerciseTypes: exerciseTypes.length ? exerciseTypes : undefined,
+        count: ask,
+        batchQuestionCounts: askCounts ?? undefined,
+        // Wrapped to the number this round asks for, which is larger than
+        // the count because of the margin, and smaller on a top-up.
+        coverage: coverage.length
+          ? sliceCoverage(coverage, 0, 1, ask)
+          : undefined,
       },
       avoidTexts.slice(0, MAX_EXISTING_TEXTS),
     );
@@ -980,18 +1208,21 @@ export class QuestionsProcessor extends WorkerHost {
     // Selection is by difficulty rather than by position, so trimming an
     // over-long batch cannot quietly change the easy/medium/hard mix that was
     // asked for.
-    const selected = selectToCounts(evaluations, need, needCounts);
+    const selected = selectToCounts(evaluations, ask, askCounts);
 
     if (selected.length !== evaluations.length) {
       this.logger.log(
         `Job ${job.id}: model returned ${evaluations.length} question(s) for a request of ` +
-          `${need}; keeping ${selected.length} that fit the requested difficulty mix.`,
+          `${ask}; keeping ${selected.length} that fit the requested difficulty mix.`,
       );
     }
 
     const dropped = new Map<number, string>();
 
-    findDuplicateQuestions(selected, avoidTexts).forEach((d) => {
+    // Given the whole records, not just their text: the exercise fingerprint
+    // compares numbers in against answer out, so it needs the options and the
+    // keyed answer that a bare question string does not carry.
+    findDuplicateQuestions(selected, avoidExercises).forEach((d) => {
       dropped.set(
         d.index,
         `duplicate (similarity ${d.similarity.toFixed(2)}): ${d.reason}`,
@@ -1011,6 +1242,11 @@ export class QuestionsProcessor extends WorkerHost {
     // so enforcing variety to the end guarantees a short batch on exactly the
     // topics where the count is hardest to reach. Every earlier round pushes
     // for variety; the last one takes what it can get.
+    //
+    // Only this preference gives way. The exact-duplicate check above is not a
+    // preference and is never relaxed: needing to fill a batch is a reason to
+    // accept a third question of a kind, never a reason to accept the same
+    // question twice.
     const templateRepeats = relaxPreferences
       ? []
       : findTemplateRepeats(selected, avoidExercises);
@@ -1031,14 +1267,54 @@ export class QuestionsProcessor extends WorkerHost {
     // Against the whole bank, not just the questions shown to the model.
     // Runs before verification so a repeat is dropped without paying for a
     // second opinion on it.
+    const remaining = survivors();
+    const vectors: number[][] = [];
     const bankDuplicates = await this.findBankDuplicates(
-      survivors(),
+      remaining,
       orgId,
       job.id,
+      vectors,
     );
     bankDuplicates.forEach((reason, index) => {
       dropped.set(index, `duplicate in bank: ${reason}`);
     });
+
+    // One concept must not take over a batch.
+    //
+    // The variety check above groups by wording with the numbers removed, so
+    // it sees one exercise restated over different data and nothing else. A
+    // concept asked six different ways escapes it completely: two questions
+    // can test exactly the same skill and share almost no words. That is what
+    // a reviewer found in a fifty-question batch, and every wording check had
+    // passed it.
+    //
+    // Grouping by meaning is the only way to see that, and it is also what
+    // makes this check work on every subject rather than on numeric ones: it
+    // reads no numbers and knows nothing about the topic.
+    //
+    // Reuses the vectors the bank check just embedded, so it costs nothing
+    // extra, and is skipped when embedding failed or when this is the last
+    // round - it is a preference, like the wording check, and preferences give
+    // way to the count.
+    if (!relaxPreferences && vectors.length) {
+      const conceptItems = remaining
+        .map(({ q, index }, cursor) => ({
+          question: String(q.question ?? ''),
+          vector: vectors[cursor] ?? [],
+          index,
+        }))
+        .filter((item) => !dropped.has(item.index));
+
+      findConceptRepeats(conceptItems).forEach((c) => {
+        const index = conceptItems[c.index]?.index;
+        if (index === undefined) return;
+        dropped.set(index, `concept repeat: ${c.reason}`);
+        this.logger.warn(
+          `[generation-rejected] job=${job.id} question=${index + 1} reason=concept-repeat ` +
+            `similarity=${c.similarity.toFixed(2)} detail=${JSON.stringify(c.reason)}`,
+        );
+      });
+    }
 
     if (VERIFY_GENERATED_ANSWERS) {
       // Returns original indices within this round, so the log lines and this
@@ -1060,7 +1336,15 @@ export class QuestionsProcessor extends WorkerHost {
       );
     }
 
-    return selected.filter((_, index) => !dropped.has(index));
+    // Trimmed back to what the round actually needed, now that the checks have
+    // had their say. Selecting by difficulty rather than by position keeps the
+    // easy/medium/hard mix the caller asked for, so the surplus cannot quietly
+    // skew it.
+    return selectToCounts(
+      selected.filter((_, index) => !dropped.has(index)),
+      need,
+      needCounts,
+    );
   }
 
   private async handleGenerateTopicBatch(
@@ -1169,7 +1453,7 @@ export class QuestionsProcessor extends WorkerHost {
       // Planned once for the job, not per round: the point is a batch that
       // covers different ground, and a fresh plan each round would keep
       // proposing the same first few kinds.
-      const exerciseTypes = await this.planExerciseTypes(
+      const coverage = await this.planCoverage(
         job,
         topicName,
         topicDescription,
@@ -1229,7 +1513,7 @@ export class QuestionsProcessor extends WorkerHost {
           needCounts,
           lastRound,
           avoidExercises,
-          exerciseTypes,
+          coverage,
         );
 
         roundAccepted.forEach((q) => {
