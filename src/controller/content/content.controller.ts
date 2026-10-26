@@ -265,6 +265,7 @@ export class ContentController {
       chapterData.moduleId,
       chapterData.topicId,
       chapterData.bootcampId,
+      chapterData.videoDurationSeconds,
     );
   }
 
