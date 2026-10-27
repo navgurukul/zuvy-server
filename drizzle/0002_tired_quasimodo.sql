@@ -945,3 +945,30 @@ SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> LOWER(LEFT(name, 1));
+
+
+
+
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_name = 'zuvy_ai_assessment';
+
+
+
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_name IN ('ai_assessment', 'zuvy_ai_assessment')
+ORDER BY table_schema, table_name;
+
+
+
+
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_name IN (
+  'ai_assessment_question_sets',
+  'zuvy_ai_assessment_question_sets',
+  'ai_assessment_questions',
+  'zuvy_ai_assessment_questions'
+)
+ORDER BY table_schema, table_name;
