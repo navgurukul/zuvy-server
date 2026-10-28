@@ -39,7 +39,8 @@ import {
 /**
  * Student ID + password login for learners without an email address.
  * Sign-up and login return exactly the same session as Google login
- * (access_token, refresh_token, showTooltip, user) plus the studentId;
+ * (access_token, refresh_token, sessionId, showTooltip, user) plus the
+ * studentId and school;
  * /auth/refresh and /auth/logout work unchanged.
  */
 @ApiTags('Student ID Authentication')
@@ -59,23 +60,32 @@ export class StudentAuthController {
   @UseGuards(ThrottlerGuard)
   @SkipThrottle({ [LOGIN_PER_15_MINUTES]: true })
   @ApiOperation({
-    summary: 'Sign up without email (name + password + captcha)',
+    summary:
+      'Sign up without email (name + password + state, city, school + captcha)',
     description:
-      'Creates the student and returns a generated Student ID plus the same tokens as Google login. Show the Student ID to the student prominently: it is their login.',
+      'Creates the student and returns a generated Student ID plus the same tokens as Google login. State, city and udiseCode come from the GET /schools dropdowns. Show the Student ID to the student prominently: it is their login.',
   })
   @ApiResponse({ status: 201, description: 'Account created and signed in' })
-  @ApiResponse({ status: 400, description: 'Invalid input or captcha failed' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid input, school not found / not in that state and city, or captcha failed',
+  })
   @ApiResponse({
     status: 429,
     description: 'Too many sign-ups from this network (per-IP ceiling)',
   })
   async signup(@Req() req, @Body() dto: StudentSignupDto) {
-    return this.studentAuthService.signup(
-      dto.name,
-      dto.password,
-      dto.captchaToken,
-      req.ip,
-    );
+    return this.studentAuthService.signup({
+      name: dto.name,
+      password: dto.password,
+      state: dto.state,
+      city: dto.city,
+      udiseCode: dto.udiseCode,
+      captchaToken: dto.captchaToken,
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
   }
 
   @Public()
@@ -91,8 +101,11 @@ export class StudentAuthController {
     description:
       'Account locked for 15 minutes after 5 wrong passwords, or too many logins from this network',
   })
-  async login(@Body() dto: StudentLoginDto) {
-    return this.studentAuthService.login(dto.studentId, dto.password);
+  async login(@Req() req, @Body() dto: StudentLoginDto) {
+    return this.studentAuthService.login(dto.studentId, dto.password, {
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
   }
 
   @Post('admin/reset-password')

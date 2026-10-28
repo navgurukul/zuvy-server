@@ -10,8 +10,14 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import {
+  UDISE_CODE_PATTERN,
+  normalizeUdiseCode,
+} from 'src/schools/school-rows';
 
 const trim = ({ value }) => (typeof value === 'string' ? value.trim() : value);
+const toUdiseCode = ({ value }) =>
+  typeof value === 'string' ? normalizeUdiseCode(value) : value;
 // Student IDs are stored lowercase (e.g. aruneshdharct1); accept any case.
 const toStudentId = ({ value }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -37,6 +43,39 @@ export class StudentSignupDto {
   @IsString()
   @Length(6, 64)
   password: string;
+
+  @ApiProperty({
+    description: 'State, from GET /schools/states (any letter case)',
+    example: 'Telangana',
+  })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 100)
+  state: string;
+
+  @ApiProperty({
+    description:
+      'City (UDISE district), from GET /schools/cities (any letter case)',
+    example: 'Hyderabad',
+  })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 100)
+  city: string;
+
+  @ApiProperty({
+    description:
+      'UDISE code of the school picked from GET /schools (11 characters, normally digits). The school name is taken from our school list.',
+    example: '36070700101',
+  })
+  @Transform(toUdiseCode)
+  @IsString()
+  @Matches(UDISE_CODE_PATTERN, {
+    message: 'udiseCode must be the 11-character UDISE code of the school',
+  })
+  udiseCode: string;
 
   @ApiPropertyOptional({
     description:
