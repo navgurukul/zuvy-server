@@ -119,6 +119,20 @@ export class SchoolsService {
     };
   }
 
+  /**
+   * The list's spelling of a state and city (any letter case), or null when
+   * that state has no such city. Used when a student types in a school
+   * that is not listed: the state and city must still come from the list.
+   */
+  async findPlace(state: string, city: string) {
+    const places = await this.placeIndex();
+    const stateName = places.stateNames.get(placeKey(state));
+    const cityName = places.cityNames.get(
+      `${placeKey(state)}|${placeKey(city)}`,
+    );
+    return stateName && cityName ? { state: stateName, city: cityName } : null;
+  }
+
   /** The active school with this UDISE code, or null. */
   async findActiveByUdise(udiseCode: string) {
     const [school] = await db
