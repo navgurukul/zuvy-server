@@ -13,7 +13,11 @@ import {
 } from './student-auth.service';
 
 describe('StudentAuthService (credential helpers)', () => {
-  const service = new StudentAuthService({} as any, {} as any) as any;
+  const service = new StudentAuthService(
+    {} as any,
+    {} as any,
+    {} as any,
+  ) as any;
 
   it('hashes and verifies passwords with scrypt', async () => {
     const hash = await service.hashPassword('riya@2026');
@@ -100,9 +104,20 @@ describe('Student ID from the name', () => {
   });
 });
 
+const SCHOOL = {
+  state: 'Telangana',
+  city: 'Hyderabad',
+  schoolName: 'ZPHS MADHAPUR',
+  udiseCode: '36070700101',
+};
+
 describe('StudentAuthService Student ID allocation', () => {
   const mockDb = db as any;
-  const service = new StudentAuthService({} as any, {} as any) as any;
+  const service = new StudentAuthService(
+    {} as any,
+    {} as any,
+    {} as any,
+  ) as any;
 
   // insert(counters).values().onConflictDoUpdate().returning() hands out the
   // next number; insert(credentials).values() stores the account.
@@ -138,7 +153,7 @@ describe('StudentAuthService Student ID allocation', () => {
   it('gives the first student with a name number 1', async () => {
     const { counterValues, credentialValues } = setup([1], ['ok']);
     await expect(
-      service.insertCredentialWithUniqueId(1n, 'Arunesh Dhar', 'hash'),
+      service.insertCredentialWithUniqueId(1n, 'Arunesh Dhar', 'hash', SCHOOL),
     ).resolves.toBe('aruneshdharct1');
     expect(counterValues).toHaveBeenCalledWith({
       base: 'aruneshdhar',
@@ -148,20 +163,24 @@ describe('StudentAuthService Student ID allocation', () => {
       userId: 1n,
       studentId: 'aruneshdharct1',
       passwordHash: 'hash',
+      state: 'Telangana',
+      city: 'Hyderabad',
+      schoolName: 'ZPHS MADHAPUR',
+      udiseCode: '36070700101',
     });
   });
 
   it('gives the next same-name student the next number', async () => {
     setup([2], ['ok']);
     await expect(
-      service.insertCredentialWithUniqueId(2n, 'Arunesh Dhar', 'hash'),
+      service.insertCredentialWithUniqueId(2n, 'Arunesh Dhar', 'hash', SCHOOL),
     ).resolves.toBe('aruneshdharct2');
   });
 
   it('uses only the first name when there is no last name', async () => {
     const { counterValues } = setup([1], ['ok']);
     await expect(
-      service.insertCredentialWithUniqueId(3n, 'Arunesh', 'hash'),
+      service.insertCredentialWithUniqueId(3n, 'Arunesh', 'hash', SCHOOL),
     ).resolves.toBe('aruneshct1');
     expect(counterValues).toHaveBeenCalledWith({
       base: 'arunesh',
@@ -172,14 +191,14 @@ describe('StudentAuthService Student ID allocation', () => {
   it('builds the ID for a Hindi name from its English spelling', async () => {
     setup([3], ['ok']);
     await expect(
-      service.insertCredentialWithUniqueId(4n, 'रवि', 'hash'),
+      service.insertCredentialWithUniqueId(4n, 'रवि', 'hash', SCHOOL),
     ).resolves.toBe('ravict3');
   });
 
   it('takes the next number if the ID already exists (safety net)', async () => {
     const { credentialValues } = setup([5, 6], ['duplicate', 'ok']);
     await expect(
-      service.insertCredentialWithUniqueId(5n, 'Arunesh Dhar', 'hash'),
+      service.insertCredentialWithUniqueId(5n, 'Arunesh Dhar', 'hash', SCHOOL),
     ).resolves.toBe('aruneshdharct6');
     expect(credentialValues).toHaveBeenCalledTimes(2);
   });
@@ -187,7 +206,7 @@ describe('StudentAuthService Student ID allocation', () => {
   it('does not retry on other database errors', async () => {
     const { credentialValues } = setup([1], [new Error('db down')]);
     await expect(
-      service.insertCredentialWithUniqueId(6n, 'Arunesh Dhar', 'hash'),
+      service.insertCredentialWithUniqueId(6n, 'Arunesh Dhar', 'hash', SCHOOL),
     ).rejects.toThrow('db down');
     expect(credentialValues).toHaveBeenCalledTimes(1);
   });
@@ -223,7 +242,11 @@ describe('StudentAuthService.assertCanEnroll', () => {
 
   it('lets a super admin enrol into any course', async () => {
     const auth = rolesFor(['super_admin'], []);
-    const service = new StudentAuthService(auth as any, {} as any) as any;
+    const service = new StudentAuthService(
+      auth as any,
+      {} as any,
+      {} as any,
+    ) as any;
     await expect(
       service.assertCanEnroll({ userId: 1, orgId: null }, 99),
     ).resolves.toBeUndefined();
@@ -231,7 +254,11 @@ describe('StudentAuthService.assertCanEnroll', () => {
 
   it('lets an org admin enrol into their own organisation', async () => {
     const auth = rolesFor(['student'], ['admin']);
-    const service = new StudentAuthService(auth as any, {} as any) as any;
+    const service = new StudentAuthService(
+      auth as any,
+      {} as any,
+      {} as any,
+    ) as any;
     await expect(
       service.assertCanEnroll({ userId: 2, orgId: 7 }, 7),
     ).resolves.toBeUndefined();
@@ -242,6 +269,7 @@ describe('StudentAuthService.assertCanEnroll', () => {
     const admin = new StudentAuthService(
       rolesFor(['student'], ['admin']) as any,
       {} as any,
+      {} as any,
     ) as any;
     await expect(
       admin.assertCanEnroll({ userId: 2, orgId: 7 }, 8),
@@ -250,9 +278,113 @@ describe('StudentAuthService.assertCanEnroll', () => {
     const instructor = new StudentAuthService(
       rolesFor(['student'], ['instructor']) as any,
       {} as any,
+      {} as any,
     ) as any;
     await expect(
       instructor.assertCanEnroll({ userId: 3, orgId: 7 }, 7),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('StudentAuthService sign-up school check', () => {
+  const mockDb = db as any;
+  const listed = {
+    id: 1,
+    udiseCode: '36070700101',
+    schoolName: 'ZPHS MADHAPUR',
+    state: 'Telangana',
+    district: 'Hyderabad',
+    isActive: true,
+  };
+  const build = (school: any = listed) => {
+    const auth = {
+      issueLoginSession: jest.fn().mockResolvedValue({
+        access_token: 'a',
+        refresh_token: 'r',
+        sessionId: 's-1',
+      }),
+    };
+    const captcha = { verify: jest.fn().mockResolvedValue(undefined) };
+    const schools = { findActiveByUdise: jest.fn().mockResolvedValue(school) };
+    const service = new StudentAuthService(
+      auth as any,
+      captcha as any,
+      schools as any,
+    ) as any;
+    return { service, auth, captcha, schools };
+  };
+  const input = {
+    name: 'Riya Sharma',
+    password: 'riya@2026',
+    state: 'telangana',
+    city: ' Hyderabad ',
+    udiseCode: '36070700101',
+    captchaToken: 'token',
+    ip: '203.0.113.10',
+    userAgent: 'test-agent',
+  };
+
+  it('accepts the state and city in any case and saves the listed spelling', async () => {
+    const { service } = build();
+    await expect(
+      service.resolveSchool('telangana', 'hyderabad', '36070700101'),
+    ).resolves.toEqual(SCHOOL);
+  });
+
+  it('refuses a school that is not in the list', async () => {
+    const { service } = build(null);
+    await expect(
+      service.resolveSchool('Telangana', 'Hyderabad', '99999999999'),
+    ).rejects.toThrow('School not found');
+  });
+
+  it('refuses a school from another city or state', async () => {
+    const { service } = build();
+    await expect(
+      service.resolveSchool('Telangana', 'WARANGAL', '36070700101'),
+    ).rejects.toThrow('not in the selected state and city');
+    await expect(
+      service.resolveSchool('KARNATAKA', 'Hyderabad', '36070700101'),
+    ).rejects.toThrow('not in the selected state and city');
+  });
+
+  it('checks the school before the captcha and writes nothing when it is wrong', async () => {
+    const { service, captcha } = build(null);
+    mockDb.insert = jest.fn();
+    await expect(service.signup(input)).rejects.toThrow('School not found');
+    expect(captcha.verify).not.toHaveBeenCalled();
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it('saves the school and starts a student_id session', async () => {
+    const { service, auth, captcha } = build();
+    const user = { id: 42n, name: 'Riya Sharma' };
+    mockDb.insert = jest.fn(() => ({
+      values: () => ({ returning: async () => [user] }),
+    }));
+    const insertCredential = jest
+      .spyOn(service, 'insertCredentialWithUniqueId')
+      .mockResolvedValue('riyasharmact1');
+
+    const result = await service.signup(input);
+
+    expect(captcha.verify).toHaveBeenCalledWith('token', '203.0.113.10');
+    expect(insertCredential).toHaveBeenCalledWith(
+      42n,
+      'Riya Sharma',
+      expect.any(String),
+      SCHOOL,
+    );
+    expect(auth.issueLoginSession).toHaveBeenCalledWith(user, {
+      method: 'student_id',
+      ip: '203.0.113.10',
+      userAgent: 'test-agent',
+      udiseCode: '36070700101',
+    });
+    expect(result).toMatchObject({
+      studentId: 'riyasharmact1',
+      school: SCHOOL,
+      sessionId: 's-1',
+    });
   });
 });

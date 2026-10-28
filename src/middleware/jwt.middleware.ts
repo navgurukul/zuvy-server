@@ -30,6 +30,10 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/auth/refresh', method: 'POST' },
       { path: '/auth/student/signup', method: 'POST' },
       { path: '/auth/student/login', method: 'POST' },
+      // Student ID sign-up dropdowns (state -> city -> school)
+      { path: '/schools/states', method: 'GET' },
+      { path: '/schools/cities', method: 'GET' },
+      { path: '/schools', method: 'GET' },
       { path: '/auth/debug-token', method: 'POST' },
       { path: '/classes', method: 'GET' },
       { path: '/classes/redirect/', method: 'GET' },
