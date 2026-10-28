@@ -154,6 +154,16 @@ describe('SchoolsService dropdowns', () => {
     expect(selectDistinct).toHaveBeenCalledTimes(1);
   });
 
+  it("finds a state and city in any letter case, with the list's spelling", async () => {
+    mockPlaces(pairs);
+    const service = new SchoolsService({} as any);
+    await expect(
+      service.findPlace('telangana', ' HYDERABAD '),
+    ).resolves.toEqual({ state: 'Telangana', city: 'Hyderabad' });
+    await expect(service.findPlace('Telangana', 'Patna')).resolves.toBeNull();
+    await expect(service.findPlace('Goa', 'Panaji')).resolves.toBeNull();
+  });
+
   it('returns no schools for an unknown state or city without a query', async () => {
     mockPlaces(pairs);
     (db as any).select = jest.fn();

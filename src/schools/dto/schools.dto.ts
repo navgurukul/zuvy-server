@@ -39,7 +39,7 @@ export class SchoolsQueryDto extends CitiesQueryDto {
   @ApiPropertyOptional({
     description:
       'Words to look for. Each word must appear in the school name, village or block, or start the UDISE code or pincode.',
-    example: 'govt madhapur',
+    example: 'govt high',
   })
   @IsOptional()
   @Transform(trim)

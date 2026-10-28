@@ -24,7 +24,7 @@ import {
 } from 'drizzle/schema';
 import { AuthService, LoginClientInfo } from 'src/auth/auth.service';
 import { SchoolsService } from 'src/schools/schools.service';
-import { placeKey } from 'src/schools/school-rows';
+import { cleanText, placeKey } from 'src/schools/school-rows';
 import { CaptchaService } from './captcha.service';
 import { transliterateDevanagari } from './devanagari';
 
@@ -100,16 +100,22 @@ export interface StudentSignupInput extends LoginClientInfo {
   password: string;
   state: string;
   city: string;
-  udiseCode: string;
+  /** A school picked from the list. */
+  udiseCode?: string | null;
+  /** A school that is not in the list, typed in by the student. */
+  schoolName?: string | null;
   captchaToken?: string;
 }
 
-/** The school saved on a Student ID account at sign-up. */
+/**
+ * The school saved on a Student ID account at sign-up. udiseCode is null
+ * when the student's school was not in the list and they typed its name.
+ */
 export interface StudentSchool {
   state: string;
   city: string;
   schoolName: string;
-  udiseCode: string;
+  udiseCode: string | null;
 }
 
 @Injectable()
@@ -127,11 +133,7 @@ export class StudentAuthService {
 
     // Only a read, so it can run first: a wrong pick does not use up the
     // captcha token, and the student can fix it and resubmit.
-    const school = await this.resolveSchool(
-      input.state,
-      input.city,
-      input.udiseCode,
-    );
+    const school = await this.resolveSchool(input);
 
     // Before any database write, so bots never create rows.
     await this.captchaService.verify(captchaToken, ip);
@@ -178,6 +180,7 @@ export class StudentAuthService {
         ip,
         userAgent,
         udiseCode: school.udiseCode,
+        unlistedSchool: !school.udiseCode,
       });
       return { studentId, school, ...session };
     } catch (error) {
@@ -242,20 +245,23 @@ export class StudentAuthService {
       .where(eq(users.id, user.id));
     user.lastLoginAt = now;
 
+    // A school name without a code = a school typed in at sign-up.
+    const unlistedSchool = !credential.udiseCode && !!credential.schoolName;
     const session = await this.authService.issueLoginSession(user, {
       method: 'student_id',
       ...client,
       udiseCode: credential.udiseCode,
+      unlistedSchool,
     });
     return {
       studentId: credential.studentId,
       // Null for accounts created before school was asked at sign-up.
-      school: credential.udiseCode
+      school: credential.schoolName
         ? {
             state: credential.state,
             city: credential.city,
             schoolName: credential.schoolName,
-            udiseCode: credential.udiseCode,
+            udiseCode: credential.udiseCode ?? null,
           }
         : null,
       ...session,
@@ -484,15 +490,41 @@ export class StudentAuthService {
   }
 
   /**
-   * The school picked at sign-up, from our school list. The state and city
-   * must be the ones the school is in, so a stale or tampered dropdown
-   * cannot save a mismatched address.
+   * The school given at sign-up. Either picked from our school list
+   * (udiseCode; its state and city must match, so a stale or tampered
+   * dropdown cannot save a mismatched address), or, when the school is not
+   * listed, typed in by the student (schoolName; saved as typed, with no
+   * UDISE code). A picked school wins over a typed name. The state and city
+   * always come from the list.
    */
-  private async resolveSchool(
-    state: string,
-    city: string,
-    udiseCode: string,
-  ): Promise<StudentSchool> {
+  private async resolveSchool(input: {
+    state: string;
+    city: string;
+    udiseCode?: string | null;
+    schoolName?: string | null;
+  }): Promise<StudentSchool> {
+    const { state, city, udiseCode } = input;
+    if (!udiseCode) {
+      const typedName = cleanText(input.schoolName ?? '');
+      if (!typedName) {
+        throw new BadRequestException(
+          'Please pick your school from the list, or type its name if it is not listed.',
+        );
+      }
+      const place = await this.schoolsService.findPlace(state, city);
+      if (!place) {
+        throw new BadRequestException(
+          'Please choose your state and city from the list.',
+        );
+      }
+      return {
+        state: place.state,
+        city: place.city,
+        schoolName: typedName,
+        udiseCode: null,
+      };
+    }
+
     const school = await this.schoolsService.findActiveByUdise(udiseCode);
     if (!school) {
       throw new BadRequestException(
