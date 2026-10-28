@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
 import {
@@ -14,9 +15,21 @@ import {
   zuvyResources,
   zuvyPermissionsRoles,
   zuvyUserFeatureFlags,
+  zuvyUserSessions,
 } from '../../drizzle/schema';
 import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
+
+/** Where a login came from, recorded with its session. */
+export interface LoginClientInfo {
+  ip?: string;
+  userAgent?: string;
+}
+
+/** How the session started: 'google', 'student_id', or a fallback below. */
+export interface LoginContext extends LoginClientInfo {
+  method: string;
+}
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 import { ResourceList } from 'src/rbac/utility';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
@@ -188,7 +201,7 @@ export class AuthService {
     }
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, client: LoginClientInfo = {}) {
     try {
       // 1. Verify the Google ID token
       const ticket = await this.googleAuthClient.verifyIdToken({
@@ -252,7 +265,10 @@ export class AuthService {
           .where(eq(users.id, user.id));
       }
 
-      return await this.issueLoginSession(user);
+      return await this.issueLoginSession(user, {
+        method: 'google',
+        ...client,
+      });
     } catch (error) {
       if (error.message.includes('Wrong recipient')) {
         throw new UnauthorizedException(
@@ -273,9 +289,13 @@ export class AuthService {
   /**
    * Resolves the user's org, roles and permissions and issues the access and
    * refresh tokens. Shared by Google login and Student ID login so both
-   * produce exactly the same session.
+   * produce exactly the same session. Every call is a new login, so it gets
+   * a new session ID (JWT claim "sid").
    */
-  async issueLoginSession(user: typeof users.$inferSelect) {
+  async issueLoginSession(
+    user: typeof users.$inferSelect,
+    context: LoginContext = { method: 'unknown' },
+  ) {
     // Get User Org
     // Fetch user's organizations
     const userOrgs = await db
@@ -321,6 +341,8 @@ export class AuthService {
     // Email-less (Student ID) users must never match an org with no POC email.
     const isPoc = !!user.email && selectedOrg?.pocEmail === user.email;
 
+    const sessionId = randomUUID();
+
     const jwtPayload = {
       sub: user.id.toString(),
       email: user.email,
@@ -331,6 +353,7 @@ export class AuthService {
       orgId: orgId,
       orgName: selectedOrg?.orgName || null,
       isPoc,
+      sid: sessionId,
     };
 
     const access_token = this.jwtService.sign(jwtPayload, {
@@ -399,9 +422,12 @@ export class AuthService {
 
     const showTooltip = await this.resolveTooltipFlag(user.id);
 
+    await this.recordSession(sessionId, user.id, orgId, context);
+
     return {
       access_token,
       refresh_token,
+      sessionId,
       showTooltip,
       user: {
         id: user.id.toString(),
@@ -417,6 +443,70 @@ export class AuthService {
         permissions: permissions,
       },
     };
+  }
+
+  // ── Session records (zuvy_user_sessions) ──────────────────────────────
+  // All best-effort: a failure here is logged and never blocks a login,
+  // refresh, org switch or logout.
+
+  private sessionIdFromToken(token?: string): string | null {
+    if (!token) return null;
+    const decoded = this.jwtService.decode(token) as { sid?: unknown } | null;
+    return typeof decoded?.sid === 'string' ? decoded.sid : null;
+  }
+
+  private async recordSession(
+    sessionId: string,
+    userId: bigint | number | string,
+    orgId: number | null,
+    context: LoginContext,
+  ) {
+    try {
+      await db.insert(zuvyUserSessions).values({
+        id: sessionId,
+        userId: BigInt(userId),
+        loginMethod: context.method.slice(0, 20),
+        orgId: orgId ?? null,
+        ip: context.ip ? context.ip.slice(0, 64) : null,
+        userAgent: context.userAgent ? context.userAgent.slice(0, 512) : null,
+      } as any);
+    } catch (error) {
+      this.logger.error(
+        `Could not record session ${sessionId} for user ${userId}: ${error?.message}`,
+      );
+    }
+  }
+
+  private async touchSession(sessionId: string) {
+    try {
+      await db
+        .update(zuvyUserSessions)
+        .set({ lastRefreshedAt: new Date().toISOString() } as any)
+        .where(eq(zuvyUserSessions.id, sessionId));
+    } catch (error) {
+      this.logger.error(
+        `Could not update session ${sessionId}: ${error?.message}`,
+      );
+    }
+  }
+
+  private async endSession(sessionId: string, userId: bigint | number) {
+    try {
+      await db
+        .update(zuvyUserSessions)
+        .set({ endedAt: new Date().toISOString() } as any)
+        .where(
+          and(
+            eq(zuvyUserSessions.id, sessionId),
+            eq(zuvyUserSessions.userId, BigInt(userId)),
+            isNull(zuvyUserSessions.endedAt),
+          ),
+        );
+    } catch (error) {
+      this.logger.error(
+        `Could not end session ${sessionId}: ${error?.message}`,
+      );
+    }
   }
 
   async logout(userId: bigint, token: string) {
@@ -476,6 +566,10 @@ export class AuthService {
           refreshToken: null,
         } as any)
         .where(eq(zuvyUserOrganizations.userId, Number(userId)));
+
+      // 4. Mark this login's session as ended
+      const sessionId = this.sessionIdFromToken(token);
+      if (sessionId) await this.endSession(sessionId, userId);
 
       return { message: 'Successfully logged out from all organizations' };
     } catch (error) {
@@ -681,6 +775,12 @@ export class AuthService {
         pocEmail = org?.pocEmail;
       }
 
+      // A refresh continues the same login, so it keeps the session ID.
+      // Tokens issued before session IDs existed get one now.
+      const existingSessionId =
+        typeof payload.sid === 'string' ? payload.sid : null;
+      const sessionId = existingSessionId ?? randomUUID();
+
       // Generate new tokens
       const newPayload = {
         sub: user.id.toString(),
@@ -692,6 +792,7 @@ export class AuthService {
         orgId: orgId,
         orgName: orgName,
         isPoc: !!user.email && pocEmail === user.email,
+        sid: sessionId,
       };
 
       const newAccessToken = this.jwtService.sign(newPayload, {
@@ -750,9 +851,18 @@ export class AuthService {
         }
       }
 
+      if (existingSessionId) {
+        await this.touchSession(existingSessionId);
+      } else {
+        await this.recordSession(sessionId, user.id, orgId ?? null, {
+          method: 'token_refresh',
+        });
+      }
+
       return {
         access_token: newAccessToken,
         refresh_token: newRefreshToken,
+        sessionId,
       };
     } catch (e) {
       this.logger.error('Refresh token error', e);
@@ -760,8 +870,13 @@ export class AuthService {
     }
   }
 
-  // Method to generate tokens for switching organization
-  async generateTokensForSwitch(userId: bigint, targetOrgId: number) {
+  // Method to generate tokens for switching organization. Switching is not a
+  // new login, so the session ID of the current access token is kept.
+  async generateTokensForSwitch(
+    userId: bigint,
+    targetOrgId: number,
+    currentAccessToken?: string,
+  ) {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw new UnauthorizedException('User not found');
 
@@ -816,6 +931,9 @@ export class AuthService {
 
     const isPoc = !!user.email && org?.pocEmail === user.email;
 
+    const existingSessionId = this.sessionIdFromToken(currentAccessToken);
+    const sessionId = existingSessionId ?? randomUUID();
+
     const payload = {
       sub: user.id.toString(),
       email: user.email,
@@ -826,6 +944,7 @@ export class AuthService {
       orgId: targetOrgId,
       orgName: org?.displayName,
       isPoc,
+      sid: sessionId,
     };
 
     const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
@@ -853,9 +972,16 @@ export class AuthService {
         set: setTokenData,
       });
 
+    if (!existingSessionId) {
+      await this.recordSession(sessionId, user.id, targetOrgId, {
+        method: 'org_switch',
+      });
+    }
+
     return {
       access_token,
       refresh_token,
+      sessionId,
       user: {
         id: user.id.toString(),
         email: user.email,
