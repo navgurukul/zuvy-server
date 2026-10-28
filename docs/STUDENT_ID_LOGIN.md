@@ -11,7 +11,7 @@ After logging in, these students can do **everything a Google-login student can 
 | Dev Swagger  | `https://dev.api.zuvy.org/apis`                                                                  |
 | Dev frontend | `https://dev.app.zuvy.org`                                                                       |
 | New APIs     | 5 under `/auth/student`, 4 under `/schools` (3 public dropdown lists + 1 super admin CSV upload) |
-| Migrations   | `0043`, `0044`, `0045` (run in this order, Part C1)                                              |
+| Migrations   | `0043`, `0044`, `0045`, `0046` (run in this order, Part C1)                                      |
 | School list  | 13,72,195 schools from the official UDISE file, loaded once with one command (Part C8)           |
 
 ### Who should read what
@@ -116,27 +116,27 @@ There are **two keys** from Cloudflare:
 
 ### A5. Status: what is done and what is left
 
-| Area         | Work                                                                                                                                                                      | Status                       | Owner            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------- |
-| Backend      | Sign-up, login, Student ID, password hashing, lockout                                                                                                                     | **Done**                     | Backend          |
-| Backend      | Super admin tools: reset password, find student                                                                                                                           | **Done**                     | Backend          |
-| Backend      | Enrol a student by Student ID into a course and batch: super admins (any course), **org admins and ops** (their own organisation's courses), recorded in the activity log | **Done**                     | Backend          |
-| Backend      | Student IDs made from the name (`riyasharmact1`, `riyasharmact2`, `riyact1`), Hindi names spelled in English letters, atomic per-name counter, migration `0044`           | **Done**                     | Backend          |
-| Backend      | State, city and school (with UDISE code) at sign-up; school dropdown APIs with word search; migration `0045`                                                              | **Done** (not yet committed) | Backend          |
-| Backend      | One-command import of the official UDISE school list (13,72,195 schools, checked against the real file), and a CSV upload to add a missing school                         | **Done** (not yet committed) | Backend          |
-| Backend      | A new **session ID** for every login (Google and Student ID), kept on token refresh and org switch, closed on logout; migration `0045`                                    | **Done** (not yet committed) | Backend          |
-| Backend      | Cloudflare token check, per-IP safety limits, real client IP behind nginx                                                                                                 | **Done**                     | Backend          |
-| Backend      | Fixes so email-less students don't break classes, attendance or login checks                                                                                              | **Done**                     | Backend          |
-| Backend      | Unit tests (87 tests), and an end-to-end check on a real Postgres with 1.49 lakh schools from the real file                                                               | **Done**                     | Backend          |
-| Server (dev) | nginx forwards the real client IP                                                                                                                                         | **Done**                     | DevOps           |
-| Server (dev) | New `.env` values added                                                                                                                                                   | **Done**                     | DevOps           |
-| Server       | Run database migrations `0043`, `0044` and **`0045` (before deploying this code)**, bind the container port to localhost, check outbound access to Cloudflare (Part C)    | To do / confirm              | DevOps           |
-| Server       | **Load the school list once** with one command (Part C8). Without it the dropdowns are empty and nobody can sign up with a Student ID.                                    | **To do**                    | Backend / DevOps |
-| Cloudflare   | Create the Turnstile widget and get the site key and secret key (Part C2)                                                                                                 | To do / confirm              | DevOps / lead    |
-| Frontend     | Sign-up page with the state / city / school dropdowns and the Cloudflare box, Student ID login, Student ID card, error messages (Part D)                                  | **To do**                    | Frontend         |
-| Frontend     | Admin screen: "Add student by Student ID" in a course's students page (Part D12)                                                                                          | **To do**                    | Frontend         |
-| Product      | Decide which **extra student details** to collect after sign-up (not required at sign-up). The list was meant to come as a separate PDF, which hasn't been received yet.  | **Waiting**                  | Product          |
-| QA           | Test plan (Part G)                                                                                                                                                        | **To do** after deploy       | QA               |
+| Area         | Work                                                                                                                                                                                               | Status                       | Owner            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------- |
+| Backend      | Sign-up, login, Student ID, password hashing, lockout                                                                                                                                              | **Done**                     | Backend          |
+| Backend      | Super admin tools: reset password, find student                                                                                                                                                    | **Done**                     | Backend          |
+| Backend      | Enrol a student by Student ID into a course and batch: super admins (any course), **org admins and ops** (their own organisation's courses), recorded in the activity log                          | **Done**                     | Backend          |
+| Backend      | Student IDs made from the name (`riyasharmact1`, `riyasharmact2`, `riyact1`), Hindi names spelled in English letters, atomic per-name counter, migration `0044`                                    | **Done**                     | Backend          |
+| Backend      | State, city and school (with UDISE code) at sign-up; school dropdown APIs with word search; migration `0045`                                                                                       | **Done** (not yet committed) | Backend          |
+| Backend      | One-command import of the official UDISE school list (13,72,195 schools, checked against the real file), and a CSV upload to add a missing school                                                  | **Done** (not yet committed) | Backend          |
+| Backend      | A new **session ID** for every login, kept on token refresh and org switch, closed on logout (`0045`); students with a school get the Career Tours format `CT_IN_<date>_<UDISE>_<number>` (`0046`) | **Done** (not yet committed) | Backend          |
+| Backend      | Cloudflare token check, per-IP safety limits, real client IP behind nginx                                                                                                                          | **Done**                     | Backend          |
+| Backend      | Fixes so email-less students don't break classes, attendance or login checks                                                                                                                       | **Done**                     | Backend          |
+| Backend      | Unit tests (93 tests), and end-to-end checks on a real Postgres (1.49 lakh real schools; Career Tours session numbers)                                                                             | **Done**                     | Backend          |
+| Server (dev) | nginx forwards the real client IP                                                                                                                                                                  | **Done**                     | DevOps           |
+| Server (dev) | New `.env` values added                                                                                                                                                                            | **Done**                     | DevOps           |
+| Server       | Run database migrations `0043`, `0044`, **`0045` and `0046` (before deploying this code)**, bind the container port to localhost, check outbound access to Cloudflare (Part C)                     | To do / confirm              | DevOps           |
+| Server       | **Load the school list once** with one command (Part C8). Without it the dropdowns are empty and nobody can sign up with a Student ID.                                                             | **To do**                    | Backend / DevOps |
+| Cloudflare   | Create the Turnstile widget and get the site key and secret key (Part C2)                                                                                                                          | To do / confirm              | DevOps / lead    |
+| Frontend     | Sign-up page with the state / city / school dropdowns and the Cloudflare box, Student ID login, Student ID card, error messages (Part D)                                                           | **To do**                    | Frontend         |
+| Frontend     | Admin screen: "Add student by Student ID" in a course's students page (Part D12)                                                                                                                   | **To do**                    | Frontend         |
+| Product      | Decide which **extra student details** to collect after sign-up (not required at sign-up). The list was meant to come as a separate PDF, which hasn't been received yet.                           | **Waiting**                  | Product          |
+| QA           | Test plan (Part G)                                                                                                                                                                                 | **To do** after deploy       | QA               |
 
 ### A6. The school list and the UDISE code
 
@@ -159,14 +159,34 @@ A developer loads this file **once per environment** with one command (Part C8).
 
 ### A7. Session ID
 
-Every time **any** user logs in (Google or Student ID), the server creates a new **session ID**, a random ID like `6f1c2b8e-4d7a-4b9e-9c1a-2f3d4e5a6b7c`.
+Every time **any** user logs in (Google or Student ID), the server creates a new **session ID**.
+
+**Students with a school get a Career Tours session ID:**
+
+```
+CT_IN_20261028_36070700101_0000025
+│  │  │        │           └─ number: the 25th login from this school on this day
+│  │  │        └─ the school's 11-character UDISE code
+│  │  └─ the date of the login in India (YYYYMMDD)
+│  └─ IN = India
+└─ CT = Career Tours
+```
+
+- The number starts at `0000001` for **each school each day** and goes up by one with every login from that school that day. So two logins can never get the same ID, the number stays short, and it can't run out (a school would need a crore logins in one day).
+- The date is the **Indian date** (IST): a login at 1 a.m. gets that day's date, not yesterday's.
+- It uses only capital letters, digits and underscores, and is 34 characters long.
+- A student who signs up and then logs in again, on the same or another day, gets a new ID each time.
+
+**Everyone else** (Google users, admins, instructors, and Student ID accounts created before the school was asked) gets a random ID like `6f1c2b8e-4d7a-4b9e-9c1a-2f3d4e5a6b7c`, because they have no school code to put in it. Their logins are still counted.
+
+For both kinds:
 
 - It is returned in the login response as `sessionId` and is also inside the JWT token as `sid`.
 - It **stays the same** when the token is refreshed or the user switches organisation, because that is still the same login.
 - It is **closed** when the user logs out.
-- Each session is saved in the table `zuvy_user_sessions`: who, when, how they logged in (`google`, `student_id`), the IP address and the browser.
+- Each session is saved in the table `zuvy_user_sessions`: who, when, how they logged in (`google`, `student_id`), the school (for students), the IP address and the browser.
 
-This lets us count logins and see how long people stay. Saving the session is **best effort**: if it ever fails, the login still works and the error is only logged.
+This lets us count logins per day, per school and per student. It does **not** yet measure how long people stay: most people close the browser instead of logging out, so the end time is usually empty. Saving the session is **best effort**: if it ever fails, the login still works (with a random ID) and the error is only logged.
 
 ---
 
@@ -225,6 +245,9 @@ This lets us count logins and see how long people stay. Saving the session is **
 | `src/schools/school-rows.ts`                                  | Turns a CSV row into a school: reads the UDISE file's own column names, adds back dropped leading zeros, skips non-operational schools, keeps one spelling per city |
 | `src/schools/school-store.ts`                                 | Saves schools in batches of 1,000 (add new, update existing), shared by the import script and the upload API                                                        |
 | `src/schools/udise-file.ts`                                   | Streams the big UDISE file and hands good schools over in batches; counts and explains skipped rows                                                                 |
+| `drizzle/migrations/0046_ct_session_ids.sql`                  | Career Tours session IDs: session ID becomes text (existing ones kept), school code on sessions, `zuvy_session_counters`. Safe to run twice.                        |
+| `src/auth/session-id.ts`                                      | Builds `CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number>`: Indian date, per-school daily number from one atomic upsert                                                     |
+| `src/auth/session-id.spec.ts`                                 | Unit tests: Indian date at midnight, format and length, UUID for logins without a school, fallback when the counter fails                                           |
 | `scripts/import-schools.ts`                                   | The one-time import command (Part C8). Only checks the file unless `--yes` is given.                                                                                |
 | `src/schools/school-rows.spec.ts`                             | Unit tests: CSV reading (including pieces split mid-quote and mid-line-end), row rules with the real file's columns, spellings                                      |
 | `src/schools/udise-file.spec.ts`                              | Unit tests: the importer on a small file in the real format (batches, state filter, duplicates, skipped rows)                                                       |
@@ -274,17 +297,29 @@ Index on `(state, district, school_name)`: a city's schools come out already sor
 
 **Sessions: `zuvy_user_sessions`** (one row per login, all users)
 
-| Column              | Type                                              | Meaning                                                                                      |
-| ------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `id`                | uuid, primary key                                 | The session ID (`sessionId` in responses, `sid` in the JWT)                                  |
-| `user_id`           | bigint, FK → `users.id` (cascade delete), indexed | The user                                                                                     |
-| `login_method`      | varchar(20)                                       | `google`, `student_id`, or `token_refresh` / `org_switch` for tokens made before this change |
-| `org_id`            | integer, nullable                                 | Organisation at login                                                                        |
-| `ip`                | varchar(64), nullable                             | Client IP (the real one, via nginx)                                                          |
-| `user_agent`        | varchar(512), nullable                            | Browser                                                                                      |
-| `created_at`        | timestamptz                                       | Login time                                                                                   |
-| `last_refreshed_at` | timestamptz, nullable                             | Last token refresh in this session                                                           |
-| `ended_at`          | timestamptz, nullable                             | Logout time; empty while the session is open or if the user never logged out                 |
+| Column              | Type                                                    | Meaning                                                                                                               |
+| ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `id`                | varchar(100), primary key (text since 0046)             | The session ID (`sessionId` in responses, `sid` in the JWT): `CT_IN_...` for students with a school, otherwise a UUID |
+| `udise_code`        | varchar(11), nullable, indexed with `created_at` (0046) | The school of the student who logged in; empty for other logins                                                       |
+| `user_id`           | bigint, FK → `users.id` (cascade delete), indexed       | The user                                                                                                              |
+| `login_method`      | varchar(20)                                             | `google`, `student_id`, or `token_refresh` / `org_switch` for tokens made before this change                          |
+| `org_id`            | integer, nullable                                       | Organisation at login                                                                                                 |
+| `ip`                | varchar(64), nullable                                   | Client IP (the real one, via nginx)                                                                                   |
+| `user_agent`        | varchar(512), nullable                                  | Browser                                                                                                               |
+| `created_at`        | timestamptz                                             | Login time                                                                                                            |
+| `last_refreshed_at` | timestamptz, nullable                                   | Last token refresh in this session                                                                                    |
+| `ended_at`          | timestamptz, nullable                                   | Logout time; empty while the session is open or if the user never logged out                                          |
+
+**Session counters: `zuvy_session_counters`** (migration 0046; one row per school per day with a login)
+
+| Column         | Type                                      | Meaning                                                             |
+| -------------- | ----------------------------------------- | ------------------------------------------------------------------- |
+| `session_date` | varchar(8), primary key with `udise_code` | Indian date, `YYYYMMDD`                                             |
+| `udise_code`   | varchar(11)                               | The school                                                          |
+| `last_number`  | integer                                   | Last number given out that day, e.g. `25` once `..._0000025` exists |
+| `updated_at`   | timestamptz                               | When the last number was given out                                  |
+
+Each login takes the next number in one atomic database statement, so students of the same school logging in at the same moment always get different numbers.
 
 **Counter table: `zuvy_student_id_counters`** (one row per name)
 
@@ -336,8 +371,9 @@ Do these once per environment (dev first, then stage and production).
    1. `drizzle/migrations/0043_create_zuvy_student_credentials.sql`
    2. `drizzle/migrations/0044_student_id_from_name.sql`
    3. `drizzle/migrations/0045_schools_and_sessions.sql`
+   4. `drizzle/migrations/0046_ct_session_ids.sql` (Career Tours session IDs: makes the session ID text, adds the school to sessions, creates `zuvy_session_counters`)
 
-   Skip the ones that already ran (on dev, 0043 and 0044 probably have). All three are safe to run twice.
+   Skip the ones that already ran (on dev, 0043, 0044 and 0045 have). All four are safe to run twice. 0046 keeps the sessions already saved.
 
 4. Check the tables:
 
@@ -467,7 +503,7 @@ docker exec zuvy_container wget -qO- --spider https://challenges.cloudflare.com 
 
 ### C7. Server checklist
 
-- [ ] Migrations `0043`, `0044` and `0045` run on this environment's database, **0045 before the deploy** (C1)
+- [ ] Migrations `0043`, `0044`, `0045` and `0046` run on this environment's database, **before the deploy** (C1)
 - [ ] School list loaded with `scripts/import-schools.ts --yes`; `GET /schools/states` returns 35 states (C8)
 - [ ] Turnstile widget created; site key given to frontend; secret key in `.env` (C2, C3)
 - [ ] `.env` values added and container recreated; key length check is not `0` (C3)
@@ -1041,10 +1077,10 @@ module.exports = {
 ```
 
 ```bash
-npx jest -c jest.student-auth.config.js --runInBand --forceExit src/student-auth src/schools
+npx jest -c jest.student-auth.config.js --runInBand --forceExit src/student-auth src/schools src/auth/session-id
 ```
 
-Expected: `Test Suites: 7 passed`, `Tests: 87 passed`. (Error logs such as `Turnstile request failed: timeout` are expected: the tests exercise failure paths.)
+Expected: `Test Suites: 8 passed`, `Tests: 93 passed`. (Error logs such as `Turnstile request failed: timeout` are expected: the tests exercise failure paths.)
 
 ### E2. Swagger basics
 
@@ -1432,18 +1468,20 @@ For a few missing or wrong schools. The full list is loaded once with the import
 
 Every login gets a new session ID: Google login (`POST /auth/login`), Student ID sign-up and Student ID login.
 
-| Where                           | What you see                                                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Login and sign-up responses     | `"sessionId": "6f1c2b8e-..."` (new each time)                                                               |
-| `POST /auth/refresh` response   | `sessionId`: the **same** as before the refresh                                                             |
-| `POST /org/switch-org` response | `sessionId`: the **same** as before the switch                                                              |
-| Inside the JWT                  | Claim `sid`                                                                                                 |
-| In backend code                 | `req.user[0].sessionId` (`null` for tokens made before this change)                                         |
-| Database                        | `zuvy_user_sessions` (Part B3): `created_at` at login, `last_refreshed_at` on refresh, `ended_at` on logout |
+| Where                           | What you see                                                                                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Login and sign-up responses     | `"sessionId"`, new each time: `"CT_IN_20261028_36070700101_0000025"` for a student with a school, otherwise a UUID like `"6f1c2b8e-..."` |
+| `POST /auth/refresh` response   | `sessionId`: the **same** as before the refresh                                                                                          |
+| `POST /org/switch-org` response | `sessionId`: the **same** as before the switch                                                                                           |
+| Inside the JWT                  | Claim `sid`                                                                                                                              |
+| In backend code                 | `req.user[0].sessionId` (`null` for tokens made before this change)                                                                      |
+| Database                        | `zuvy_user_sessions` (Part B3): `created_at` at login, `last_refreshed_at` on refresh, `ended_at` on logout                              |
 
 Tokens made **before** this change have no `sid`. Their first refresh (or org switch) starts a new session, recorded with `login_method` `token_refresh` (or `org_switch`); after that the ID stays the same.
 
-A user who closes the browser without logging out keeps `ended_at` empty. To estimate when such a session stopped, use `last_refreshed_at`.
+A user who closes the browser without logging out keeps `ended_at` empty, so session length is only known for sessions that ended with a logout. `last_refreshed_at` changes at most about once a day (the access token lasts 24 hours), so it is only a rough lower bound.
+
+The Career Tours format, the per-school daily number and the Indian date are explained in Part A7. The format is built in `src/auth/session-id.ts`.
 
 ---
 
@@ -1637,13 +1675,16 @@ Use the org admin and ops tokens: log in to the dev web app as each user and cop
 
 Use the database query "Sessions of a user" from Part H to check the rows.
 
-| ID    | Steps                                                                                                                                                                  | Expected result                                                                                                                              |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| TC-65 | Log in twice as the TC-01 student (TC-06, then again)                                                                                                                  | Two **different** `sessionId` values. Two rows in `zuvy_user_sessions` with `login_method = student_id`, the real client IP and the browser. |
-| TC-66 | `POST /auth/refresh` with the latest `refresh_token`                                                                                                                   | **200**; `sessionId` is the **same** as the login's. That row's `last_refreshed_at` is now filled; no new row.                               |
-| TC-67 | Decode the new `access_token` in the browser console (don't paste tokens into websites): `JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))` | The payload has `"sid"` equal to the `sessionId`.                                                                                            |
-| TC-68 | `POST /auth/logout` with that access token                                                                                                                             | **201**. That row's `ended_at` is now filled. The other session from TC-65 still has `ended_at` empty.                                       |
-| TC-69 | As an admin in 2 organisations, log in with Google, then `POST /org/switch-org`                                                                                        | The login response has a `sessionId` and a row with `login_method = google`. The switch response has the **same** `sessionId`; no new row.   |
+| ID    | Steps                                                                                                                                                                  | Expected result                                                                                                                                                                                                                         |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC-65 | Log in twice as the TC-01 student (TC-06, then again)                                                                                                                  | Two **different** `sessionId` values. Two rows in `zuvy_user_sessions` with `login_method = student_id`, the real client IP and the browser.                                                                                            |
+| TC-66 | `POST /auth/refresh` with the latest `refresh_token`                                                                                                                   | **200**; `sessionId` is the **same** as the login's. That row's `last_refreshed_at` is now filled; no new row.                                                                                                                          |
+| TC-67 | Decode the new `access_token` in the browser console (don't paste tokens into websites): `JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))` | The payload has `"sid"` equal to the `sessionId`.                                                                                                                                                                                       |
+| TC-68 | `POST /auth/logout` with that access token                                                                                                                             | **201**. That row's `ended_at` is now filled. The other session from TC-65 still has `ended_at` empty.                                                                                                                                  |
+| TC-69 | As an admin in 2 organisations, log in with Google, then `POST /org/switch-org`                                                                                        | The login response has a `sessionId` and a row with `login_method = google`. The switch response has the **same** `sessionId`; no new row.                                                                                              |
+| TC-74 | Sign up a student with a school (TC-01), then log in again as that student                                                                                             | Both `sessionId` values look like `CT_IN_<today in India, YYYYMMDD>_35010300101_<7 digits>`; the second number is one higher than the first (if nobody else from that school logged in between). Each row has `udise_code` 35010300101. |
+| TC-75 | Log in as a student of **another** school (e.g. TC-73's Delhi student)                                                                                                 | Its number starts again at `0000001` (if it is that school's first login today): `CT_IN_<today>_070501ND201_0000001`.                                                                                                                   |
+| TC-76 | Log in with **Google**, and with a Student ID account made before the school was asked                                                                                 | `sessionId` is a random UUID (no school code to use); `udise_code` is empty on the row.                                                                                                                                                 |
 
 ### G4. Regression tests for users with email
 
@@ -1728,7 +1769,7 @@ A later CSV upload or import that contains a hidden school makes it active again
 **Sessions of a user** (any user, Google or Student ID):
 
 ```sql
-SELECT s.id AS session_id, s.login_method, s.org_id, s.ip, s.created_at,
+SELECT s.id AS session_id, s.udise_code, s.login_method, s.org_id, s.ip, s.created_at,
        s.last_refreshed_at, s.ended_at
 FROM zuvy_user_sessions s
 WHERE s.user_id = 48213          -- or: (SELECT user_id FROM zuvy_student_credentials WHERE student_id = 'riyasharmact1')
@@ -1736,14 +1777,27 @@ ORDER BY s.created_at DESC
 LIMIT 20;
 ```
 
-**Logins per day, by method:**
+**Logins per day, by method** (Indian dates; `token_refresh` / `org_switch` rows are users who were logged in before the deploy, not new logins):
 
 ```sql
-SELECT created_at::date AS day, login_method, COUNT(*) AS logins,
-       COUNT(DISTINCT user_id) AS users
+SELECT (created_at AT TIME ZONE 'Asia/Kolkata')::date AS day, login_method,
+       COUNT(*) AS logins, COUNT(DISTINCT user_id) AS users
 FROM zuvy_user_sessions
+WHERE login_method IN ('google', 'student_id')
 GROUP BY 1, 2
 ORDER BY 1 DESC, 2;
+```
+
+**Career Tours sessions per school per day:**
+
+```sql
+SELECT split_part(s.id, '_', 3) AS session_date, s.udise_code, sc.school_name,
+       COUNT(*) AS sessions, COUNT(DISTINCT s.user_id) AS students
+FROM zuvy_user_sessions s
+LEFT JOIN zuvy_schools sc ON sc.udise_code = s.udise_code
+WHERE s.id LIKE 'CT\_IN\_%'
+GROUP BY 1, 2, 3
+ORDER BY 1 DESC, sessions DESC;
 ```
 
 **Passwords are never stored in plain text:**

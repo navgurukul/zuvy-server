@@ -379,6 +379,7 @@ describe('StudentAuthService sign-up school check', () => {
       method: 'student_id',
       ip: '203.0.113.10',
       userAgent: 'test-agent',
+      udiseCode: '36070700101',
     });
     expect(result).toMatchObject({
       studentId: 'riyasharmact1',

@@ -16,7 +16,6 @@ import {
   boolean,
   bigint,
   index,
-  uuid,
   smallint,
   char,
   json,
@@ -5464,12 +5463,15 @@ export const zuvySchools = main.table(
   }),
 );
 
-// One row per login (migration 0045). The id is the session ID carried in
-// the JWT as "sid"; it stays the same across token refresh and org switch.
+// One row per login (migrations 0045, 0046). The id is the session ID
+// carried in the JWT as "sid"; it stays the same across token refresh and
+// org switch. A student with a school gets a Career Tours ID,
+// CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number>; other logins a random UUID.
 export const zuvyUserSessions = main.table(
   'zuvy_user_sessions',
   {
-    id: uuid('id').primaryKey().notNull(),
+    id: varchar('id', { length: 100 }).primaryKey().notNull(),
+    udiseCode: varchar('udise_code', { length: 11 }),
     userId: bigint('user_id', { mode: 'bigint' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -5488,6 +5490,31 @@ export const zuvyUserSessions = main.table(
   },
   (table) => ({
     userIdIdx: index('zuvy_user_sessions_user_id_idx').on(table.userId),
+    udiseCodeIdx: index('zuvy_user_sessions_udise_code_idx').on(
+      table.udiseCode,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Last Career Tours session number per school per day (migration 0046):
+// date 20261028 + school 36070700101 with lastNumber 25 means sessions
+// ..._0000001 to ..._0000025 exist. One atomic upsert per login.
+export const zuvySessionCounters = main.table(
+  'zuvy_session_counters',
+  {
+    sessionDate: varchar('session_date', { length: 8 }).notNull(), // YYYYMMDD, Indian date
+    udiseCode: varchar('udise_code', { length: 11 }).notNull(),
+    lastNumber: integer('last_number').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'zuvy_session_counters_pk',
+      columns: [table.sessionDate, table.udiseCode],
+    }),
   }),
 );
 

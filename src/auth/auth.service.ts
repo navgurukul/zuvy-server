@@ -4,6 +4,11 @@ import { randomUUID } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
 import {
+  formatCtSessionId,
+  nextSessionNumber,
+  sessionDate,
+} from './session-id';
+import {
   users,
   blacklistedTokens,
   zuvyUserRolesAssigned,
@@ -29,6 +34,8 @@ export interface LoginClientInfo {
 /** How the session started: 'google', 'student_id', or a fallback below. */
 export interface LoginContext extends LoginClientInfo {
   method: string;
+  /** The student's school; such logins get a Career Tours session ID. */
+  udiseCode?: string | null;
 }
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -341,7 +348,7 @@ export class AuthService {
     // Email-less (Student ID) users must never match an org with no POC email.
     const isPoc = !!user.email && selectedOrg?.pocEmail === user.email;
 
-    const sessionId = randomUUID();
+    const sessionId = await this.newSessionId(context.udiseCode);
 
     const jwtPayload = {
       sub: user.id.toString(),
@@ -455,6 +462,28 @@ export class AuthService {
     return typeof decoded?.sid === 'string' ? decoded.sid : null;
   }
 
+  /**
+   * A login by a student with a school gets a Career Tours ID,
+   * CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number> (see session-id.ts); any other
+   * login, or a database problem with the counter, a random UUID.
+   */
+  private async newSessionId(udiseCode?: string | null): Promise<string> {
+    if (!udiseCode) return randomUUID();
+    try {
+      const date = sessionDate();
+      return formatCtSessionId(
+        date,
+        udiseCode,
+        await nextSessionNumber(db, date, udiseCode),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not number a session for school ${udiseCode}: ${error?.message}`,
+      );
+      return randomUUID();
+    }
+  }
+
   private async recordSession(
     sessionId: string,
     userId: bigint | number | string,
@@ -464,6 +493,7 @@ export class AuthService {
     try {
       await db.insert(zuvyUserSessions).values({
         id: sessionId,
+        udiseCode: context.udiseCode ?? null,
         userId: BigInt(userId),
         loginMethod: context.method.slice(0, 20),
         orgId: orgId ?? null,

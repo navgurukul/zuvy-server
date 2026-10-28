@@ -177,6 +177,7 @@ export class StudentAuthService {
         method: 'student_id',
         ip,
         userAgent,
+        udiseCode: school.udiseCode,
       });
       return { studentId, school, ...session };
     } catch (error) {
@@ -244,6 +245,7 @@ export class StudentAuthService {
     const session = await this.authService.issueLoginSession(user, {
       method: 'student_id',
       ...client,
+      udiseCode: credential.udiseCode,
     });
     return {
       studentId: credential.studentId,
