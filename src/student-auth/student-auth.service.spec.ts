@@ -296,7 +296,7 @@ describe('StudentAuthService sign-up school check', () => {
     district: 'Hyderabad',
     isActive: true,
   };
-  const build = (school: any = listed) => {
+  const build = (school: any = listed, place: any = null) => {
     const auth = {
       issueLoginSession: jest.fn().mockResolvedValue({
         access_token: 'a',
@@ -305,7 +305,10 @@ describe('StudentAuthService sign-up school check', () => {
       }),
     };
     const captcha = { verify: jest.fn().mockResolvedValue(undefined) };
-    const schools = { findActiveByUdise: jest.fn().mockResolvedValue(school) };
+    const schools = {
+      findActiveByUdise: jest.fn().mockResolvedValue(school),
+      findPlace: jest.fn().mockResolvedValue(place),
+    };
     const service = new StudentAuthService(
       auth as any,
       captcha as any,
@@ -323,41 +326,8 @@ describe('StudentAuthService sign-up school check', () => {
     ip: '203.0.113.10',
     userAgent: 'test-agent',
   };
-
-  it('accepts the state and city in any case and saves the listed spelling', async () => {
-    const { service } = build();
-    await expect(
-      service.resolveSchool('telangana', 'hyderabad', '36070700101'),
-    ).resolves.toEqual(SCHOOL);
-  });
-
-  it('refuses a school that is not in the list', async () => {
-    const { service } = build(null);
-    await expect(
-      service.resolveSchool('Telangana', 'Hyderabad', '99999999999'),
-    ).rejects.toThrow('School not found');
-  });
-
-  it('refuses a school from another city or state', async () => {
-    const { service } = build();
-    await expect(
-      service.resolveSchool('Telangana', 'WARANGAL', '36070700101'),
-    ).rejects.toThrow('not in the selected state and city');
-    await expect(
-      service.resolveSchool('KARNATAKA', 'Hyderabad', '36070700101'),
-    ).rejects.toThrow('not in the selected state and city');
-  });
-
-  it('checks the school before the captcha and writes nothing when it is wrong', async () => {
-    const { service, captcha } = build(null);
-    mockDb.insert = jest.fn();
-    await expect(service.signup(input)).rejects.toThrow('School not found');
-    expect(captcha.verify).not.toHaveBeenCalled();
-    expect(mockDb.insert).not.toHaveBeenCalled();
-  });
-
-  it('saves the school and starts a student_id session', async () => {
-    const { service, auth, captcha } = build();
+  // The user row comes back from the insert; the Student ID is stubbed.
+  const stubAccountCreation = (service: any) => {
     const user = { id: 42n, name: 'Riya Sharma' };
     mockDb.insert = jest.fn(() => ({
       values: () => ({ returning: async () => [user] }),
@@ -365,26 +335,232 @@ describe('StudentAuthService sign-up school check', () => {
     const insertCredential = jest
       .spyOn(service, 'insertCredentialWithUniqueId')
       .mockResolvedValue('riyasharmact1');
+    return { user, insertCredential };
+  };
 
-    const result = await service.signup(input);
-
-    expect(captcha.verify).toHaveBeenCalledWith('token', '203.0.113.10');
-    expect(insertCredential).toHaveBeenCalledWith(
-      42n,
-      'Riya Sharma',
-      expect.any(String),
-      SCHOOL,
-    );
-    expect(auth.issueLoginSession).toHaveBeenCalledWith(user, {
-      method: 'student_id',
-      ip: '203.0.113.10',
-      userAgent: 'test-agent',
-      udiseCode: '36070700101',
+  describe('a school picked from the list', () => {
+    it('accepts the state and city in any case and saves the listed spelling', async () => {
+      const { service } = build();
+      await expect(
+        service.resolveSchool({
+          state: 'telangana',
+          city: 'hyderabad',
+          udiseCode: '36070700101',
+        }),
+      ).resolves.toEqual(SCHOOL);
     });
-    expect(result).toMatchObject({
-      studentId: 'riyasharmact1',
-      school: SCHOOL,
-      sessionId: 's-1',
+
+    it('refuses a school that is not in the list', async () => {
+      const { service } = build(null);
+      await expect(
+        service.resolveSchool({
+          state: 'Telangana',
+          city: 'Hyderabad',
+          udiseCode: '99999999999',
+        }),
+      ).rejects.toThrow('School not found');
+    });
+
+    it('refuses a school from another city or state', async () => {
+      const { service } = build();
+      await expect(
+        service.resolveSchool({
+          state: 'Telangana',
+          city: 'WARANGAL',
+          udiseCode: '36070700101',
+        }),
+      ).rejects.toThrow('not in the selected state and city');
+      await expect(
+        service.resolveSchool({
+          state: 'KARNATAKA',
+          city: 'Hyderabad',
+          udiseCode: '36070700101',
+        }),
+      ).rejects.toThrow('not in the selected state and city');
+    });
+
+    it('uses the picked school when a typed name is sent too', async () => {
+      const { service, schools } = build();
+      await expect(
+        service.resolveSchool({
+          state: 'Telangana',
+          city: 'Hyderabad',
+          udiseCode: '36070700101',
+          schoolName: 'Something Else',
+        }),
+      ).resolves.toEqual(SCHOOL);
+      expect(schools.findPlace).not.toHaveBeenCalled();
+    });
+
+    it('checks the school before the captcha and writes nothing when it is wrong', async () => {
+      const { service, captcha } = build(null);
+      mockDb.insert = jest.fn();
+      await expect(service.signup(input)).rejects.toThrow('School not found');
+      expect(captcha.verify).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('saves the school and starts a student_id session with its code', async () => {
+      const { service, auth, captcha } = build();
+      const { user, insertCredential } = stubAccountCreation(service);
+
+      const result = await service.signup(input);
+
+      expect(captcha.verify).toHaveBeenCalledWith('token', '203.0.113.10');
+      expect(insertCredential).toHaveBeenCalledWith(
+        42n,
+        'Riya Sharma',
+        expect.any(String),
+        SCHOOL,
+      );
+      expect(auth.issueLoginSession).toHaveBeenCalledWith(user, {
+        method: 'student_id',
+        ip: '203.0.113.10',
+        userAgent: 'test-agent',
+        udiseCode: '36070700101',
+        unlistedSchool: false,
+      });
+      expect(result).toMatchObject({
+        studentId: 'riyasharmact1',
+        school: SCHOOL,
+        sessionId: 's-1',
+      });
+    });
+  });
+
+  describe('a school that is not in the list (typed in)', () => {
+    const place = { state: 'Assam', city: 'Karimganj' };
+    const typed = {
+      ...input,
+      state: 'assam',
+      city: 'KARIMGANJ',
+      udiseCode: undefined,
+      schoolName: '  Saint   Joseph School,  Badarpur ',
+    };
+    const TYPED_SCHOOL = {
+      state: 'Assam',
+      city: 'Karimganj',
+      schoolName: 'Saint Joseph School, Badarpur',
+      udiseCode: null,
+    };
+
+    it("saves the typed name with no UDISE code and the list's spelling of state and city", async () => {
+      const { service, schools } = build(listed, place);
+      await expect(service.resolveSchool(typed)).resolves.toEqual(TYPED_SCHOOL);
+      expect(schools.findPlace).toHaveBeenCalledWith('assam', 'KARIMGANJ');
+      expect(schools.findActiveByUdise).not.toHaveBeenCalled();
+    });
+
+    it('refuses a state or city that is not in the list', async () => {
+      const { service } = build(listed, null);
+      await expect(service.resolveSchool(typed)).rejects.toThrow(
+        'Please choose your state and city from the list.',
+      );
+    });
+
+    it('refuses a sign-up with no school at all', async () => {
+      const { service, captcha } = build(listed, place);
+      mockDb.insert = jest.fn();
+      for (const schoolName of [undefined, null, '', '   ']) {
+        await expect(service.signup({ ...typed, schoolName })).rejects.toThrow(
+          'Please pick your school from the list, or type its name if it is not listed.',
+        );
+      }
+      expect(captcha.verify).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('creates the account and starts a session marked as an unlisted school', async () => {
+      const { service, auth } = build(listed, place);
+      const { user, insertCredential } = stubAccountCreation(service);
+
+      const result = await service.signup(typed);
+
+      expect(insertCredential).toHaveBeenCalledWith(
+        42n,
+        'Riya Sharma',
+        expect.any(String),
+        TYPED_SCHOOL,
+      );
+      expect(auth.issueLoginSession).toHaveBeenCalledWith(user, {
+        method: 'student_id',
+        ip: '203.0.113.10',
+        userAgent: 'test-agent',
+        udiseCode: null,
+        unlistedSchool: true,
+      });
+      expect(result).toMatchObject({
+        studentId: 'riyasharmact1',
+        school: TYPED_SCHOOL,
+      });
+    });
+  });
+
+  describe('login', () => {
+    // A credential row as stored, with the password "riya@2026".
+    const loginWith = async (school: {
+      udiseCode: string | null;
+      schoolName: string | null;
+    }) => {
+      const { service, auth } = build();
+      const passwordHash = await service.hashPassword('riya@2026');
+      const credential = {
+        id: 7,
+        userId: 42n,
+        studentId: 'riyasharmact1',
+        passwordHash,
+        lockedUntil: null,
+        state: school.schoolName ? 'Assam' : null,
+        city: school.schoolName ? 'Karimganj' : null,
+        ...school,
+      };
+      const user = { id: 42n, name: 'Riya Sharma' };
+      const rows = [[credential], [user]];
+      const query: any = {
+        from: () => query,
+        where: () => query,
+        limit: async () => rows.shift(),
+      };
+      mockDb.select = jest.fn(() => query);
+      mockDb.update = jest.fn(() => ({
+        set: () => ({ where: async () => undefined }),
+      }));
+      const result = await service.login('riyasharmact1', 'riya@2026', {});
+      return { result, context: auth.issueLoginSession.mock.calls[0][1] };
+    };
+
+    it('marks a typed-in school so the session ID gets NUDISE', async () => {
+      const { result, context } = await loginWith({
+        udiseCode: null,
+        schoolName: 'Saint Joseph School, Badarpur',
+      });
+      expect(context).toMatchObject({ udiseCode: null, unlistedSchool: true });
+      expect(result.school).toEqual({
+        state: 'Assam',
+        city: 'Karimganj',
+        schoolName: 'Saint Joseph School, Badarpur',
+        udiseCode: null,
+      });
+    });
+
+    it('passes the code of a listed school', async () => {
+      const { context } = await loginWith({
+        udiseCode: '18220121003',
+        schoolName: 'SAINT JOSEPH SCHOOL',
+      });
+      expect(context).toMatchObject({
+        udiseCode: '18220121003',
+        unlistedSchool: false,
+      });
+    });
+
+    it('gives an account from before schools were asked no school (random session ID)', async () => {
+      const { result, context } = await loginWith({
+        udiseCode: null,
+        schoolName: null,
+      });
+      expect(context).toMatchObject({ udiseCode: null, unlistedSchool: false });
+      expect(result.school).toBeNull();
     });
   });
 });

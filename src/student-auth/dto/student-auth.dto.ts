@@ -12,12 +12,18 @@ import {
 } from 'class-validator';
 import {
   UDISE_CODE_PATTERN,
+  cleanText,
   normalizeUdiseCode,
 } from 'src/schools/school-rows';
 
 const trim = ({ value }) => (typeof value === 'string' ? value.trim() : value);
+// An empty string counts as "not sent", so an unused field never fails.
 const toUdiseCode = ({ value }) =>
-  typeof value === 'string' ? normalizeUdiseCode(value) : value;
+  typeof value === 'string' ? normalizeUdiseCode(value) || undefined : value;
+const toSchoolName = ({ value }) =>
+  typeof value === 'string' ? cleanText(value) || undefined : value;
+// At least one letter, in any script (so "रवि पब्लिक स्कूल" is fine).
+const HAS_LETTER = /\p{L}/u;
 // Student IDs are stored lowercase (e.g. aruneshdharct1); accept any case.
 const toStudentId = ({ value }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -46,7 +52,7 @@ export class StudentSignupDto {
 
   @ApiProperty({
     description: 'State, from GET /schools/states (any letter case)',
-    example: 'Telangana',
+    example: 'Andaman and Nicobar Islands',
   })
   @Transform(trim)
   @IsString()
@@ -57,7 +63,7 @@ export class StudentSignupDto {
   @ApiProperty({
     description:
       'City (UDISE district), from GET /schools/cities (any letter case)',
-    example: 'Hyderabad',
+    example: 'Andamans',
   })
   @Transform(trim)
   @IsString()
@@ -65,17 +71,31 @@ export class StudentSignupDto {
   @Length(1, 100)
   city: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'UDISE code of the school picked from GET /schools (11 characters, normally digits). The school name is taken from our school list.',
-    example: '36070700101',
+      'For a school picked from GET /schools: its UDISE code (11 characters, normally digits). The school name is then taken from our school list. Leave it out (or null) when the school is not listed and send schoolName instead. If both are sent, udiseCode is used.',
+    example: '35010300101',
+    nullable: true,
   })
+  @IsOptional()
   @Transform(toUdiseCode)
   @IsString()
   @Matches(UDISE_CODE_PATTERN, {
     message: 'udiseCode must be the 11-character UDISE code of the school',
   })
-  udiseCode: string;
+  udiseCode?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Only when the school is not in the list: the school name as the student types it, 3 to 255 characters. Saved with no UDISE code; the session ID then has NUDISE in place of the code. Ignored when udiseCode is sent.',
+    example: 'Saint Joseph School, Badarpur',
+  })
+  @IsOptional()
+  @Transform(toSchoolName)
+  @IsString()
+  @Length(3, 255)
+  @Matches(HAS_LETTER, { message: 'schoolName must contain letters' })
+  schoolName?: string;
 
   @ApiPropertyOptional({
     description:

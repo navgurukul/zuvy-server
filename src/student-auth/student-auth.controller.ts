@@ -63,13 +63,13 @@ export class StudentAuthController {
     summary:
       'Sign up without email (name + password + state, city, school + captcha)',
     description:
-      'Creates the student and returns a generated Student ID plus the same tokens as Google login. State, city and udiseCode come from the GET /schools dropdowns. Show the Student ID to the student prominently: it is their login.',
+      'Creates the student and returns a generated Student ID plus the same tokens as Google login. State and city come from the GET /schools dropdowns. School: send udiseCode for a school picked from GET /schools, or, if the school is not listed, leave udiseCode out and send schoolName as the student typed it (saved with no UDISE code; the session ID then has NUDISE in place of the code). If both are sent, udiseCode is used. Show the Student ID to the student prominently: it is their login.',
   })
   @ApiResponse({ status: 201, description: 'Account created and signed in' })
   @ApiResponse({
     status: 400,
     description:
-      'Invalid input, school not found / not in that state and city, or captcha failed',
+      'Invalid input, no school given, school not found / not in that state and city, unknown state or city, or captcha failed',
   })
   @ApiResponse({
     status: 429,
@@ -82,6 +82,7 @@ export class StudentAuthController {
       state: dto.state,
       city: dto.city,
       udiseCode: dto.udiseCode,
+      schoolName: dto.schoolName,
       captchaToken: dto.captchaToken,
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],

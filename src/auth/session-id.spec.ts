@@ -8,7 +8,11 @@ jest.mock('src/rbac/utility', () => ({ ResourceList: {} }));
 import { db } from '../db';
 import { zuvySessionCounters } from '../../drizzle/schema';
 import { AuthService } from './auth.service';
-import { formatCtSessionId, sessionDate } from './session-id';
+import {
+  formatCtSessionId,
+  sessionDate,
+  sessionSchoolCode,
+} from './session-id';
 
 const CT_ID = /^CT_IN_[0-9]{8}_[0-9A-Z]{11}_[0-9]{7}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -76,8 +80,35 @@ describe('AuthService.newSessionId', () => {
     expect(mockDb.insert).not.toHaveBeenCalled();
   });
 
+  it('gives a typed-in (unlisted) school NUDISE and its own daily count', async () => {
+    const values = counterReturns(Promise.resolve([{ lastNumber: 3 }]));
+    const id = await service.newSessionId(sessionSchoolCode(null, true));
+    expect(id).toBe(`CT_IN_${sessionDate()}_NUDISE_0000003`);
+    expect(values).toHaveBeenCalledWith({
+      sessionDate: sessionDate(),
+      udiseCode: 'NUDISE',
+      lastNumber: 1,
+    });
+  });
+
   it('never blocks a login: a counter problem falls back to a UUID', async () => {
     counterReturns(Promise.reject(new Error('db down')));
     await expect(service.newSessionId('36070700101')).resolves.toMatch(UUID);
+  });
+});
+
+describe('sessionSchoolCode', () => {
+  it('uses the UDISE code, NUDISE for a typed-in school, else nothing', () => {
+    expect(sessionSchoolCode('36070700101', false)).toBe('36070700101');
+    expect(sessionSchoolCode('36070700101', true)).toBe('36070700101');
+    expect(sessionSchoolCode(null, true)).toBe('NUDISE');
+    expect(sessionSchoolCode(null, false)).toBeNull();
+    expect(sessionSchoolCode(undefined, undefined)).toBeNull();
+  });
+
+  it('keeps an unlisted-school ID valid for the spec', () => {
+    const id = formatCtSessionId('20261028', sessionSchoolCode(null, true), 1);
+    expect(id).toBe('CT_IN_20261028_NUDISE_0000001');
+    expect(id).toMatch(/^CT_IN_[0-9]{8}_[0-9A-Z]+_[0-9]{7}$/);
   });
 });

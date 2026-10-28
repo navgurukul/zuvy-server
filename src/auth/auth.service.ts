@@ -7,6 +7,7 @@ import {
   formatCtSessionId,
   nextSessionNumber,
   sessionDate,
+  sessionSchoolCode,
 } from './session-id';
 import {
   users,
@@ -36,6 +37,9 @@ export interface LoginContext extends LoginClientInfo {
   method: string;
   /** The student's school; such logins get a Career Tours session ID. */
   udiseCode?: string | null;
+  /** The student typed in a school that is not in the list: the session ID
+   * gets NUDISE in place of the UDISE code. */
+  unlistedSchool?: boolean;
 }
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -348,7 +352,9 @@ export class AuthService {
     // Email-less (Student ID) users must never match an org with no POC email.
     const isPoc = !!user.email && selectedOrg?.pocEmail === user.email;
 
-    const sessionId = await this.newSessionId(context.udiseCode);
+    const sessionId = await this.newSessionId(
+      sessionSchoolCode(context.udiseCode, context.unlistedSchool),
+    );
 
     const jwtPayload = {
       sub: user.id.toString(),
@@ -464,21 +470,21 @@ export class AuthService {
 
   /**
    * A login by a student with a school gets a Career Tours ID,
-   * CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number> (see session-id.ts); any other
-   * login, or a database problem with the counter, a random UUID.
+   * CT_IN_<YYYYMMDD>_<UDISE or NUDISE>_<7-digit number> (see session-id.ts);
+   * any other login, or a database problem with the counter, a random UUID.
    */
-  private async newSessionId(udiseCode?: string | null): Promise<string> {
-    if (!udiseCode) return randomUUID();
+  private async newSessionId(schoolCode?: string | null): Promise<string> {
+    if (!schoolCode) return randomUUID();
     try {
       const date = sessionDate();
       return formatCtSessionId(
         date,
-        udiseCode,
-        await nextSessionNumber(db, date, udiseCode),
+        schoolCode,
+        await nextSessionNumber(db, date, schoolCode),
       );
     } catch (error) {
       this.logger.error(
-        `Could not number a session for school ${udiseCode}: ${error?.message}`,
+        `Could not number a session for school ${schoolCode}: ${error?.message}`,
       );
       return randomUUID();
     }
