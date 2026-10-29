@@ -96,8 +96,18 @@ export async function generateCppTemplate(
     /* runtime inclusion rule */
     const needsRuntime =
       inputMode === 'HYBRID' ||
-      returnType === 'jsonType' ||
-      returnType === 'object' ||
+      [
+        'jsonType',
+        'object',
+        'map',
+        'arrayOfObj',
+        'linkedList',
+        'binaryTree',
+        'mapStrInt',
+        'mapIntInt',
+        'graph',
+        'weightedGraph',
+      ].includes(returnType) ||
       parameters.some((p) =>
         ['jsonType', 'object', 'map', 'arrayOfObj'].includes(p.parameterType),
       );
@@ -143,6 +153,8 @@ export async function generateCppTemplate(
           return 'vector<vector<pair<int,int>>>';
         case 'jsonType':
         case 'object':
+        case 'map':
+        case 'arrayOfObj':
           return 'Variant';
         default:
           return 'string';
@@ -247,15 +259,16 @@ ${needsIgnore ? "cin.ignore(numeric_limits<streamsize>::max(), '\\n');" : ''}
 
     /* ---------- HYBRID input ---------- */
     const hybridInput = `
-  vector<string> lines;
   string line;
-  while (getline(cin, line)) lines.push_back(line);
-  int idx = 0;
 ${parameters
   .map(
     (p) => `
+  line = "";
+  while (getline(cin, line)) {
+    if (!trim(line).empty()) break;
+  }
   Variant v_${p.parameterName} =
-    parseJavaStrictFormat(idx < (int)lines.size() ? lines[idx++] : "");
+    parseJavaStrictFormat(line);
 `,
   )
   .join('')}
@@ -419,6 +432,8 @@ ${parameters
 
           case 'jsonType':
           case 'object':
+          case 'map':
+          case 'arrayOfObj':
             return `
   Variant ${name} = v_${name};
 `;
