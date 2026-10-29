@@ -46,6 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       roles: roles,
       orgId: payload.orgId,
       orgName: payload.orgName,
+      sessionId: payload.sid ?? null,
     };
     const arr = [userData];
     req.user = arr; // still fine to do, but optional now

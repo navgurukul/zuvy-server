@@ -266,7 +266,7 @@ export class AdminAssessmentController {
     name: 'searchStudent',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by name, email or Student ID',
   })
   @ApiQuery({
     name: 'batchId',
