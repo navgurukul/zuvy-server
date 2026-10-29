@@ -412,6 +412,7 @@ export class ContentService {
     moduleId: number,
     topicId: number,
     bootcampId: number,
+    videoDurationSeconds?: number,
   ) {
     try {
       const moduleInfo = await db
@@ -439,6 +440,9 @@ export class ContentService {
         };
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+      }
+      if (topicId === 1 && videoDurationSeconds !== undefined) {
+        chapterData.videoDurationSeconds = Math.round(videoDurationSeconds);
       }
       const chapter = await db
         .insert(zuvyModuleChapter)
@@ -1547,6 +1551,15 @@ export class ContentService {
       if (moduleInfo.length == 0 || chapterInfo.length == 0) {
         throw new NotFoundException('Module or chapter not found!');
       }
+      // Video duration comes from the frontend's player metadata. Keep it
+      // optional and ignore it for non-video chapter types.
+      if (chapterInfo[0].topicId !== 1) {
+        delete (editData as any).videoDurationSeconds;
+      } else if (editData.videoDurationSeconds !== undefined) {
+        editData.videoDurationSeconds = Math.round(
+          editData.videoDurationSeconds,
+        );
+      }
       if (editData.newOrder != undefined) {
         const { newOrder } = editData;
 
@@ -1605,7 +1618,12 @@ export class ContentService {
 
           await db
             .update(zuvyModuleChapter)
-            .set({ order: newOrder })
+            .set({
+              order: newOrder,
+              ...(editData.videoDurationSeconds !== undefined
+                ? { videoDurationSeconds: editData.videoDurationSeconds }
+                : {}),
+            })
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
@@ -1719,7 +1737,9 @@ export class ContentService {
         }
         await db
           .update(zuvyModuleChapter)
-          .set(editData)
+          .set({
+            ...editData,
+          })
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
       const updatedChapter = await db

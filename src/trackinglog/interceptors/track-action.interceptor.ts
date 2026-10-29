@@ -182,11 +182,11 @@ export class TrackActionInterceptor implements NestInterceptor {
                 })();
 
                 // Use full email as actor identifier
-                let actorName = 'User';
                 const emailSource = userData?.email ?? resultUser?.email;
-                if (emailSource) {
-                  actorName = emailSource;
-                }
+                const actorName = this.getActorName(
+                  userData?.name ?? resultUser?.name,
+                  emailSource,
+                );
 
                 const orgId = (() => {
                   const raw = userData?.orgId ?? resultUser?.orgId;
@@ -484,10 +484,10 @@ export class TrackActionInterceptor implements NestInterceptor {
                     ? parseInt(userData.id)
                     : userData.id;
 
-                let actorName = 'User';
-                if (userData.email) {
-                  actorName = userData.email;
-                }
+                const actorName = this.getActorName(
+                  userData?.name,
+                  userData?.email,
+                );
 
                 const orgId =
                   typeof userData.orgId === 'string'
@@ -624,6 +624,20 @@ export class TrackActionInterceptor implements NestInterceptor {
       .replace(/&nbsp;/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private getActorName(name?: string | null, email?: string | null): string {
+    if (name?.trim()) return name.trim();
+    if (!email?.trim()) return 'User';
+
+    // JWT currently provides email, so use its local part as a readable name
+    // (e.g. archana.sharma@example.com → Archana Sharma).
+    const localPart = email.split('@')[0];
+    return localPart
+      .split(/[._+-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   private toPastTense(verb: string): string {

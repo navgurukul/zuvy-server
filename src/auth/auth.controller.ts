@@ -37,6 +37,11 @@ export class AuthController {
       properties: {
         access_token: { type: 'string', description: 'JWT access token' },
         refresh_token: { type: 'string', description: 'JWT refresh token' },
+        sessionId: {
+          type: 'string',
+          description:
+            'New session ID for this login (also in the JWT as "sid"); kept across token refresh',
+        },
         showTooltip: {
           type: 'boolean',
           description:
@@ -65,8 +70,11 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Request() req) {
+    return this.authService.login(loginDto, {
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
   }
 
   @Post('logout')

@@ -10,6 +10,7 @@ import {
   IsOptional,
   ValidateNested,
   IsNumber,
+  Min,
   isArray,
   IsEmail,
   IsObject,
@@ -368,6 +369,16 @@ export class EditChapterDto {
   @IsNumber()
   @IsOptional()
   codingQuestions: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Video duration in seconds (for video chapters, topicId 1)',
+    example: 120,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  videoDurationSeconds?: number;
 
   @ApiPropertyOptional({
     type: Number,
@@ -1171,6 +1182,16 @@ export class CreateChapterDto {
   @IsOptional()
   @IsNumber()
   topicId: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Video duration in seconds (for video chapters, topicId 1)',
+    example: 120,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  videoDurationSeconds?: number;
 }
 
 export class CreateTypeDto {

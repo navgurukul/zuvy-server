@@ -1005,6 +1005,10 @@ export class OrgService {
     accessToken: string,
     refreshToken: string,
   ) {
-    return this.authService.generateTokensForSwitch(userId, newOrgId);
+    return this.authService.generateTokensForSwitch(
+      userId,
+      newOrgId,
+      accessToken,
+    );
   }
 }
