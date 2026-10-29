@@ -189,7 +189,7 @@ async function main() {
 
   const rows: Row[] = base.map((r) => {
     const bookingRecordings = r.bookingId
-      ? recordingsByBooking.get(r.bookingId) ?? []
+      ? (recordingsByBooking.get(r.bookingId) ?? [])
       : [];
     const best =
       bookingRecordings.find((rec) => rec.status === 'COMPLETED') ??
