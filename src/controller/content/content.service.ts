@@ -413,6 +413,7 @@ export class ContentService {
     moduleId: number,
     topicId: number,
     bootcampId: number,
+    videoDurationSeconds?: number,
   ) {
     try {
       const moduleInfo = await db
@@ -440,6 +441,9 @@ export class ContentService {
         };
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+      }
+      if (topicId === 1 && videoDurationSeconds !== undefined) {
+        chapterData.videoDurationSeconds = Math.round(videoDurationSeconds);
       }
       const chapter = await db
         .insert(zuvyModuleChapter)
@@ -726,6 +730,7 @@ export class ContentService {
           chapterTitle: zuvyModuleChapter.title,
           topicId: zuvyModuleChapter.topicId,
           order: zuvyModuleChapter.order,
+          isLock: zuvyModuleChapter.isLock,
         })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.moduleId, moduleId))
@@ -748,6 +753,7 @@ export class ContentService {
           topicId: ch.topicId,
           topicName: topicInfo?.topicName || 'Unknown',
           order: ch.order,
+          isLock: ch.isLock ?? false,
         };
       });
       const targetPermissions = [
@@ -1503,6 +1509,30 @@ export class ContentService {
     }
   }
 
+  async updateChapterLock(chapterId: number, isLock: boolean) {
+    const [chapter] = await db
+      .update(zuvyModuleChapter)
+      .set({ isLock } as any)
+      .where(eq(zuvyModuleChapter.id, chapterId))
+      .returning({
+        id: zuvyModuleChapter.id,
+        title: zuvyModuleChapter.title,
+        moduleId: zuvyModuleChapter.moduleId,
+        isLock: zuvyModuleChapter.isLock,
+      });
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found!');
+    }
+    return {
+      status: 'success',
+      code: 200,
+      message: isLock
+        ? 'Chapter locked successfully'
+        : 'Chapter unlocked successfully',
+      chapter,
+    };
+  }
+
   async editChapter(
     editData: UpdateChapterDto,
     moduleId: number,
@@ -1519,6 +1549,15 @@ export class ContentService {
         .where(eq(zuvyCourseModules.id, moduleId));
       if (moduleInfo.length == 0 || chapterInfo.length == 0) {
         throw new NotFoundException('Module or chapter not found!');
+      }
+      // Video duration comes from the frontend's player metadata. Keep it
+      // optional and ignore it for non-video chapter types.
+      if (chapterInfo[0].topicId !== 1) {
+        delete (editData as any).videoDurationSeconds;
+      } else if (editData.videoDurationSeconds !== undefined) {
+        editData.videoDurationSeconds = Math.round(
+          editData.videoDurationSeconds,
+        );
       }
       if (editData.newOrder != undefined) {
         const { newOrder } = editData;
@@ -1578,7 +1617,12 @@ export class ContentService {
 
           await db
             .update(zuvyModuleChapter)
-            .set({ order: newOrder })
+            .set({
+              order: newOrder,
+              ...(editData.videoDurationSeconds !== undefined
+                ? { videoDurationSeconds: editData.videoDurationSeconds }
+                : {}),
+            })
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
@@ -1692,7 +1736,9 @@ export class ContentService {
         }
         await db
           .update(zuvyModuleChapter)
-          .set(editData)
+          .set({
+            ...editData,
+          })
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
       const updatedChapter = await db

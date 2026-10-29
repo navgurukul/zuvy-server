@@ -2,6 +2,7 @@ const AWS = require('aws-sdk');
 import {
   BadRequestException,
   Injectable,
+  HttpException,
   InternalServerErrorException,
   Logger,
   NotFoundException,
@@ -45,8 +46,10 @@ import {
   zuvyLearnersCompleteProfile,
   zuvyBootcamps,
   zuvyMentorSlotBooking,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { helperVariable } from 'src/constants/helper';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
@@ -170,22 +173,10 @@ Team Zuvy`;
       );
 
       if (!submission) {
-        return [
-          {
-            status: 'error',
-            statusCode: 404,
-            message: 'Assessment submission not found',
-          },
-        ];
+        throw new NotFoundException('Assessment submission not found');
       }
       if (submission.reattempt.length === 0) {
-        return [
-          {
-            status: 'error',
-            statusCode: 400,
-            message: 'Re-attempt request already processed',
-          },
-        ];
+        throw new BadRequestException('Re-attempt request already processed');
       }
 
       let reattemptId = submission.reattempt[0].id;
@@ -350,22 +341,10 @@ Team Zuvy`;
       );
 
       if (!submission) {
-        return [
-          {
-            status: 'error',
-            statusCode: 404,
-            message: 'Assessment submission not found',
-          },
-        ];
+        throw new NotFoundException('Assessment submission not found');
       }
       if (submission.reattempt.length === 0) {
-        return [
-          {
-            status: 'error',
-            statusCode: 400,
-            message: 'Re-attempt request already processed',
-          },
-        ];
+        throw new BadRequestException('Re-attempt request already processed');
       }
       let reattemptId = submission.reattempt[0].id;
       let ModuleAssessment =
@@ -746,18 +725,14 @@ Team Zuvy`;
     try {
       // Validate batchId
       if (batchId !== undefined && batchId <= 0) {
-        throw {
-          statusCode: 400,
-          message: 'batchId must be a positive integer',
-        };
+        throw new BadRequestException('batchId must be a positive integer');
       }
 
       // Validate qualified parameter
       if (qualified && !['true', 'false', 'all'].includes(qualified)) {
-        throw {
-          statusCode: 400,
-          message: 'qualified must be "true", "false", or "all"',
-        };
+        throw new BadRequestException(
+          'qualified must be "true", "false", or "all"',
+        );
       }
 
       // Validate orderBy parameter
@@ -765,19 +740,16 @@ Team Zuvy`;
         orderBy &&
         !['submittedDate', 'percentage', 'name', 'email'].includes(orderBy)
       ) {
-        throw {
-          statusCode: 400,
-          message:
-            'orderBy must be one of: submittedDate, percentage, name, email',
-        };
+        throw new BadRequestException(
+          'orderBy must be one of: submittedDate, percentage, name, email',
+        );
       }
 
       // Validate orderDirection parameter
       if (orderDirection && !['asc', 'desc'].includes(orderDirection)) {
-        throw {
-          statusCode: 400,
-          message: 'orderDirection must be either "asc" or "desc"',
-        };
+        throw new BadRequestException(
+          'orderDirection must be either "asc" or "desc"',
+        );
       }
       // Fetch assessment details
       const assessmentInfo = await db
@@ -949,48 +921,6 @@ Team Zuvy`;
           ),
         )
         .groupBy(zuvyAssessmentSubmission.userId);
-
-      const batchEnrollConditions: SQL[] = [
-        eq(zuvyBatchEnrollments.userId, zuvyAssessmentSubmission.userId),
-        eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-        isNotNull(zuvyBatchEnrollments.batchId),
-      ];
-      if (batchId && !isNaN(batchId)) {
-        batchEnrollConditions.push(eq(zuvyBatchEnrollments.batchId, batchId));
-      }
-      const totalCountQualifiedCondition =
-        qualified === 'true'
-          ? eq(zuvyAssessmentSubmission.isPassed, true)
-          : qualified === 'false'
-            ? or(
-                eq(zuvyAssessmentSubmission.isPassed, false),
-                isNull(zuvyAssessmentSubmission.isPassed),
-              )
-            : undefined;
-
-      const totalCountResult = await db
-        .select({ value: count() })
-        .from(zuvyAssessmentSubmission)
-        .where(
-          and(
-            eq(zuvyAssessmentSubmission.assessmentOutsourseId, assessmentID),
-            exists(
-              db
-                .select({ _: zuvyBatchEnrollments.userId })
-                .from(zuvyBatchEnrollments)
-                .where(and(...batchEnrollConditions)),
-            ),
-            ...(totalCountQualifiedCondition
-              ? [totalCountQualifiedCondition]
-              : []),
-            eq(
-              zuvyAssessmentSubmission.id,
-              sql`(SELECT MAX(id) FROM ${zuvyAssessmentSubmission} WHERE assessment_outsourse_id = ${assessmentID} AND user_id = ${zuvyAssessmentSubmission.userId})`,
-            ),
-          ),
-        );
-      // totalCountResult holds count from DB if needed; we'll compute final totalCount from combinedData below
-      // const totalCount = totalCountResult[0]?.value;
 
       const reattemptCountMap = new Map(
         userReattemptCounts.map((entry) => [
@@ -1288,13 +1218,7 @@ Team Zuvy`;
         },
       ];
     } catch (err) {
-      return [
-        {
-          status: 'error',
-          statusCode: 400,
-          message: err.message,
-        },
-      ];
+      throw new BadRequestException(err.message);
     }
   }
 
@@ -1369,12 +1293,7 @@ Team Zuvy`;
       });
 
       if (!assessments || assessments.length === 0) {
-        return [
-          {
-            statusCode: STATUS_CODES.NOT_FOUND,
-            message: 'No assessments found.',
-          },
-        ];
+        throw new NotFoundException('No assessments found.');
       }
 
       const assessmentsByModule = assessments.reduce((acc, assessment: any) => {
@@ -1425,7 +1344,8 @@ Team Zuvy`;
         totalStudents: studentsEnrolled.length,
       };
     } catch (err) {
-      return [{ message: err.message }];
+      this.logger.error('Error in getAssessmentsAndStudents', err);
+      throw err;
     }
   }
 
@@ -1442,10 +1362,9 @@ Team Zuvy`;
     try {
       // Validate ordering inputs
       if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
-        return {
-          message: 'Both orderBy and orderDirection are required together',
-          statusCode: 400,
-        };
+        throw new BadRequestException(
+          'Both orderBy and orderDirection are required together',
+        );
       }
 
       // ORDER BY chapter.title (same style as your other method)
@@ -1623,30 +1542,27 @@ Team Zuvy`;
     try {
       // Validate ordering inputs when provided
       if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
-        return {
-          message: 'Both orderBy and orderDirection are required together',
-          statusCode: 400,
-        };
+        throw new BadRequestException(
+          'Both orderBy and orderDirection are required together',
+        );
       }
 
       if (
         orderBy &&
         !['name', 'email', 'completedAt'].includes(orderBy as string)
       ) {
-        return {
-          message: 'orderBy must be one of: name, email, completedAt',
-          statusCode: 400,
-        };
+        throw new BadRequestException(
+          'orderBy must be one of: name, email, completedAt',
+        );
       }
 
       if (
         orderDirection &&
         !['asc', 'desc'].includes(orderDirection as string)
       ) {
-        return {
-          message: 'orderDirection must be either asc or desc',
-          statusCode: 400,
-        };
+        throw new BadRequestException(
+          'orderDirection must be either asc or desc',
+        );
       }
 
       // Fetch bootcampId using chapterId
@@ -1657,6 +1573,8 @@ Team Zuvy`;
           id: true,
           title: true,
           description: true,
+          topicId: true,
+          videoDurationSeconds: true,
         },
         with: {
           courseModulesData: {
@@ -1753,12 +1671,17 @@ Team Zuvy`;
                   db
                     .select({ _: users.id })
                     .from(users)
+                    .leftJoin(
+                      zuvyStudentCredentials,
+                      eq(zuvyStudentCredentials.userId, users.id),
+                    )
                     .where(
                       and(
                         eq(users.id, track.userId),
                         or(
                           ilike(users.name, pattern),
                           ilike(users.email, pattern),
+                          ilike(zuvyStudentCredentials.studentId, pattern),
                         ),
                       ),
                     ),
@@ -1777,6 +1700,7 @@ Team Zuvy`;
                 id: true,
                 name: true,
                 email: true,
+                profilePicture: true,
               },
             },
           },
@@ -1813,6 +1737,7 @@ Team Zuvy`;
 
         enrollmentMap = new Map(enrollments.map((e) => [Number(e.userId), e]));
       }
+      const studentIdMap = await getStudentIdsByUserId(userIds);
 
       const submittedStudents = chapterTrackingDetails
         .filter((tracking) => tracking['user'] != null)
@@ -1823,6 +1748,8 @@ Team Zuvy`;
             id: uid,
             name: tracking['user'].name,
             email: tracking['user'].email,
+            studentId: studentIdMap.get(String(uid)) ?? null,
+            profilePicture: tracking['user'].profilePicture ?? null,
             completedAt: tracking.completedAt,
             batchId: enrollment ? Number(enrollment.batchId) : null,
             batchName:
@@ -1880,6 +1807,11 @@ Team Zuvy`;
           description: chapterDetails.description,
           totalStudentsCount,
           totalSubmittedStudents,
+          totalwatchedtime:
+            chapterDetails.topicId === 1
+              ? totalSubmittedStudents *
+                (chapterDetails.videoDurationSeconds ?? 0)
+              : 0,
         },
         totalRows,
         totalPages,
@@ -2019,7 +1951,7 @@ Team Zuvy`;
 
   async getAssessmentStats(
     bootcampId: number,
-    assessmentId?: number,
+    assessmentId: number,
     userId?: number,
     percentages?: number | number[],
   ) {
@@ -2065,9 +1997,10 @@ Team Zuvy`;
           ),
         )
         .where(
-          assessmentId
-            ? eq(zuvyOutsourseAssessments.id, assessmentId)
-            : eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+          and(
+            eq(zuvyOutsourseAssessments.id, assessmentId),
+            eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+          ),
         )
         .orderBy(desc(zuvyOutsourseAssessments.createdAt));
 
@@ -2234,6 +2167,9 @@ Team Zuvy`;
       };
     } catch (error) {
       console.error('Error fetching assessment stats:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new BadRequestException(
         error.message || 'Failed to fetch assessment stats',
       );
@@ -2299,6 +2235,7 @@ Team Zuvy`;
       }
 
       const enrolledUserIds = enrollments.map((e) => Number(e.userId));
+      const studentIdMap = await getStudentIdsByUserId(enrolledUserIds);
 
       // 3. Fetch all assessments for this bootcamp ordered by 'order'
       const assessments = await db
@@ -2436,6 +2373,7 @@ Team Zuvy`;
             : null;
 
         return {
+          studentId: studentIdMap.get(String(userId)) ?? null,
           name: enrollment.name,
           email: enrollment.email,
           overAllAttendance: enrollment.attendance ?? null,

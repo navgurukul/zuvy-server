@@ -981,3 +981,36 @@ export class ProfileStrengthResponseDto {
   })
   message?: string;
 }
+
+export class AdminLearnerQueryDto {
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Maximum number of profiles to return (1-1000)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Optional userId to fetch a single learner profile',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  userId?: number;
+}

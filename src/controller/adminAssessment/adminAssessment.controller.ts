@@ -266,7 +266,7 @@ export class AdminAssessmentController {
     name: 'searchStudent',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by name, email or Student ID',
   })
   @ApiQuery({
     name: 'batchId',
@@ -468,6 +468,14 @@ export class AdminAssessmentController {
     try {
       const parsedBatchId = parseInt(batchId, 10);
       const parsedUserId = userId ? parseInt(userId, 10) : undefined;
+      if (isNaN(parsedBatchId)) {
+        throw new BadRequestException('batchId must be a valid number');
+      }
+
+      if (userId && isNaN(parsedUserId)) {
+        throw new BadRequestException('userId must be a valid number');
+      }
+
       const result = await this.adminAssessmentService.getOverallAnalysis(
         parsedBatchId,
         parsedUserId,

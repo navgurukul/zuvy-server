@@ -16,6 +16,7 @@ import {
   boolean,
   bigint,
   index,
+  smallint,
   char,
   json,
   uniqueIndex,
@@ -1131,7 +1132,12 @@ export const partners = main.table(
   },
 );
 
-const bytea = customType<{ data: string; notNull: false; default: false }>({
+const bytea = customType<{
+  data: string;
+  driverData: Buffer;
+  notNull: false;
+  default: false;
+}>({
   dataType() {
     return 'bytea';
   },
@@ -2483,6 +2489,7 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
+  isChapterLocked: boolean('is_chapter_locked').default(false),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
 
     leaderboardEnabled: boolean('leaderboard_enabled')
@@ -2936,7 +2943,11 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
     withTimezone: true,
     mode: 'string',
   }),
+  // Video length in seconds; only applicable to video chapters (topicId 1).
+  videoDurationSeconds: integer('video_duration_seconds'),
   order: integer('order'),
+  // Admin-set manual lock for this chapter, independent of Module/Chapter Lock.
+  isLock: boolean('is_lock').default(false),
   version: varchar('version', { length: 10 })
 }, (table) => ({
   // perf: chapters are always listed/reordered by moduleId, often sorted by order.
@@ -5447,6 +5458,165 @@ export const zuvyUserFeatureFlagsRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [zuvyUserFeatureFlags.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+// Student ID + password credential for learners without an email address
+// (migrations 0043, 0044). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here. Student IDs are
+// first + last name in lowercase, "ct" and a number, e.g. aruneshdharct1.
+export const zuvyStudentCredentials = main.table(
+  'zuvy_student_credentials',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    studentId: varchar('student_id', { length: 40 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+    passwordUpdatedAt: timestamp('password_updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .notNull()
+      .defaultNow(),
+    lastResetBy: bigint('last_reset_by', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    lastResetAt: timestamp('last_reset_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+    // School chosen at sign-up (migration 0045), copied from zuvy_schools so
+    // the record keeps what the student picked even if the list changes.
+    // Empty for accounts created before these fields existed.
+    state: varchar('state', { length: 100 }),
+    city: varchar('city', { length: 100 }), // UDISE district
+    schoolName: varchar('school_name', { length: 255 }),
+    udiseCode: varchar('udise_code', { length: 11 }),
+  },
+  (table) => ({
+    uniqUserId: unique('zuvy_student_credentials_user_id_unique').on(table.userId),
+    uniqStudentId: unique('zuvy_student_credentials_student_id_unique').on(
+      table.studentId,
+    ),
+    udiseCodeIdx: index('zuvy_student_credentials_udise_code_idx').on(
+      table.udiseCode,
+    ),
+  }),
+);
+
+// School list for the sign-up dropdowns (migration 0045), loaded by a super
+// admin from a CSV. State and district are stored in UPPERCASE, as in UDISE.
+export const zuvySchools = main.table(
+  'zuvy_schools',
+  {
+    id: serial('id').primaryKey().notNull(),
+    udiseCode: varchar('udise_code', { length: 11 }).notNull(),
+    schoolName: varchar('school_name', { length: 255 }).notNull(),
+    state: varchar('state', { length: 100 }).notNull(),
+    district: varchar('district', { length: 100 }).notNull(),
+    block: varchar('block', { length: 100 }),
+    village: varchar('village', { length: 100 }),
+    pincode: varchar('pincode', { length: 6 }),
+    management: varchar('management', { length: 100 }),
+    classFrom: smallint('class_from'),
+    classTo: smallint('class_to'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUdiseCode: unique('zuvy_schools_udise_code_unique').on(table.udiseCode),
+    // Cities of a state, and a city's schools sorted by name.
+    stateDistrictNameIdx: index('zuvy_schools_state_district_name_idx').on(
+      table.state,
+      table.district,
+      table.schoolName,
+    ),
+  }),
+);
+
+// One row per login (migrations 0045, 0046). The id is the session ID
+// carried in the JWT as "sid"; it stays the same across token refresh and
+// org switch. A student with a school gets a Career Tours ID,
+// CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number>; other logins a random UUID.
+export const zuvyUserSessions = main.table(
+  'zuvy_user_sessions',
+  {
+    id: varchar('id', { length: 100 }).primaryKey().notNull(),
+    udiseCode: varchar('udise_code', { length: 11 }),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    loginMethod: varchar('login_method', { length: 20 }).notNull(),
+    orgId: integer('org_id'),
+    ip: varchar('ip', { length: 64 }),
+    userAgent: varchar('user_agent', { length: 512 }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+    lastRefreshedAt: timestamp('last_refreshed_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    endedAt: timestamp('ended_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => ({
+    userIdIdx: index('zuvy_user_sessions_user_id_idx').on(table.userId),
+    udiseCodeIdx: index('zuvy_user_sessions_udise_code_idx').on(
+      table.udiseCode,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Last Career Tours session number per school per day (migration 0046):
+// date 20261028 + school 36070700101 with lastNumber 25 means sessions
+// ..._0000001 to ..._0000025 exist. One atomic upsert per login.
+export const zuvySessionCounters = main.table(
+  'zuvy_session_counters',
+  {
+    sessionDate: varchar('session_date', { length: 8 }).notNull(), // YYYYMMDD, Indian date
+    udiseCode: varchar('udise_code', { length: 11 }).notNull(),
+    lastNumber: integer('last_number').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'zuvy_session_counters_pk',
+      columns: [table.sessionDate, table.udiseCode],
+    }),
+  }),
+);
+
+// Last number given out per name (migration 0044): base "aruneshdhar" with
+// lastNumber 2 means aruneshdharct1 and aruneshdharct2 exist. Incremented
+// with one atomic upsert, so simultaneous same-name sign-ups never collide.
+export const zuvyStudentIdCounters = main.table('zuvy_student_id_counters', {
+  base: varchar('base', { length: 40 }).primaryKey().notNull(),
+  lastNumber: integer('last_number').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .notNull()
+    .defaultNow(),
+});
+
+export const zuvyStudentCredentialsRelations = relations(
+  zuvyStudentCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyStudentCredentials.userId],
       references: [users.id],
     }),
   }),
