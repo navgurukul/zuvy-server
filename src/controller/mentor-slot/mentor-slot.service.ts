@@ -1163,7 +1163,7 @@ export class MentorSlotService {
 
       this.emailService
         .sendEmail(
-          'team@zuvy.org',
+          ['team@zuvy.org', 'join-zuvy@navgurukul.org'],
           '📅 New Mentorship Session Booked',
           `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
             <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">

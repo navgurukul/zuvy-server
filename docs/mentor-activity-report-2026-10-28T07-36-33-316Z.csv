@@ -1,0 +1,184 @@
+mentor_id,mentor_name,mentor_email,organization_id,organization_name,slot_id,slot_start,slot_end,duration_minutes,slot_status,slot_status_raw,max_capacity,current_booked_count,booking_id,booking_status,session_lifecycle_state,student_id,student_name,student_email,booked_at,completed_at,cancelled_at,cancellation_reason,mentor_rating,student_rating,recording_count,recording_status,recording_link,recording_last_error,month
+69372,Akhil Sharma,akhil@navgurukul.org,1,NG,91,2026-10-08T16:30:00.000Z,2026-10-08T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,93,2026-10-15T04:30:00.000Z,2026-10-15T05:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,94,2026-10-15T05:32:00.000Z,2026-10-15T06:32:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,97,2026-10-15T09:30:00.000Z,2026-10-15T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,99,2026-10-15T10:33:00.000Z,2026-10-15T11:33:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,96,2026-10-15T15:30:00.000Z,2026-10-15T16:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,101,2026-10-16T03:30:00.000Z,2026-10-16T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,102,2026-10-16T04:32:00.000Z,2026-10-16T05:32:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,103,2026-10-16T05:35:00.000Z,2026-10-16T06:35:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,104,2026-10-16T06:40:00.000Z,2026-10-16T07:40:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,105,2026-10-16T09:30:00.000Z,2026-10-16T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,133,2026-10-25T06:32:00.000Z,2026-10-25T07:32:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,134,2026-10-25T07:34:00.000Z,2026-10-25T08:34:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,135,2026-10-25T08:36:00.000Z,2026-10-25T09:36:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,136,2026-10-25T09:41:00.000Z,2026-10-25T10:41:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,137,2026-10-25T10:45:00.000Z,2026-10-25T11:45:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,138,2026-10-25T11:50:00.000Z,2026-10-25T12:50:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,139,2026-10-25T13:00:00.000Z,2026-10-25T14:00:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,140,2026-10-25T14:02:00.000Z,2026-10-25T15:02:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,158,2026-10-27T05:30:00.000Z,2026-10-27T06:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,161,2026-10-27T06:33:00.000Z,2026-10-27T07:33:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,160,2026-10-27T10:30:00.000Z,2026-10-27T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,162,2026-10-27T11:35:00.000Z,2026-10-27T12:35:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,163,2026-10-28T05:30:00.000Z,2026-10-28T06:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,164,2026-10-28T06:33:00.000Z,2026-10-28T07:33:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,165,2026-10-28T10:30:00.000Z,2026-10-28T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,166,2026-10-28T11:35:00.000Z,2026-10-28T12:35:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,167,2026-10-29T05:30:00.000Z,2026-10-29T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,168,2026-10-29T06:33:00.000Z,2026-10-29T07:33:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,169,2026-10-29T10:30:00.000Z,2026-10-29T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,170,2026-10-29T11:35:00.000Z,2026-10-29T12:35:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,171,2026-10-30T05:30:00.000Z,2026-10-30T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,172,2026-10-30T06:35:00.000Z,2026-10-30T07:35:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,173,2026-10-30T10:30:00.000Z,2026-10-30T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,174,2026-10-30T11:35:00.000Z,2026-10-30T12:35:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,175,2026-10-31T04:30:00.000Z,2026-10-31T05:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,176,2026-10-31T05:33:00.000Z,2026-10-31T06:33:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,177,2026-10-31T06:36:00.000Z,2026-10-31T07:36:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,178,2026-10-31T08:30:00.000Z,2026-10-31T09:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,179,2026-10-31T09:35:00.000Z,2026-10-31T10:35:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,180,2026-10-31T10:40:00.000Z,2026-10-31T11:40:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69372,Akhil Sharma,akhil@navgurukul.org,9,DA,181,2026-10-31T11:45:00.000Z,2026-10-31T12:45:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,144,2026-10-31T05:30:00.000Z,2026-10-31T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,146,2026-11-07T05:30:00.000Z,2026-11-07T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,147,2026-11-14T05:30:00.000Z,2026-11-14T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,148,2026-11-21T05:30:00.000Z,2026-11-21T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,149,2026-11-28T05:30:00.000Z,2026-11-28T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,150,2026-12-05T05:30:00.000Z,2026-12-05T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-12
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,151,2026-12-12T05:30:00.000Z,2026-12-12T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-12
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,152,2026-12-19T05:30:00.000Z,2026-12-19T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-12
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,153,2026-12-26T05:30:00.000Z,2026-12-26T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-12
+74686,Akshat Rastogi,akshat@navgurukul.org,9,DA,154,2027-01-02T05:30:00.000Z,2027-01-02T06:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2027-01
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,13,2026-07-08T03:30:00.000Z,2026-07-08T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,14,2026-07-08T07:30:00.000Z,2026-07-08T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,15,2026-07-09T04:30:00.000Z,2026-07-09T05:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,16,2026-07-10T09:30:00.000Z,2026-07-10T10:15:00.000Z,45,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,23,2026-09-04T00:00:00.000Z,2026-09-04T00:30:00.000Z,30,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,24,2026-09-04T00:30:00.000Z,2026-09-04T01:00:00.000Z,30,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,25,2026-09-04T01:00:00.000Z,2026-09-04T01:30:00.000Z,30,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,26,2026-09-04T01:30:00.000Z,2026-09-04T02:00:00.000Z,30,full,full,1,1,4,confirmed,COMPLETED,73434,Ani S,as9706526464@gmail.com,2026-09-04T01:07:53.629Z,2026-09-04T02:00:00.002Z,,,,,1,COMPLETED,https://www.youtube.com/watch?v=Ara3akdaw1w,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,22,2026-09-04T03:30:00.000Z,2026-09-04T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,21,2026-09-04T04:30:00.000Z,2026-09-04T05:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,27,2026-09-04T05:30:00.000Z,2026-09-04T06:00:00.000Z,30,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,71,2026-09-25T09:30:00.000Z,2026-09-25T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+61830,Aniket Dutta,dutta.aniket1399@gmail.com,9,DA,107,2026-10-17T04:55:00.000Z,2026-10-17T05:25:00.000Z,30,full,full,1,1,8,confirmed,COMPLETED,69419,Sajan Atram,atramsajan1@gmail.com,2026-10-17T04:49:46.753Z,2026-10-17T05:25:00.018Z,,,,,1,COMPLETED,https://www.youtube.com/watch?v=jSwkuUSsJzs,,2026-10
+69429,Archana,k.archana@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+62050,Bhagyashree Bhandari,bhagyashreebhandari21@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+43553,Kartikeya Gupta,kartikeya@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+43553,Kartikeya Gupta,kartikeya@navgurukul.org,9,DA,191,2026-10-31T13:30:00.000Z,2026-10-31T14:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+43553,Kartikeya Gupta,kartikeya@navgurukul.org,9,DA,192,2026-11-01T09:30:00.000Z,2026-11-01T10:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+67396,Khalilure Rahman,khalilur@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,34,2026-09-07T06:30:00.000Z,2026-09-07T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,35,2026-09-07T07:30:00.000Z,2026-09-07T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,33,2026-09-07T08:30:00.000Z,2026-09-07T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,36,2026-09-07T10:30:00.000Z,2026-09-07T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,37,2026-09-07T11:30:00.000Z,2026-09-07T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,45,2026-09-07T16:30:00.000Z,2026-09-07T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,46,2026-09-07T17:30:00.000Z,2026-09-07T18:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,38,2026-09-08T06:30:00.000Z,2026-09-08T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,39,2026-09-08T07:30:00.000Z,2026-09-08T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,40,2026-09-08T08:30:00.000Z,2026-09-08T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,42,2026-09-08T10:30:00.000Z,2026-09-08T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,43,2026-09-08T11:30:00.000Z,2026-09-08T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,44,2026-09-08T16:30:00.000Z,2026-09-08T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,47,2026-09-08T17:30:00.000Z,2026-09-08T18:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,48,2026-09-14T06:30:00.000Z,2026-09-14T07:30:00.000Z,60,full,full,1,1,6,confirmed,COMPLETED,65721,SHAIK KASIMBEE,2300031332cseh@gmail.com,2026-09-09T15:03:12.649Z,2026-09-14T07:30:00.008Z,,,,,0,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,49,2026-09-14T07:30:00.000Z,2026-09-14T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,50,2026-09-14T08:30:00.000Z,2026-09-14T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,51,2026-09-14T10:30:00.000Z,2026-09-14T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,52,2026-09-14T11:30:00.000Z,2026-09-14T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,53,2026-09-14T16:30:00.000Z,2026-09-14T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,62,2026-09-14T17:30:00.000Z,2026-09-14T18:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,54,2026-09-15T06:30:00.000Z,2026-09-15T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,55,2026-09-15T07:30:00.000Z,2026-09-15T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,56,2026-09-15T08:30:00.000Z,2026-09-15T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,57,2026-09-15T10:30:00.000Z,2026-09-15T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,58,2026-09-15T11:30:00.000Z,2026-09-15T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,61,2026-09-15T16:30:00.000Z,2026-09-15T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,60,2026-09-15T17:30:00.000Z,2026-09-15T18:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,63,2026-09-16T06:30:00.000Z,2026-09-16T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,64,2026-09-16T07:30:00.000Z,2026-09-16T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,65,2026-09-16T08:30:00.000Z,2026-09-16T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,66,2026-09-16T10:30:00.000Z,2026-09-16T11:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,67,2026-09-16T11:30:00.000Z,2026-09-16T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,68,2026-09-16T17:30:00.000Z,2026-09-16T18:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,76,2026-09-30T06:30:00.000Z,2026-09-30T08:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,77,2026-09-30T09:30:00.000Z,2026-09-30T11:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,79,2026-09-30T11:30:00.000Z,2026-09-30T13:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,80,2026-10-01T06:30:00.000Z,2026-10-01T08:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,81,2026-10-01T09:30:00.000Z,2026-10-01T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,82,2026-10-01T12:30:00.000Z,2026-10-01T14:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,83,2026-10-02T06:30:00.000Z,2026-10-02T08:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,84,2026-10-02T09:30:00.000Z,2026-10-02T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,85,2026-10-02T12:30:00.000Z,2026-10-02T14:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,86,2026-10-03T06:30:00.000Z,2026-10-03T08:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,87,2026-10-03T09:30:00.000Z,2026-10-03T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,88,2026-10-03T12:30:00.000Z,2026-10-03T13:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,90,2026-10-08T16:30:00.000Z,2026-10-08T17:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,121,2026-10-24T13:30:00.000Z,2026-10-24T14:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,122,2026-10-25T12:30:00.000Z,2026-10-25T14:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,142,2026-10-26T13:30:00.000Z,2026-10-26T14:30:00.000Z,60,full,full,1,1,10,confirmed,COMPLETED,74511,Ashmeet Kaur,ashmeet_245040217@navgurukul.org,2026-10-25T15:09:28.329Z,2026-10-26T14:28:28.665Z,,,5,,1,PERMANENT_FAILED,,Merged file not found: /app/temp-recordings/mentor-10-merged-1.mp4,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,124,2026-10-27T13:30:00.000Z,2026-10-27T15:00:00.000Z,90,full,full,1,1,11,confirmed,COMPLETED,74524,Suvam Srivastava,suvam_245040090@navgurukul.org,2026-10-27T06:48:09.747Z,2026-10-27T14:39:41.955Z,,,5,,1,COMPLETED,https://www.youtube.com/watch?v=Tl2Id8xj6cw,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,125,2026-10-28T10:30:00.000Z,2026-10-28T12:00:00.000Z,90,full,full,1,1,9,confirmed,SCHEDULED,74519,Sheetal Sheetal,sheetal_245040066@navgurukul.org,2026-10-25T12:37:30.478Z,,,,,,0,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,190,2026-10-28T13:00:00.000Z,2026-10-28T14:00:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,126,2026-10-29T06:30:00.000Z,2026-10-29T07:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,127,2026-10-29T07:30:00.000Z,2026-10-29T08:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,128,2026-10-29T08:30:00.000Z,2026-10-29T09:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,129,2026-10-29T09:30:00.000Z,2026-10-29T10:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,130,2026-10-29T10:30:00.000Z,2026-10-29T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,131,2026-10-30T07:30:00.000Z,2026-10-30T08:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74420,Mayank Kapoor,mkapoor06@gmail.com,9,DA,132,2026-10-30T08:30:00.000Z,2026-10-30T09:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69373,Mostafijur Rahman,mostafijur@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+69373,Mostafijur Rahman,mostafijur@navgurukul.org,9,DA,106,2026-10-19T05:30:00.000Z,2026-10-19T06:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+69401,Numan,namanajid54@gmail.com,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+69402,Numan,numan@navgurukul.org,9,DA,73,2026-09-28T08:30:00.000Z,2026-09-28T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+69402,Numan,numan@navgurukul.org,9,DA,74,2026-09-29T08:30:00.000Z,2026-09-29T09:30:00.000Z,60,full,full,1,1,7,confirmed,COMPLETED,74205,Vanshika,vanshika_se24b03_055@navgurukul.org,2026-09-28T11:42:49.213Z,2026-09-29T09:30:00.026Z,,,,,1,COMPLETED,https://www.youtube.com/watch?v=GyZEV9leuzs,,2026-09
+3565,Poonam,poonam@navgurukul.org,9,DA,18,2026-07-07T12:30:00.000Z,2026-07-07T13:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+3565,Poonam,poonam@navgurukul.org,9,DA,17,2026-07-08T04:30:00.000Z,2026-07-08T05:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+3565,Poonam,poonam@navgurukul.org,9,DA,19,2026-07-08T07:30:00.000Z,2026-07-08T08:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+3565,Poonam,poonam@navgurukul.org,9,DA,20,2026-07-09T03:30:00.000Z,2026-07-09T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+39077,Prashant,psd9988@gmail.com,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+39077,Prashant,psd9988@gmail.com,9,DA,,,,,,,,,,,,,,,,,,,,,,,,,
+74427,Pratik,pratikmasih11@gmail.com,9,DA,,,,,,,,,,,,,,,,,,,,,,,,,
+61427,Priyomjeet,priyomjeet@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+61427,Priyomjeet,priyomjeet@navgurukul.org,9,DA,182,2026-10-27T06:30:00.000Z,2026-10-27T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+61427,Priyomjeet,priyomjeet@navgurukul.org,9,DA,183,2026-10-28T06:30:00.000Z,2026-10-28T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+61427,Priyomjeet,priyomjeet@navgurukul.org,9,DA,184,2026-10-29T06:30:00.000Z,2026-10-29T07:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+69366,Rohit,rohitks.biz@gmail.com,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+69510,Rohit,rohit@samyarth.org,9,DA,28,2026-09-05T03:30:00.000Z,2026-09-05T05:00:00.000Z,90,full,full,1,1,5,confirmed,COMPLETED,47248,Pratik Masih,pratikkumarmasih23@navgurukul.org,2026-09-04T08:54:32.734Z,2026-09-05T05:00:00.009Z,,,,,0,,,,2026-09
+69510,Rohit,rohit@samyarth.org,9,DA,29,2026-09-06T03:30:00.000Z,2026-09-06T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-09
+69366,Rohit,rohitks.biz@gmail.com,9,DA,,,,,,,,,,,,,,,,,,,,,,,,,
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,7,2026-06-23T08:30:00.000Z,2026-06-23T09:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,5,2026-06-24T03:30:00.000Z,2026-06-24T04:30:00.000Z,60,full,full,1,1,2,confirmed,COMPLETED,70378,Rohit,singhrohit9525@gmail.com,2026-06-23T07:53:06.394Z,2026-06-24T04:30:00.013Z,,,,,1,PERMANENT_FAILED,,Request failed with status code 429,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,8,2026-06-24T06:30:00.000Z,2026-06-24T07:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,6,2026-06-25T03:30:00.000Z,2026-06-25T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,9,2026-06-25T06:30:00.000Z,2026-06-25T07:30:00.000Z,60,full,full,1,1,3,confirmed,COMPLETED,72706,Saksham Chauhan,saksham@rouze.ai,2026-06-23T11:45:20.122Z,2026-06-25T07:30:00.009Z,,,,,1,PERMANENT_FAILED,,Request failed with status code 429,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,10,2026-06-26T03:30:00.000Z,2026-06-26T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,11,2026-06-30T09:30:00.000Z,2026-06-30T10:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
+67545,Saksham Chauhan,sakshamchauhan23@gmail.com,9,DA,12,2026-07-01T03:30:00.000Z,2026-07-01T04:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-07
+74687,Shubham K,shubham.k@navgurukul.org,9,DA,185,2026-10-28T07:30:00.000Z,2026-10-28T09:00:00.000Z,90,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74687,Shubham K,shubham.k@navgurukul.org,9,DA,186,2026-10-29T07:30:00.000Z,2026-10-29T08:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74687,Shubham K,shubham.k@navgurukul.org,9,DA,187,2026-10-30T07:30:00.000Z,2026-10-30T08:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74687,Shubham K,shubham.k@navgurukul.org,9,DA,188,2026-10-30T19:30:00.000Z,2026-10-30T21:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-10
+74687,Shubham K,shubham.k@navgurukul.org,9,DA,189,2026-11-30T19:30:00.000Z,2026-11-30T21:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+74666,Sonia Malik,sonia@navgurukul.org,9,DA,92,2026-10-14T11:30:00.000Z,2026-10-14T12:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+74666,Sonia Malik,sonia@navgurukul.org,9,DA,108,2026-10-18T05:30:00.000Z,2026-10-18T06:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-10
+67371,ujala,ujala@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,109,2026-11-01T03:30:00.000Z,2026-11-01T05:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,110,2026-11-02T08:30:00.000Z,2026-11-02T10:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,111,2026-11-02T10:30:00.000Z,2026-11-02T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,112,2026-11-03T08:30:00.000Z,2026-11-03T10:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,113,2026-11-03T10:30:00.000Z,2026-11-03T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,114,2026-11-04T09:00:00.000Z,2026-11-04T10:30:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,115,2026-11-04T10:33:00.000Z,2026-11-04T11:33:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,116,2026-11-05T08:30:00.000Z,2026-11-05T10:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,117,2026-11-05T10:30:00.000Z,2026-11-05T11:30:00.000Z,60,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,118,2026-11-07T03:30:00.000Z,2026-11-07T05:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,119,2026-11-07T06:30:00.000Z,2026-11-07T08:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+41027,Vijay Vedantham,vijayv@navgurukul.org,9,DA,120,2026-11-07T08:30:00.000Z,2026-11-07T10:00:00.000Z,90,available,available,1,0,,,,,,,,,,,,,,,,,2026-11
+70383,Vinit,vinit@navgurukul.org,1,NG,,,,,,,,,,,,,,,,,,,,,,,,,
+72774,Zuvy Mentor,mentorszuvy@gmail.com,1,NG,3,2026-06-02T03:30:00.000Z,2026-06-02T04:30:00.000Z,60,past (unbooked),available,1,0,1,cancelled,CANCELLED,42077,Saquib,zarwa.saquib@gmail.com,2026-06-01T20:58:52.101Z,,2026-06-01T21:00:57.434Z,this is my reason,,,1,PERMANENT_FAILED,,Request failed with status code 429,2026-06
+72774,Zuvy Mentor,mentorszuvy@gmail.com,8,TO,4,2026-06-02T04:30:00.000Z,2026-06-02T05:30:00.000Z,60,past (unbooked),available,1,0,,,,,,,,,,,,,,,,,2026-06
