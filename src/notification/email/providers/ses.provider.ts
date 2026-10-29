@@ -18,7 +18,7 @@ export class SesProvider {
   }
 
   async sendEmail(
-    to: string,
+    to: string | string[],
     subject: string,
     body: string,
     config?: any,
@@ -27,7 +27,7 @@ export class SesProvider {
       const emailParams: SendEmailRequest = {
         Source: process.env.SES_FROM_EMAIL,
         Destination: {
-          ToAddresses: [to],
+          ToAddresses: Array.isArray(to) ? to : [to],
         },
         Message: {
           Subject: { Data: subject, Charset: 'UTF-8' },
