@@ -591,6 +591,9 @@ export class BootcampService {
         .where(sql`${zuvyBootcamps.id} = ${id}`);
 
       let [err, res] = await this.enrollData(id);
+      if (err) {
+        return [err, null];
+      }
 
       if (!bootcamp.length) {
         return [
@@ -908,68 +911,95 @@ export class BootcampService {
 
   async deleteBootcamp(id: number): Promise<any> {
     try {
-      // Delete all modules for this bootcamp
-      const modules = await db
-        .select()
-        .from(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.bootcampId, id));
-      for (const module of modules) {
-        await this.contentService.deleteModule(module.id, id);
-      }
-      // Delete from bootcamp setting/type
-      await db
-        .delete(zuvyBootcampType)
-        .where(eq(zuvyBootcampType.bootcampId, id));
-      // Delete from bootcamp tracking
-      await db
-        .delete(zuvyBootcampTracking)
-        .where(eq(zuvyBootcampTracking.bootcampId, id));
-      // Delete from recent bootcamp
-      await db
-        .delete(zuvyRecentBootcamp)
-        .where(eq(zuvyRecentBootcamp.bootcampId, id));
-      // Delete student attendance for this bootcamp
-      await db
-        .delete(zuvyStudentAttendance)
-        .where(eq(zuvyStudentAttendance.bootcampId, id));
+      return await db.transaction(async (tx) => {
+        // Verify bootcamp exists
+        const bootcamp = await tx
+          .select({ id: zuvyBootcamps.id, name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, id))
+          .limit(1);
 
-      await db
-        .delete(zuvyModuleTracking)
-        .where(eq(zuvyModuleTracking.bootcampId, id));
-      await db
-        .delete(zuvyStudentAttendanceRecords)
-        .where(eq(zuvyStudentAttendanceRecords.bootcampId, id));
-      await db.delete(zuvySessions).where(eq(zuvySessions.bootcampId, id));
-      // Delete batches and enrollments
-      await db.delete(zuvyBatches).where(eq(zuvyBatches.bootcampId, id));
-      await db
-        .delete(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, id));
-      // Nullify bootcampId in tracking logs before deleting bootcamp (FK constraint)
-      await db.execute(
-        sql`UPDATE zuvy_tracking_logs SET bootcamp_id = NULL WHERE bootcamp_id = ${id}`,
-      );
-      // Finally, delete the bootcamp
-      const deleted = await db
-        .delete(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, id))
-        .returning();
-      if (deleted.length === 0) {
+        if (bootcamp.length === 0) {
+          return [
+            { status: 'error', message: 'Bootcamp not found', code: 404 },
+            null,
+          ];
+        }
+
+        // Delete all modules for this bootcamp
+        const modules = await tx
+          .select()
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.bootcampId, id));
+        for (const module of modules) {
+          const moduleResult = await this.contentService.deleteModule(
+            module.id,
+            id,
+          );
+          if (
+            Array.isArray(moduleResult) &&
+            moduleResult[0]?.status === 'error'
+          ) {
+            throw new Error(
+              moduleResult[0].message || 'Failed to delete module',
+            );
+          }
+        }
+        // Delete from bootcamp setting/type
+        await tx
+          .delete(zuvyBootcampType)
+          .where(eq(zuvyBootcampType.bootcampId, id));
+        // Delete from bootcamp tracking
+        await tx
+          .delete(zuvyBootcampTracking)
+          .where(eq(zuvyBootcampTracking.bootcampId, id));
+        // Delete from recent bootcamp
+        await tx
+          .delete(zuvyRecentBootcamp)
+          .where(eq(zuvyRecentBootcamp.bootcampId, id));
+        // Delete student attendance for this bootcamp
+        await tx
+          .delete(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.bootcampId, id));
+
+        await tx
+          .delete(zuvyModuleTracking)
+          .where(eq(zuvyModuleTracking.bootcampId, id));
+        await tx
+          .delete(zuvyStudentAttendanceRecords)
+          .where(eq(zuvyStudentAttendanceRecords.bootcampId, id));
+        await tx.delete(zuvySessions).where(eq(zuvySessions.bootcampId, id));
+        // Delete batches and enrollments
+        await tx.delete(zuvyBatches).where(eq(zuvyBatches.bootcampId, id));
+        await tx
+          .delete(zuvyBatchEnrollments)
+          .where(eq(zuvyBatchEnrollments.bootcampId, id));
+        // Nullify bootcampId in tracking logs before deleting bootcamp (FK constraint)
+        await tx.execute(
+          sql`UPDATE zuvy_tracking_logs SET bootcamp_id = NULL WHERE bootcamp_id = ${id}`,
+        );
+        // Finally, delete the bootcamp
+        const deleted = await tx
+          .delete(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, id))
+          .returning();
+        if (deleted.length === 0) {
+          return [
+            { status: 'error', message: 'Bootcamp not found', code: 404 },
+            null,
+          ];
+        }
         return [
-          { status: 'error', message: 'Bootcamp not found', code: 404 },
           null,
+          {
+            status: 'success',
+            message: 'Bootcamp deleted successfully',
+            code: 200,
+            bootcampName: deleted[0]?.name || bootcamp[0]?.name || null,
+            bootcampId: id,
+          },
         ];
-      }
-      return [
-        null,
-        {
-          status: 'success',
-          message: 'Bootcamp deleted successfully',
-          code: 200,
-          bootcampName: deleted[0]?.name || null,
-          bootcampId: id,
-        },
-      ];
+      });
     } catch (error) {
       log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 404 }, null];
@@ -1170,10 +1200,6 @@ export class BootcampService {
         batch['status'] = batch['status']
           ? batch['status']
           : batch['endDate'] && new Date(String(batch['endDate'])) < new Date()
-            ? 'Completed'
-            : 'Ongoing';
-        batch['status'] =
-          batch['endDate'] && new Date(String(batch['endDate'])) < new Date()
             ? 'Completed'
             : 'Ongoing';
 
@@ -1620,7 +1646,7 @@ export class BootcampService {
       const isInstructor = normalizedRoleName === 'instructor';
 
       // Determine order field and direction
-      console.log(enrolledDate, 'enrollData');
+      // console.log(enrolledDate, 'enrollData');
       let orderField;
       switch (orderBy) {
         case 'submittedDate':
@@ -1918,7 +1944,7 @@ export class BootcampService {
   async updateUserDetails(
     userId: number,
     editUserDetailsDto: editUserDetailsDto,
-  ): Promise<[string | null, any]> {
+  ): Promise<[any, any]> {
     try {
       // Validate user existence in the users table
       const userExists = await db
@@ -1929,19 +1955,19 @@ export class BootcampService {
 
       if (!userExists.length) {
         return [
-          null,
           { message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND },
+          null,
         ];
       }
 
       // Check if no fields are provided to update
       if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
         return [
-          null,
           {
             message: 'No fields to update',
             statusCode: STATUS_CODES.BAD_REQUEST,
           },
+          null,
         ];
       }
 
@@ -1975,11 +2001,11 @@ export class BootcampService {
 
       if (!updatedUser.length) {
         return [
-          null,
           {
             message: 'Failed to update user details',
             statusCode: STATUS_CODES.INTERNAL_SERVER_ERROR,
           },
+          null,
         ];
       }
 
@@ -2034,13 +2060,13 @@ export class BootcampService {
             if (!enrollmentRows.length) {
               // Enrollment not found; return a 404-like response in the payloads
               return [
-                null,
                 {
                   message:
                     'User updated but enrollment not found for provided identifier',
                   statusCode: STATUS_CODES.NOT_FOUND,
                   data: userData,
                 },
+                null,
               ];
             }
 
@@ -2073,11 +2099,11 @@ export class BootcampService {
           }
         } catch (err) {
           return [
-            null,
             {
               message: 'Failed to update enrollment: ' + err.message,
               statusCode: STATUS_CODES.BAD_REQUEST,
             },
+            null,
           ];
         }
       }
@@ -2093,8 +2119,8 @@ export class BootcampService {
       ];
     } catch (err) {
       return [
-        null,
         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
       ];
     }
   }
@@ -2473,17 +2499,19 @@ export class BootcampService {
       const record = allStudentsRecord[0];
       const { attendance }: { attendance: any } = record;
 
-      const updatedAttendance = attendance.map((entry: any) =>
-        entry.email === user[0].email
-          ? { ...entry, attendance: status }
-          : entry,
-      );
+      if (Array.isArray(attendance)) {
+        const updatedAttendance = attendance.map((entry: any) =>
+          entry.email === user[0].email
+            ? { ...entry, attendance: status }
+            : entry,
+        );
 
-      // update the record in DB
-      await db
-        .update(zuvyStudentAttendance)
-        .set({ attendance: updatedAttendance })
-        .where(eq(zuvyStudentAttendance.meetingId, record.meetingId));
+        // update the record in DB
+        await db
+          .update(zuvyStudentAttendance)
+          .set({ attendance: updatedAttendance })
+          .where(eq(zuvyStudentAttendance.meetingId, record.meetingId));
+      }
 
       // Recompute total attendance count for the user (count only 'present' records)
       const presentCount = await db
