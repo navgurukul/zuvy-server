@@ -5,6 +5,7 @@ import { db } from '../../db/index';
 import { ZoomService } from '../zoom/zoom.service';
 import { OnModuleInit } from '@nestjs/common';
 import { RecordingWorkerTriggerService } from './recording-worker-trigger.service';
+import { YoutubeHealthCheckTriggerService } from './youtube-health-check-trigger.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -96,6 +97,43 @@ export class RecordingWorkerService implements OnModuleInit {
       }
     });
 
+    // Gmail-monitor detected a candidate YouTube violation email — run the
+    // exact same deterministic, YouTube-API-truth-based check the 2 AM cron
+    // runs, right now instead of waiting up to 24h. The email itself never
+    // decides anything (it's a heuristic, header-only match — see
+    // gmail-monitor.service.ts); it only decides WHEN to check. The nightly
+    // cron below keeps running unchanged as the backup net for a missed or
+    // unsent notification.
+    this.youtubeHealthCheckTrigger.onTrigger().subscribe(async (reason) => {
+      if (!RECORDING_HEALTH_CHECK_ENABLED) {
+        this.logger.log(
+          `[YOUTUBE_HEALTH] Gmail-triggered health check skipped (RECORDING_HEALTH_CHECK_ENABLED is false): ${reason}`,
+        );
+        return;
+      }
+      try {
+        await this.runYoutubeHealthCheckRotation();
+      } catch (err: any) {
+        this.logger.error(
+          `[YOUTUBE_HEALTH] Gmail-triggered health check failed: ${err?.message ?? err}`,
+        );
+      }
+
+      // Also check for any already-IN_PROGRESS restore that's finished since
+      // the last nightly run — cheap even when nothing's ready yet
+      // (getRestoreStatus() is a lightweight check, not a download) and
+      // mirrors the rotation call above: same trigger, same "wake up early
+      // instead of waiting for 2 AM" rationale, just the other half of the
+      // same recovery flow.
+      try {
+        await this.pollAndCompleteRestores();
+      } catch (err: any) {
+        this.logger.error(
+          `[YOUTUBE_HEALTH] Gmail-triggered restore-completion check failed: ${err?.message ?? err}`,
+        );
+      }
+    });
+
     if (RECORDING_WORKER_ENABLED) {
       setInterval(async () => {
         try {
@@ -121,6 +159,7 @@ export class RecordingWorkerService implements OnModuleInit {
   constructor(
     private readonly zoomService: ZoomService,
     private readonly trigger: RecordingWorkerTriggerService,
+    private readonly youtubeHealthCheckTrigger: YoutubeHealthCheckTriggerService,
     private readonly recordingS3: RecordingS3Service,
   ) {
     const oAuth2Client = new google.auth.OAuth2(

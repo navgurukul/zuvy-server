@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { google } from 'googleapis';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/index';
+import { YoutubeHealthCheckTriggerService } from '../recording-worker/youtube-health-check-trigger.service';
 
 const GMAIL_MONITOR_ENABLED = process.env.GMAIL_MONITOR_ENABLED === 'true';
 const WATCHED_EMAIL = process.env.GMAIL_MONITOR_EMAIL_ADDRESS;
@@ -32,7 +33,9 @@ export class GmailMonitorService implements OnModuleInit {
   private readonly logger = new Logger(GmailMonitorService.name);
   private readonly gmail: any;
 
-  constructor() {
+  constructor(
+    private readonly youtubeHealthCheckTrigger: YoutubeHealthCheckTriggerService,
+  ) {
     const oAuth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -283,6 +286,17 @@ export class GmailMonitorService implements OnModuleInit {
     if (classification) {
       this.logger.warn(
         `[GMAIL_MONITOR] Candidate YouTube violation email detected: from="${from}" subject="${subject}" classification=${classification} — needs human review`,
+      );
+      // The email never identifies which video it's about (headers only,
+      // gmail.metadata scope — body is never read, see classifyCandidate's
+      // comment above). It only decides WHEN to look: wake the deterministic
+      // YouTube-API-truth-based health check up now instead of waiting for
+      // its 2 AM cron. A misclassified email can only cause one extra, cheap,
+      // harmless health-check pass — the actual restore decision still comes
+      // solely from YouTube's own API response for each known video, never
+      // from this heuristic.
+      this.youtubeHealthCheckTrigger.triggerNow(
+        `Gmail message ${messageId} classified as "${classification}" (from="${from}" subject="${subject}")`,
       );
     }
   }

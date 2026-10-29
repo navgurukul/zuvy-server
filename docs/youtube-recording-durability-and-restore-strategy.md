@@ -727,3 +727,100 @@ Google Cloud side (Pub/Sub topic, billing account, push subscription, a fresh OA
 scoped to `gmail.metadata`) is set up per
 [gmail-content-id-monitoring-setup.md](gmail-content-id-monitoring-setup.md). Until that's
 done this is inert code with zero effect on the running system.
+
+## 12. Gmail detection wired into the restore pipeline as a fast trigger, not a video identifier
+
+**Status (2026-10-23): implemented, partially verified.** Once the GCP side was connected
+(§11) and tested live with real and synthetic emails (`team@zuvy.org`, then a dedicated
+`poonam.youtube@navgurukul.org` test sender), the classifier and the 30-minute fallback poll
+were both confirmed solid against real inbox traffic: correct positives (`copyright`,
+`unclassified_youtube_sender`) and — just as important — zero false positives against real
+noise (`mailer-daemon@googlemail.com` delivery-delay notices, marketing email, support
+re-attempt requests, an unrelated Google Developers OAuth-verification email).
+
+**One gap found during verification, not yet closed:** every logged email's `created_at` so
+far lands exactly on a 30-minute poll boundary, often hours after the email's real
+`received_at` — the signature of the fallback poll catching up a backlog, not of push
+ever actually firing. This is expected, not a bug: the push subscription's audience is
+`https://dev.api.zuvy.org/webhooks/gmail/notifications`, a public URL, while all testing so
+far has run `GMAIL_MONITOR_ENABLED=true` only on a local machine Google can't reach. Push
+delivery can't be confirmed working until this is deployed and enabled on an environment
+that URL actually resolves to (confirm via that environment's logs, or the subscription's
+delivery metrics in GCP Console → Pub/Sub → Subscriptions). Until then, every detection
+in this pipeline — in production or local testing — comes from the fallback poll, which is
+still a large win over the prior 24h cron cadence, just not the near-instant one push offers.
+
+**Why the email is never used to identify a specific video.** `GmailMonitorService` only
+ever reads the `From`/`Subject`/`Date` headers (`gmail.metadata` OAuth scope, deliberately —
+see §11's cost/scope section) and never the message body, where a real notification's video
+title or URL would actually live. Extracting a video reference from the body would need a
+broader scope, fragile HTML-email scraping that breaks on any template change from Google,
+and would still only produce a fuzzy text match back to our own catalog — a worse, more
+fragile signal than what we already have for free.
+
+**What was built instead:** the classified email is used purely as a **wake-up signal** for
+the exact same deterministic, YouTube-API-truth-based check the nightly cron already runs
+(`runYoutubeHealthCheckRotation()` in `recording-worker.service.ts`) — never as the thing
+that decides whether a video gets restored. `GmailMonitorService.logCandidateMessage()` now
+calls `YoutubeHealthCheckTriggerService.triggerNow(reason)`
+(`src/services/recording-worker/youtube-health-check-trigger.service.ts`) whenever a message
+gets a non-null classification; `RecordingWorkerService` subscribes to that trigger in
+`onModuleInit()` (mirroring the existing `RecordingWorkerTriggerService` webhook-trigger
+pattern already in this file) and runs the rotation check immediately instead of waiting up
+to 24h. The trigger is debounced 5 minutes (vs. the webhook trigger's 3s) since each run
+walks up to 1000 rows per table against the YouTube API — a burst of related notification
+emails must collapse into one check, not one per email.
+
+This design means a misclassified or spurious email can never cause a wrongful action: the
+worst case is one extra, cheap, harmless health-check pass that finds nothing wrong. The
+restore decision itself is unchanged — still gated solely on YouTube's own API response
+(`uploadStatus === 'rejected'` or the video being missing entirely) for each known
+`drive_file_id`, exactly as before.
+
+**The 2 AM nightly cron (`runNightlyRecordingHealthCheck`) is unchanged and keeps running**
+as the backup net for: the Gmail watch lapsing, both push and poll missing an email (Gmail's
+history API has known gaps — see the draft-autosave bug in
+[gmail-content-id-monitoring-setup.md](gmail-content-id-monitoring-setup.md)), a silent
+removal that generates no notification email at all, or a classifier false negative.
+
+**Closed (2026-10-27): full live verification, real recording, real deletion, real restore.**
+A fresh class was created and recorded live, flowed automatically through the entire
+pipeline with zero manual intervention (`DISCOVERED → PROCESSING_METADATA → DOWNLOADED →
+MERGED → PROCESSING_S3_UPLOAD → PROCESSING_YOUTUBE_UPLOAD → YOUTUBE_PROCESSING →
+COMPLETED`), confirming the S3-title-based key naming too (`.../recordings/<title>
+[<job id>].mp4`). The resulting video was then deleted from YouTube for real. Since a
+self-deletion by the channel owner generates no YouTube notification email (that only
+happens for Content ID claims/strikes from YouTube or a rights holder — never for the
+owner's own action), the Gmail path had nothing to detect here by design; a synthetic
+trigger email was used purely as the same "check now" wake-up signal proven in every
+earlier test — not as a claim about this video. That triggered the real, deterministic
+health check, which made a real YouTube API call, found the video genuinely gone, found
+its real verified S3 copy, and initiated a **real AWS Glacier Standard-tier restore** —
+the first time in this whole testing pass that the actual restore-initiation code path
+(as opposed to the "no S3 backup, needs manual attention" branch) executed for real.
+
+One gap found during this: the restore-_completion_ step (`pollAndCompleteRestores` —
+checks if an `IN_PROGRESS` Glacier restore has finished, and if so downloads, validates,
+and re-uploads to YouTube) was only ever wired to the 2 AM nightly cron, not to the
+immediate Gmail trigger — so detection+restore-initiation had become near-instant, but
+the final re-upload would still have waited for the next nightly run regardless of how
+fast the restore itself completed. Fixed: `pollAndCompleteRestores()` is now also called
+from the same `youtubeHealthCheckTrigger.onTrigger()` subscription in
+`RecordingWorkerService`, right after the rotation check, same debounced trigger, same
+rationale. It's cheap to call even when nothing's ready (`getRestoreStatus()` is a
+lightweight check, not a download, and it no-ops silently when the restore isn't done
+yet) — verified live: re-triggered immediately after the fix, ran against the
+`IN_PROGRESS` row with no errors, correctly found the Standard-tier restore not yet
+available (requested minutes earlier; Standard tier takes 3–5h), and left it untouched
+for the next trigger or the nightly cron to pick up once it actually completes.
+
+**Still open:**
+
+1. Confirm push actually fires once deployed somewhere the subscription's audience URL can
+   reach — every detection in this doc's testing, including the live recording/restore
+   test above, went through the 30-minute fallback poll, never a confirmed push delivery.
+2. Decide on, and execute, which single environment gets `GMAIL_MONITOR_ENABLED=true`
+   permanently (only one at a time — a shared watch/history-id row, racing renewals from two
+   processes is wasteful even though idempotent inserts keep it non-destructive).
+3. Confirm the re-upload actually completes once this restore finishes (3–5h out from
+   2026-10-27 09:30 UTC) — either via the next Gmail-triggered check or the 2 AM cron.
