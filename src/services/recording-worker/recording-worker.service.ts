@@ -36,6 +36,10 @@ const ZOOM_DELETE_AFTER_S3_ENABLED =
 const RECORDING_HEALTH_CHECK_ENABLED =
   process.env.RECORDING_HEALTH_CHECK_ENABLED === 'true';
 
+function isHealthCheckEnabled(): boolean {
+  return process.env.RECORDING_HEALTH_CHECK_ENABLED === 'true';
+}
+
 const GLACIER_RESTORE_DAYS = Number(process.env.GLACIER_RESTORE_DAYS) || 7;
 
 const MAX_RETRIES = 5;
@@ -105,7 +109,7 @@ export class RecordingWorkerService implements OnModuleInit {
     // cron below keeps running unchanged as the backup net for a missed or
     // unsent notification.
     this.youtubeHealthCheckTrigger.onTrigger().subscribe(async (reason) => {
-      if (!RECORDING_HEALTH_CHECK_ENABLED) {
+      if (!isHealthCheckEnabled()) {
         this.logger.log(
           `[YOUTUBE_HEALTH] Gmail-triggered health check skipped (RECORDING_HEALTH_CHECK_ENABLED is false): ${reason}`,
         );
@@ -153,6 +157,20 @@ export class RecordingWorkerService implements OnModuleInit {
         },
         60 * 60 * 1000,
       );
+
+      // Periodically poll for in-progress Glacier restores (every 1 minute)
+      // so recovered videos are re-uploaded as soon as Glacier makes them available,
+      // rather than waiting up to 24 hours for the 2 AM nightly cron.
+      setInterval(async () => {
+        if (!isHealthCheckEnabled()) return;
+        try {
+          await this.pollAndCompleteRestores();
+        } catch (err: any) {
+          this.logger.error(
+            `[YOUTUBE_HEALTH] Periodic restore polling failed: ${err?.message ?? err}`,
+          );
+        }
+      }, 60 * 1000);
     }
   }
 
@@ -2461,7 +2479,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   @Cron('0 2 * * *', { timeZone: 'Asia/Kolkata' })
   async runNightlyRecordingHealthCheck() {
-    if (!RECORDING_HEALTH_CHECK_ENABLED) {
+    if (!isHealthCheckEnabled()) {
       return;
     }
 
@@ -2524,7 +2542,7 @@ export class RecordingWorkerService implements OnModuleInit {
         WHERE status = 'PERMANENT_FAILED'
           AND drive_file_id IS NULL
           AND s3_verified IS TRUE
-          AND restore_status IS NULL
+          AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
         LIMIT 1000
       `);
 
@@ -2577,7 +2595,7 @@ export class RecordingWorkerService implements OnModuleInit {
       const flagged = await db.execute(sql`
         UPDATE ${sql.raw(tableName)}
         SET youtube_lost_detected_at = COALESCE(youtube_lost_detected_at, NOW())
-        WHERE status = 'COMPLETED' AND drive_file_id IS NOT NULL AND restore_status IS NULL
+        WHERE status = 'COMPLETED' AND drive_file_id IS NOT NULL AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
         RETURNING *
       `);
 
@@ -2600,7 +2618,7 @@ export class RecordingWorkerService implements OnModuleInit {
       const result = await db.execute(sql`
         SELECT *
         FROM ${sql.raw(tableName)}
-        WHERE status = 'COMPLETED' AND restore_status IS NULL
+        WHERE status = 'COMPLETED' AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
         ORDER BY youtube_last_checked_at ASC NULLS FIRST
         LIMIT 1000
       `);
@@ -2687,7 +2705,16 @@ export class RecordingWorkerService implements OnModuleInit {
   private async computeRestoreTier(
     tableName: string,
     row: any,
-  ): Promise<'Standard' | 'Bulk'> {
+  ): Promise<'Expedited' | 'Standard' | 'Bulk'> {
+    const envTier = process.env.GLACIER_RESTORE_TIER as any;
+    if (
+      envTier === 'Expedited' ||
+      envTier === 'Standard' ||
+      envTier === 'Bulk'
+    ) {
+      return envTier;
+    }
+
     if (tableName !== 'zuvy_session_recordings' || !row.session_id) {
       return 'Bulk';
     }
@@ -2706,6 +2733,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
     const daysSince =
       (Date.now() - new Date(latestStart).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince <= 7) return 'Expedited';
     return daysSince <= 45 ? 'Standard' : 'Bulk';
   }
 
@@ -2765,7 +2793,12 @@ export class RecordingWorkerService implements OnModuleInit {
           if (tableName === 'zuvy_session_recordings') {
             await db.execute(sql`
               UPDATE zuvy_sessions
-              SET youtube_video_id = ${videoId}, s3link = ${videoUrl}, final_uploaded = TRUE
+              SET
+                youtube_video_id = ${videoId},
+                s3link = ${videoUrl},
+                final_uploaded = TRUE,
+                recording_s3_bucket = ${row.s3_bucket || this.recordingS3.getBucket()},
+                recording_s3_key = ${row.s3_key}
               WHERE id = ${row.session_id}
             `);
           }

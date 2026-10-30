@@ -272,28 +272,62 @@ export class RecordingS3Service {
     tier: 'Bulk' | 'Standard' | 'Expedited',
     days: number,
   ): Promise<void> {
-    await this.s3.send(
-      new RestoreObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        RestoreRequest: {
-          Days: days,
-          GlacierJobParameters: { Tier: tier },
-        },
-      }),
-    );
+    try {
+      await this.s3.send(
+        new RestoreObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          RestoreRequest: {
+            Days: days,
+            GlacierJobParameters: { Tier: tier },
+          },
+        }),
+      );
+    } catch (err: any) {
+      if (
+        tier === 'Expedited' &&
+        (err?.name === 'ExpeditedRetrievalsNotAvailable' ||
+          err?.message?.includes('Expedited'))
+      ) {
+        this.logger.warn(
+          `Expedited retrieval unavailable for ${key}, falling back to Standard tier: ${err?.message ?? err}`,
+        );
+        await this.s3.send(
+          new RestoreObjectCommand({
+            Bucket: this.bucket,
+            Key: key,
+            RestoreRequest: {
+              Days: days,
+              GlacierJobParameters: { Tier: 'Standard' },
+            },
+          }),
+        );
+        return;
+      }
+      if (
+        err?.name === 'RestoreAlreadyInProgress' ||
+        err?.message?.includes('RestoreAlreadyInProgress')
+      ) {
+        this.logger.log(`Glacier restore already in progress for ${key}`);
+        return;
+      }
+      throw err;
+    }
   }
 
   // Parses HeadObject's `Restore` header:
   //   ongoing-request="true"                                 -> still restoring
   //   ongoing-request="false", expiry-date="..."              -> available
-  //   header absent                                           -> never requested / already expired
+  //   header absent                                           -> never requested / already expired (or standard storage)
   async getRestoreStatus(
     key: string,
   ): Promise<{ ongoing: boolean; available: boolean }> {
     const res = await this.s3.send(
       new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
     );
+    if (res.StorageClass !== 'GLACIER' && res.StorageClass !== 'DEEP_ARCHIVE') {
+      return { ongoing: false, available: true };
+    }
     const restoreHeader = res.Restore;
     if (!restoreHeader) {
       return { ongoing: false, available: false };
