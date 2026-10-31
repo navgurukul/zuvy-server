@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -159,6 +160,98 @@ export class ContentService {
       return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
     } catch (err) {
       throw new InternalServerErrorException('Error uploading PDF to S3');
+    }
+  }
+
+  async uploadCertificateToChapter(
+    moduleId: number,
+    chapterId: number,
+    fileBuffer: Buffer,
+    fileName: string,
+  ) {
+    const resolvedModuleId = Number(moduleId);
+    const resolvedChapterId = Number(chapterId);
+
+    if (
+      !Number.isInteger(resolvedModuleId) ||
+      resolvedModuleId <= 0 ||
+      !Number.isInteger(resolvedChapterId) ||
+      resolvedChapterId <= 0
+    ) {
+      throw new BadRequestException('moduleId and chapterId must be valid IDs');
+    }
+
+    const [module, chapter] = await Promise.all([
+      db
+        .select({ id: zuvyCourseModules.id })
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, resolvedModuleId))
+        .limit(1),
+      db
+        .select({
+          id: zuvyModuleChapter.id,
+          moduleId: zuvyModuleChapter.moduleId,
+          topicId: zuvyModuleChapter.topicId,
+        })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, resolvedChapterId))
+        .limit(1),
+    ]);
+
+    if (!module[0]) {
+      throw new NotFoundException('Module not found');
+    }
+    if (!chapter[0]) {
+      throw new NotFoundException('Chapter not found');
+    }
+    if (chapter[0].moduleId !== resolvedModuleId) {
+      throw new BadRequestException(
+        'Chapter does not belong to the provided module',
+      );
+    }
+    if (chapter[0].topicId !== 10) {
+      throw new BadRequestException(
+        'Certificates can only be uploaded to Download Certificate chapters',
+      );
+    }
+
+    const certificateUrl = await this.uploadPdfToS3(fileBuffer, fileName);
+    if (!certificateUrl) {
+      throw new InternalServerErrorException('S3 returned an empty URL');
+    }
+
+    try {
+      const [updatedChapter] = await db
+        .update(zuvyModuleChapter)
+        .set({ links: [certificateUrl] })
+        .where(
+          and(
+            eq(zuvyModuleChapter.id, resolvedChapterId),
+            eq(zuvyModuleChapter.moduleId, resolvedModuleId),
+            eq(zuvyModuleChapter.topicId, 10),
+          ),
+        )
+        .returning({
+          id: zuvyModuleChapter.id,
+          links: zuvyModuleChapter.links,
+        });
+
+      if (!updatedChapter) {
+        throw new NotFoundException('Certificate chapter was not found');
+      }
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Certificate uploaded successfully',
+        chapterId: updatedChapter.id,
+        certificateUrl,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to save certificate link');
     }
   }
 
