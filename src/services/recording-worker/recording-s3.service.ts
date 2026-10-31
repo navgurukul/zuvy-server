@@ -12,7 +12,9 @@ import {
   HeadObjectCommand,
   RestoreObjectCommand,
   GetObjectCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // Below this size, upload in a single PutObjectCommand call (simpler, and
 // S3's whole-object SHA-256 checksum can be compared directly against the
@@ -349,6 +351,49 @@ export class RecordingS3Service {
       writer.on('error', reject);
       writer.on('finish', resolve);
     });
+  }
+
+  // Once an object is restored from Glacier (or while readable), copies it to
+  // STANDARD storage class in-place so it never expires back to Glacier and remains
+  // permanently accessible for direct playback.
+  async copyToStandard(key: string): Promise<void> {
+    try {
+      await this.s3.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          CopySource: `${this.bucket}/${encodeURIComponent(key)}`,
+          StorageClass: 'STANDARD',
+          MetadataDirective: 'COPY',
+        }),
+      );
+      this.logger.log(
+        `Copied ${key} to STANDARD storage class for permanent direct playback`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to copy ${key} to STANDARD storage class: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
+  }
+
+  // Generates a direct playback URL. If CloudFront domain is configured in env,
+  // uses the CloudFront distribution. Otherwise, generates an AWS SigV4 presigned URL.
+  async getPlaybackUrl(
+    key: string,
+    expiresInSeconds: number = 7 * 24 * 60 * 60,
+  ): Promise<string> {
+    const cloudfrontDomain = process.env.S3_CLOUDFRONT_DOMAIN;
+    if (cloudfrontDomain) {
+      return `https://${cloudfrontDomain}/${encodeURI(key)}`;
+    }
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ResponseContentType: 'video/mp4',
+    });
+    return getSignedUrl(this.s3, command, { expiresIn: expiresInSeconds });
   }
 }
 

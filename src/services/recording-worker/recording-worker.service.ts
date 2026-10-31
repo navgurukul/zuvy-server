@@ -2737,10 +2737,57 @@ export class RecordingWorkerService implements OnModuleInit {
     return daysSince <= 45 ? 'Standard' : 'Bulk';
   }
 
+  // Checks whether a restored video should use S3 Direct Playback instead of re-uploading to YouTube
+  // (e.g. policy violations, YouTube rejections, repeated deletions, or env override)
+  private async shouldFallbackToS3Playback(
+    tableName: string,
+    row: any,
+  ): Promise<boolean> {
+    // 1. Explicit env flag
+    if (process.env.RESTORE_FALLBACK_TO_S3 === 'true') {
+      return true;
+    }
+
+    // 2. YouTube explicitly rejected content (copyright, community guidelines, etc.)
+    if (row.youtube_rejection_reason) {
+      return true;
+    }
+
+    // 3. Repeated deletion: video was already restored once (or previously had a working drive_file_id) and broke again
+    if (
+      row.previous_drive_file_id ||
+      (row.restore_requested_at && row.restore_status === 'AVAILABLE')
+    ) {
+      return true;
+    }
+
+    // 4. Policy violation email received in the last 48 hours
+    try {
+      const recentViolation = await db.execute(sql`
+        SELECT id, classification FROM zuvy_youtube_violation_emails
+        WHERE classification IS NOT NULL
+          AND classification NOT IN ('unclassified_youtube_sender')
+          AND created_at >= NOW() - INTERVAL '48 hours'
+        LIMIT 1
+      `);
+      if (recentViolation.rows && recentViolation.rows.length > 0) {
+        this.logger.log(
+          `[S3_DIRECT_FALLBACK] Found recent policy violation email (id=${(recentViolation.rows[0] as any).id}, classification=${(recentViolation.rows[0] as any).classification}) — routing restore to S3 Direct Playback`,
+        );
+        return true;
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to query violation emails for fallback determination: ${err?.message ?? err}`,
+      );
+    }
+
+    return false;
+  }
+
   // For rows with restore_status = 'IN_PROGRESS': check if the Glacier
-  // restore has completed, and if so, download the restored copy, validate
-  // it, and re-upload it to YouTube as a new video (the old drive_file_id is
-  // dead — this can't be a resumed upload).
+  // restore has completed, and if so, either re-upload to YouTube (clean case)
+  // or serve via S3 Direct Playback Fallback (policy violations/repeated loss).
   private async pollAndCompleteRestores(): Promise<void> {
     for (const tableName of [
       'zuvy_session_recordings',
@@ -2763,6 +2810,65 @@ export class RecordingWorkerService implements OnModuleInit {
           const status = await this.recordingS3.getRestoreStatus(row.s3_key);
           if (!status.available) {
             continue; // still restoring — checked again tomorrow night
+          }
+
+          // Check if we should use S3 Direct Playback Fallback instead of re-uploading to YouTube
+          // (policy violations, repeated deletions, or env override)
+          const useS3DirectPlayback = await this.shouldFallbackToS3Playback(
+            tableName,
+            row,
+          );
+
+          if (useS3DirectPlayback) {
+            this.logger.warn(
+              `[S3_DIRECT_FALLBACK] Restoring ${tableName} id=${row.id} via S3 Direct Playback Fallback (avoiding repeated YouTube deletion/policy violation)`,
+            );
+
+            // 1. Promote restored Glacier object to STANDARD storage class so it never expires back to Glacier
+            await this.recordingS3.copyToStandard(row.s3_key);
+
+            // 2. Generate direct S3 playback link (CloudFront if configured, or long-lived presigned URL)
+            const s3PlaybackUrl = await this.recordingS3.getPlaybackUrl(
+              row.s3_key,
+            );
+
+            // 3. Update database records
+            const embedUrl =
+              tableName === 'zuvy_session_recordings' && row.session_id
+                ? `${process.env.BASE_URL || 'https://dev.api.zuvy.org'}/classes/sessions/${row.session_id}/embed`
+                : s3PlaybackUrl;
+
+            await db.execute(sql`
+              UPDATE ${sql.raw(tableName)}
+              SET
+                drive_file_id = 'S3_DIRECT',
+                drive_link = ${embedUrl},
+                restore_status = 'AVAILABLE',
+                status = 'COMPLETED',
+                updated_at = NOW()
+              WHERE id = ${row.id}
+            `);
+
+            if (tableName === 'zuvy_session_recordings') {
+              await db.execute(sql`
+                UPDATE zuvy_sessions
+                SET
+                  youtube_video_id = NULL,
+                  s3link = ${embedUrl},
+                  final_uploaded = TRUE,
+                  recording_s3_bucket = ${row.s3_bucket || this.recordingS3.getBucket()},
+                  recording_s3_key = ${row.s3_key}
+                WHERE id = ${row.session_id}
+              `);
+            }
+
+            this.logJob(
+              'log',
+              job,
+              'Recovered recording restored from Glacier to S3 Direct Playback Fallback',
+              { s3PlaybackUrl },
+            );
+            continue;
           }
 
           const localPath = path.join(

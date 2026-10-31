@@ -164,7 +164,7 @@ export class GmailMonitorService implements OnModuleInit {
   // whether any push ever arrived, so a dropped notification doesn't mean a
   // permanently missed email.
   // =====================================================
-  @Cron('*/30 * * * *')
+  @Cron('*/5 * * * *') // email every 30 minutes
   async fallbackPoll(): Promise<void> {
     if (!GMAIL_MONITOR_ENABLED || !WATCHED_EMAIL) return;
     try {

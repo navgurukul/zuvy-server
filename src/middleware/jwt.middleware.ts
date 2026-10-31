@@ -41,6 +41,7 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/classes/create-session-public', method: 'POST' },
       { path: '/classes/getAllAttendance/:batchId', method: 'GET' },
       { path: '/classes/test-endpoint', method: 'GET' },
+      { path: '/classes/sessions/:id/embed', method: 'GET' },
       { path: '/student/apply', method: 'POST' },
       { path: '/users/verify-token', method: 'POST' },
       // GOOGLE OAUTH
