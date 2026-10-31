@@ -392,6 +392,7 @@ export class RecordingS3Service {
       Bucket: this.bucket,
       Key: key,
       ResponseContentType: 'video/mp4',
+      ResponseContentDisposition: 'inline',
     });
     return getSignedUrl(this.s3, command, { expiresIn: expiresInSeconds });
   }

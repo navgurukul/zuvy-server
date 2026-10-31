@@ -99,9 +99,6 @@ export class TrackingService {
    */
   async recomputeBatchAttendancePercentages(batchId: number) {
     try {
-      // ensure we have a logger
-      if (!this.logger) this.logger = console;
-
       // 1. Fetch all completed sessions where this batch participated (primary or secondary)
       const sessions =
         await this.attendanceCalc.getCompletedSessionsForBatch(batchId);

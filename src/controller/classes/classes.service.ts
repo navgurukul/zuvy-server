@@ -55,7 +55,6 @@ import {
   buildStudentAttendanceRecords,
   StudentAttendanceRecord,
 } from 'src/services/attendance/attendance-record-merge';
-import { RecordingS3Service } from 'src/services/recording-worker/recording-s3.service';
 
 @Injectable()
 export class ClassesService {
@@ -67,7 +66,6 @@ export class ClassesService {
     private readonly zoomService: ZoomService,
     private readonly zoomLicenseService: ZoomLicenseService,
     private readonly attendanceCalc: AttendanceCalculationService,
-    private readonly recordingS3: RecordingS3Service,
   ) {}
 
   private blockingZoomSessionCondition() {
@@ -5729,125 +5727,5 @@ export class ClassesService {
         `Failed to enqueue recording job for session ${session.id}: ${error.message}`,
       );
     }
-  }
-
-  async getSessionEmbedHtml(sessionId: number): Promise<string> {
-    const sessionRes = await db.execute(sql`
-      SELECT s.id, s.title, s.s3link, s.youtube_video_id, s.recording_s3_key, s.recording_s3_bucket,
-             r.s3_key, r.s3_bucket, r.drive_file_id, r.restore_status
-      FROM zuvy_sessions s
-      LEFT JOIN zuvy_session_recordings r ON r.session_id = s.id
-      WHERE s.id = ${sessionId}
-      ORDER BY r.id DESC LIMIT 1
-    `);
-
-    const row = sessionRes.rows?.[0] as any;
-    if (!row) {
-      return this.renderEmbedPlaceholder('Session not found');
-    }
-
-    // 1. If active YouTube video exists and is not S3_DIRECT
-    const ytId =
-      row.youtube_video_id ||
-      (row.drive_file_id && row.drive_file_id !== 'S3_DIRECT'
-        ? row.drive_file_id
-        : null);
-    if (
-      ytId &&
-      ytId !== 'S3_DIRECT' &&
-      !row.s3link?.includes('amazonaws.com') &&
-      !row.s3link?.includes('/embed')
-    ) {
-      return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}</style>
-</head>
-<body>
-  <iframe src="https://www.youtube.com/embed/${ytId}?autoplay=0" style="width:100%;height:100%;border:0;" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
-</body>
-</html>`;
-    }
-
-    // 2. Direct S3 Playback
-    const s3Key = row.recording_s3_key || row.s3_key;
-    if (s3Key) {
-      try {
-        const playbackUrl = await this.recordingS3.getPlaybackUrl(s3Key);
-        return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${row.title || 'Session Recording'}</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-      outline: none;
-    }
-  </style>
-</head>
-<body>
-  <video controls playsinline preload="metadata" src="${playbackUrl}">
-    Your browser does not support the video tag.
-  </video>
-</body>
-</html>`;
-      } catch (err: any) {
-        this.logger.error(
-          `Failed to generate S3 playback URL for session ${sessionId}: ${err?.message ?? err}`,
-        );
-      }
-    }
-
-    // 3. Fallback if restoring
-    if (row.restore_status === 'IN_PROGRESS') {
-      return this.renderEmbedPlaceholder(
-        'Recording is currently restoring from S3 archive. Please check back in a few minutes.',
-      );
-    }
-
-    return this.renderEmbedPlaceholder('Recording Not Available');
-  }
-
-  private renderEmbedPlaceholder(message: string): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    html, body {
-      margin: 0; padding: 0; width: 100%; height: 100%; background: #0f172a; color: #94a3b8;
-      display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif;
-      text-align: center; padding: 20px; box-sizing: border-box;
-    }
-  </style>
-</head>
-<body>
-  <div>
-    <svg style="width:48px;height:48px;margin-bottom:12px;opacity:0.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-    <p style="margin:0;font-size:15px;font-weight:500;">${message}</p>
-  </div>
-</body>
-</html>`;
   }
 }

@@ -2833,16 +2833,11 @@ export class RecordingWorkerService implements OnModuleInit {
             );
 
             // 3. Update database records
-            const embedUrl =
-              tableName === 'zuvy_session_recordings' && row.session_id
-                ? `${process.env.BASE_URL || 'https://dev.api.zuvy.org'}/classes/sessions/${row.session_id}/embed`
-                : s3PlaybackUrl;
-
             await db.execute(sql`
               UPDATE ${sql.raw(tableName)}
               SET
                 drive_file_id = 'S3_DIRECT',
-                drive_link = ${embedUrl},
+                drive_link = ${s3PlaybackUrl},
                 restore_status = 'AVAILABLE',
                 status = 'COMPLETED',
                 updated_at = NOW()
@@ -2854,7 +2849,7 @@ export class RecordingWorkerService implements OnModuleInit {
                 UPDATE zuvy_sessions
                 SET
                   youtube_video_id = NULL,
-                  s3link = ${embedUrl},
+                  s3link = ${s3PlaybackUrl},
                   final_uploaded = TRUE,
                   recording_s3_bucket = ${row.s3_bucket || this.recordingS3.getBucket()},
                   recording_s3_key = ${row.s3_key}

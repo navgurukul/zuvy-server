@@ -511,19 +511,6 @@ export class ClassesController {
     }
   }
 
-  @Public()
-  @Get('/sessions/:id/embed')
-  @ApiOperation({
-    summary: 'Universal embed player for session recording (YouTube or S3)',
-  })
-  async getSessionEmbed(@Param('id') sessionId: number, @Res() res: Response) {
-    const html = await this.classesService.getSessionEmbedHtml(
-      Number(sessionId),
-    );
-    res.setHeader('Content-Type', 'text/html');
-    return res.send(html);
-  }
-
   @Put('/sessions/:id')
   @ApiOperation({ summary: 'Update session by ID' })
   @ApiBearerAuth('JWT-auth')
