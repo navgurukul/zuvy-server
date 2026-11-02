@@ -53,6 +53,7 @@ import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
 import { BullModule } from '@nestjs/bullmq';
 import { TopicModule } from './eval-topic/topic.module';
 import { StudentAuthModule } from './student-auth/student-auth.module';
+import { SchoolsModule } from './schools/schools.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -112,6 +113,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     SuperAdminModule,
     LeaderboardModule,
     StudentAuthModule,
+    SchoolsModule,
   ],
 
   providers: [
