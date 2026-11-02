@@ -1656,6 +1656,27 @@ export class ContentController {
     }
   }
 
+  @Get('curriculum/download-certificate/:chapterId')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Get the certificate URL for a Download Certificate chapter',
+  })
+  @ApiParam({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'Download Certificate chapter ID',
+  })
+  async downloadCertificate(
+    @Param('chapterId', ParseIntPipe) chapterId: number,
+    @Req() req,
+  ) {
+    return this.contentService.getCertificateForChapter(
+      chapterId,
+      req.user?.[0] || req.user,
+    );
+  }
+
   @Post('curriculum/upload-images')
   @ApiOperation({ summary: 'Upload one or more images to S3' })
   @ApiBearerAuth('JWT-auth')

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -39,6 +40,9 @@ import {
   zuvyBatches,
   zuvyLearnerLeaderboardChapterPoints,
   zuvyLearnerLeaderboard,
+  zuvyBatchEnrollments,
+  zuvyBootcamps,
+  zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -252,6 +256,118 @@ export class ContentService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to save certificate link');
+    }
+  }
+
+  async getCertificateForChapter(chapterId: number, user: any) {
+    const resolvedChapterId = Number(chapterId);
+    if (!Number.isInteger(resolvedChapterId) || resolvedChapterId <= 0) {
+      throw new NotFoundException('Certificate chapter not found');
+    }
+
+    const [chapter] = await db
+      .select({
+        id: zuvyModuleChapter.id,
+        title: zuvyModuleChapter.title,
+        topicId: zuvyModuleChapter.topicId,
+        moduleId: zuvyModuleChapter.moduleId,
+        links: zuvyModuleChapter.links,
+      })
+      .from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.id, resolvedChapterId))
+      .limit(1);
+
+    if (!chapter || chapter.topicId !== 10) {
+      throw new NotFoundException('Certificate chapter not found');
+    }
+
+    const certificateUrl = Array.isArray(chapter.links)
+      ? chapter.links.find(
+          (link): link is string =>
+            typeof link === 'string' && link.trim().length > 0,
+        )
+      : null;
+    if (!certificateUrl) {
+      throw new NotFoundException('Certificate file not found');
+    }
+
+    const [module] = await db
+      .select({ bootcampId: zuvyCourseModules.bootcampId })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, chapter.moduleId))
+      .limit(1);
+    if (!module?.bootcampId) {
+      throw new NotFoundException('Certificate chapter not found');
+    }
+
+    const [bootcamp] = await db
+      .select({ organizationId: zuvyBootcamps.organizationId })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, module.bootcampId))
+      .limit(1);
+    if (!bootcamp) {
+      throw new NotFoundException('Certificate chapter not found');
+    }
+
+    await this.ensureCertificateAccess(
+      user,
+      module.bootcampId,
+      bootcamp.organizationId,
+    );
+
+    return {
+      chapterId: chapter.id,
+      title: chapter.title,
+      certificateUrl,
+    };
+  }
+
+  private async ensureCertificateAccess(
+    user: any,
+    bootcampId: number,
+    organizationId: number,
+  ): Promise<void> {
+    if (!user?.id) {
+      throw new ForbiddenException('User not authenticated');
+    }
+
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    if (roles.includes('super_admin')) {
+      return;
+    }
+
+    const isStudent = roles.includes('student') || roles.length === 0;
+    if (isStudent) {
+      const [enrollment] = await db
+        .select({ id: zuvyBatchEnrollments.id })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
+
+      if (!enrollment) {
+        throw new ForbiddenException('Unauthorized access to certificate');
+      }
+      return;
+    }
+
+    const [membership] = await db
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(user.id)),
+          eq(zuvyUserRolesAssigned.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      throw new ForbiddenException('Unauthorized access to certificate');
     }
   }
 
