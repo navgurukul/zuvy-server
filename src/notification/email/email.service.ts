@@ -4,7 +4,7 @@ import { TemplateService } from './templates/template.service';
 // Basic interface for providers (since we are removing builder, defining here or importing from a shared place)
 export interface EmailProvider {
   sendEmail(
-    to: string,
+    to: string | string[],
     subject: string,
     body: string,
     config?: any,
@@ -21,7 +21,7 @@ export class NotificationEmailService {
   ) {}
 
   async sendEmail(
-    to: string,
+    to: string | string[],
     subject: string,
     template: string,
     data: any,
