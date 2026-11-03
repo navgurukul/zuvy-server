@@ -38,6 +38,7 @@ import {
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuthService } from 'src/auth/auth.service';
+import { applyRolePermissions } from 'src/rbac/role-permissions';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
@@ -443,110 +444,18 @@ export class PermissionsService {
     orgId: number,
   ) {
     try {
-      const { resourceId, roleId, permissions } = dto;
+      const { roleId, permissions } = dto;
       const actorUserId = Number(userIdString);
       const result = await db.transaction(async (tx) => {
-        const [resource] = await tx
-          .select()
-          .from(zuvyResources)
-          .where(eq(zuvyResources.id, resourceId))
-          .limit(1);
-        if (!resource) throw new NotFoundException('Resource not found');
+        const data = await applyRolePermissions(tx, dto, orgId);
 
-        const [role] = await tx
-          .select()
-          .from(zuvyUserRoles)
-          .where(eq(zuvyUserRoles.id, roleId))
-          .limit(1);
-        if (!role) throw new NotFoundException('Role not found');
-
-        const resourcePerms = await tx
-          .select({ id: zuvyPermissions.id })
-          .from(zuvyPermissions)
-          .where(eq(zuvyPermissions.resourcesId, resourceId));
-
-        // const current = await tx.select({ permissionId: zuvyPermissionsRoles.permissionId })
-        //   .from(zuvyPermissionsRoles).where(eq(zuvyPermissionsRoles.roleId, roleId));
-        // const have = new Set(current.map(r => r.permissionId));
-        // const auditPermissions: Record<string, boolean> = {};
-        // for (const [idStr, val] of Object.entries(permissions)) {
-        //   const id = Number(idStr);
-        //   if (val === true && !have.has(id)) auditPermissions[idStr] = true;
-        //   if (val === false && have.has(id)) auditPermissions[idStr] = false;
-        // }
-
-        const validIds = new Set(resourcePerms.map((p) => p.id));
-        const incomingIds = Object.keys(permissions).map(Number);
-        const invalid = incomingIds.filter((id) => !validIds.has(id));
-        if (invalid.length)
-          throw new BadRequestException(
-            `Invalid permission ids for resource: ${invalid.join(', ')}`,
-          );
-
-        const enableIds = incomingIds.filter((id) => permissions[id] === true);
-        const disableIds = incomingIds.filter(
-          (id) => permissions[id] === false,
-        );
-        const permissionRoleOrgCondition =
-          orgId !== undefined && orgId !== null
-            ? eq(zuvyPermissionsRoles.orgId, orgId)
-            : isNull(zuvyPermissionsRoles.orgId);
-
-        if (enableIds.length) {
-          await tx
-            .insert(zuvyPermissionsRoles)
-            .values(
-              enableIds.map((permissionId) => ({
-                roleId,
-                permissionId,
-                orgId,
-              })),
-            )
-            .onConflictDoNothing({
-              target: [
-                zuvyPermissionsRoles.roleId,
-                zuvyPermissionsRoles.permissionId,
-              ],
-            });
-        }
-
-        if (disableIds.length) {
-          await tx
-            .delete(zuvyPermissionsRoles)
-            .where(
-              and(
-                eq(zuvyPermissionsRoles.roleId, roleId),
-                permissionRoleOrgCondition,
-                inArray(zuvyPermissionsRoles.permissionId, disableIds),
-              ),
-            );
-        }
-
-        const assigned = await tx
-          .select({ permissionId: zuvyPermissionsRoles.permissionId })
-          .from(zuvyPermissionsRoles)
-          .where(
-            and(
-              eq(zuvyPermissionsRoles.roleId, roleId),
-              permissionRoleOrgCondition,
-            ),
-          );
-
-        const auditLog = await this.auditLogService.log('perm_to_role', {
+        await this.auditLogService.log('perm_to_role', {
           actorUserId,
           roleId,
           permissions,
         });
 
-        return {
-          status: 'success',
-          message: 'Permissions updated',
-          data: {
-            roleId,
-            resourceId,
-            assignedPermissionIds: assigned.map((r) => r.permissionId),
-          },
-        };
+        return { status: 'success', message: 'Permissions updated', data };
       });
 
       const invalidatedSessions = await this.invalidateRoleMemberSessions(
@@ -626,7 +535,13 @@ export class PermissionsService {
     if (!role) throw new NotFoundException('Role not found');
   }
 
-  async getPermissionsByRoleAndResource(roleId: number, resourceId: number) {
+  // Only permissions belonging to `resourceId` are returned, so a parent
+  // resource's response never includes its children's permissions.
+  async getPermissionsByRoleAndResource(
+    roleId: number,
+    resourceId: number,
+    orgId?: number,
+  ) {
     try {
       // Ensure role exists
       await this.ensureExists(roleId);
@@ -656,6 +571,9 @@ export class PermissionsService {
                 and(
                   eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id),
                   eq(zuvyPermissionsRoles.roleId, roleId),
+                  orgId !== undefined
+                    ? eq(zuvyPermissionsRoles.orgId, orgId)
+                    : undefined,
                 ),
               ),
           ),

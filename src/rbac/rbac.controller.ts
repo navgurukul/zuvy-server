@@ -500,6 +500,9 @@ export class RbacController {
         await this.resourcesService.createResource(createResourceDto);
       return result;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error.code === '23505') {
         // PostgreSQL unique constraint violation
         throw new HttpException(
@@ -661,7 +664,7 @@ export class RbacController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      if (error.status === HttpStatus.NOT_FOUND) {
+      if (error instanceof HttpException) {
         throw error;
       }
       throw new HttpException(

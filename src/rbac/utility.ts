@@ -58,6 +58,9 @@ export enum Role {
 // utils/resource-keys.ts (single source of truth)
 export const ResourceKeys = [
   'Course',
+  'CourseParent',
+  'QuestionBankParent',
+  'RolesAndPermissionParent',
   'User',
   'Bootcamp',
   'Mcq',

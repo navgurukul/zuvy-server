@@ -4130,14 +4130,35 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   }),
 });
 
+// RBAC: parent groups shown in Role Management (Course, Question Bank, ...).
+// One parent has many zuvy_resources rows (zuvy_resources.parent_resource_id).
+export const zuvyParentResources = main.table('zuvy_parent_resources', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const zuvyResources = main.table('zuvy_resources', {
   id: serial('id').primaryKey(),
   key: varchar('key', { length: 64 }).notNull().unique(),
   name: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
+  // Parent group (e.g. Course) this resource sits under in Role Management.
+  parentResourceId: integer('parent_resource_id').references(
+    () => zuvyParentResources.id,
+    { onDelete: 'set null' },
+  ),
+  // Permissions always belong to a zuvy_resources row, so each parent has one
+  // row of its own (is_parent) that its view/edit/create/manager hang off.
+  isParent: boolean('is_parent').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (t) => ({
+  oneParentRowPerParent: uniqueIndex('zuvy_resources_parent_row_unique')
+    .on(t.parentResourceId)
+    .where(sql`is_parent`),
+}));
 // RBAC: Permissions Table
 export const zuvyPermissions = main.table('zuvy_permissions', {
   id: serial('id').primaryKey().notNull(),

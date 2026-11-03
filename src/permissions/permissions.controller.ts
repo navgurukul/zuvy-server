@@ -439,15 +439,29 @@ export class PermissionsController {
   @ApiOperation({ summary: 'Get permissions for a role and resource' })
   @ApiParam({ name: 'roleId', example: 1, description: 'Role ID' })
   @ApiParam({ name: 'resourceId', example: 1, description: 'Resource ID' })
+  @ApiQuery({
+    name: 'orgId',
+    required: false,
+    type: Number,
+    description:
+      "Organization whose grants to return; defaults to the caller's organization",
+  })
   @ApiOkResponse({ description: 'Permissions retrieved' })
   @ApiNotFoundResponse({ description: 'Role or Resource not found' })
   async getPermissionsByRoleAndResource(
     @Param('roleId') roleId: number,
     @Param('resourceId') resourceId: number,
+    @Req() req,
+    @Query('orgId') orgId?: string,
   ) {
+    // Same org resolution as POST /rbac/assign/permissionsToRole, so what was
+    // saved is what is read back.
+    const callerOrgId = req.user?.[0]?.orgId;
+    const scopeOrgId = orgId ? +orgId : callerOrgId ? +callerOrgId : undefined;
     return this.permissionsService.getPermissionsByRoleAndResource(
       +roleId,
       +resourceId,
+      scopeOrgId,
     );
   }
 }
