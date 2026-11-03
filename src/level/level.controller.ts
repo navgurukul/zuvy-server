@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,13 +17,17 @@ import {
   ApiCreatedResponse,
   ApiParam,
   ApiBody,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { LevelService } from './level.service';
 import { CreateLevelDto } from './dto/create-level.dto';
 import { UpdateLevelDto } from './dto/update-level.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @ApiTags('level')
 @Controller('level')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 export class LevelController {
   constructor(private readonly levelService: LevelService) {}
 
