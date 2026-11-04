@@ -41,9 +41,11 @@ import {
   zuvyLearnerLeaderboardChapterPoints,
   zuvyLearnerLeaderboard,
   zuvyBatchEnrollments,
-  zuvyBootcamps,
+  // zuvyBootcamps,
   zuvyUserRolesAssigned,
+  users,
 } from '../../../drizzle/schema';
+import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 
 import { error, log } from 'console';
 import {
@@ -315,11 +317,205 @@ export class ContentService {
       bootcamp.organizationId,
     );
 
+    const [student] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, BigInt(user.id)))
+      .limit(1);
+    const studentName = student?.name?.trim();
+    if (!studentName) {
+      throw new NotFoundException('Student name not found');
+    }
+
+    const templateBuffer =
+      await this.getCertificateTemplateFromS3(certificateUrl);
+    // Formatted as "MMM dd, yyyy", e.g. "Nov 03, 2026"
+    const issuedDate = new Date().toLocaleDateString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
+    const pdfBuffer = await this.personalizeCertificate(
+      templateBuffer,
+      studentName,
+      issuedDate,
+    );
+
+    const safeName = studentName.replace(/[^a-zA-Z0-9]+/g, '_') || 'student';
     return {
       chapterId: chapter.id,
       title: chapter.title,
-      certificateUrl,
+      fileName: `certificate_${safeName}.pdf`,
+      pdfBuffer,
     };
+  }
+
+  private async getCertificateTemplateFromS3(
+    certificateUrl: string,
+  ): Promise<Buffer> {
+    const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
+    if (!certificateUrl.startsWith(bucketPrefix)) {
+      throw new NotFoundException('Certificate file not found');
+    }
+    const key = decodeURIComponent(certificateUrl.slice(bucketPrefix.length));
+
+    try {
+      const response = await this.s3.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return Buffer.from(await response.Body.transformToByteArray());
+    } catch (err) {
+      throw new InternalServerErrorException(
+        'Failed to fetch certificate from S3',
+      );
+    }
+  }
+
+  // Writes the student's name and date onto a copy of the certificate template.
+  // Positions come from the template's own text ("Amazon hereby acknowledges
+  // that", the "____" line and "Date:") when the PDF has a text layer, otherwise
+  // from the certificate layout's proportions (image-only templates).
+  private async personalizeCertificate(
+    templateBuffer: Buffer,
+    studentName: string,
+    issuedDate: string,
+  ): Promise<Buffer> {
+    const isPng = templateBuffer.subarray(0, 4).toString('hex') === '89504e47';
+    const isJpg = templateBuffer.subarray(0, 3).toString('hex') === 'ffd8ff';
+
+    let pdfDoc: PDFDocument;
+    if (isPng || isJpg) {
+      pdfDoc = await PDFDocument.create();
+      const image = isPng
+        ? await pdfDoc.embedPng(templateBuffer)
+        : await pdfDoc.embedJpg(templateBuffer);
+      const page = pdfDoc.addPage([image.width, image.height]);
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: image.width,
+        height: image.height,
+      });
+    } else {
+      try {
+        pdfDoc = await PDFDocument.load(templateBuffer);
+      } catch (err) {
+        throw new InternalServerErrorException(
+          'Certificate template is not a valid PDF',
+        );
+      }
+    }
+
+    const page = pdfDoc.getPage(0);
+    const { width, height } = page.getSize();
+    const anchors =
+      isPng || isJpg ? null : await this.findCertificateAnchors(templateBuffer);
+
+    const nameFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const dateFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const textColor = rgb(0.07, 0.09, 0.13);
+
+    // Name: centered just above the blank line, shrunk to fit long names
+    const name = this.toEncodableText(nameFont, studentName);
+    const nameCenterX = anchors?.line
+      ? anchors.line.x + anchors.line.width / 2
+      : anchors?.heading
+        ? anchors.heading.x + anchors.heading.width / 2
+        : width / 2;
+    const nameMaxWidth = anchors?.line ? anchors.line.width : width * 0.65;
+    const nameY = anchors?.line
+      ? anchors.line.y + anchors.line.fontSize * 0.4
+      : anchors?.heading
+        ? anchors.heading.y - anchors.heading.fontSize * 2.1
+        : height * 0.392;
+    let nameSize = anchors?.heading
+      ? anchors.heading.fontSize * 1.3
+      : height * 0.042;
+    const minNameSize = nameSize * 0.45;
+    while (
+      nameSize > minNameSize &&
+      nameFont.widthOfTextAtSize(name, nameSize) > nameMaxWidth
+    ) {
+      nameSize -= 0.5;
+    }
+    page.drawText(name, {
+      x: nameCenterX - nameFont.widthOfTextAtSize(name, nameSize) / 2,
+      y: nameY,
+      size: nameSize,
+      font: nameFont,
+      color: textColor,
+    });
+
+    // Date: right after the "Date:" label, on the same baseline
+    const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+    page.drawText(issuedDate, {
+      x: anchors?.date
+        ? anchors.date.x + anchors.date.width + dateSize * 0.4
+        : width * 0.7725,
+      y: anchors?.date ? anchors.date.y : height * 0.1429,
+      size: dateSize,
+      font: dateFont,
+      color: textColor,
+    });
+
+    return Buffer.from(await pdfDoc.save());
+  }
+
+  private async findCertificateAnchors(pdfBuffer: Buffer) {
+    type TextBox = { x: number; y: number; width: number; fontSize: number };
+    const anchors: { heading?: TextBox; line?: TextBox; date?: TextBox } = {};
+
+    try {
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const doc = await pdfjsLib.getDocument({
+        data: new Uint8Array(pdfBuffer),
+        useSystemFonts: true,
+      }).promise;
+      const content = await (await doc.getPage(1)).getTextContent();
+
+      for (const item of content.items) {
+        if (!('str' in item)) continue;
+        const text = item.str.trim();
+        const box: TextBox = {
+          x: item.transform[4],
+          y: item.transform[5],
+          width: item.width,
+          fontSize: Math.abs(item.transform[3]) || Math.abs(item.transform[0]),
+        };
+        if (!anchors.heading && /amazon hereby acknowledges that/i.test(text)) {
+          anchors.heading = box;
+        } else if (!anchors.date && /^date\s*:?$/i.test(text)) {
+          anchors.date = box;
+        } else if (/^_{5,}$/.test(text)) {
+          // The blank name line sits below the heading
+          if (!anchors.line || box.width > anchors.line.width) {
+            anchors.line = box;
+          }
+        }
+      }
+      await doc.destroy();
+    } catch (err) {
+      this.logger?.warn?.(`Certificate text lookup failed: ${err?.message}`);
+    }
+
+    if (
+      anchors.line &&
+      anchors.heading &&
+      anchors.line.y >= anchors.heading.y
+    ) {
+      delete anchors.line;
+    }
+    return anchors;
+  }
+  // Standard PDF fonts only cover WinAnsi characters; drop anything else
+  private toEncodableText(font: PDFFont, text: string): string {
+    const supported = new Set(font.getCharacterSet());
+    return Array.from(text)
+      .filter((char) => supported.has(char.codePointAt(0)))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private async ensureCertificateAccess(

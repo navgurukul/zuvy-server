@@ -945,3 +945,8 @@ SET name = LOWER(LEFT(name, 1)) || SUBSTRING(name FROM 2)
 WHERE name IS NOT NULL
   AND name <> ''
   AND LEFT(name, 1) <> LOWER(LEFT(name, 1));
+
+
+UPDATE users
+SET name = 'Priya Shukla'
+WHERE id = 36182;

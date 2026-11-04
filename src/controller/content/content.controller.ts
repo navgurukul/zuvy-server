@@ -22,6 +22,7 @@ import {
   BadGatewayException,
   UploadedFiles,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -33,6 +34,7 @@ import {
   getSchemaPath,
   ApiExtraModels,
   ApiParam,
+  ApiProduces,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -1659,8 +1661,10 @@ export class ContentController {
   @Get('curriculum/download-certificate/:chapterId')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'Get the certificate URL for a Download Certificate chapter',
+    summary:
+      'Download the certificate PDF personalized with the logged-in student name and current date',
   })
+  @ApiProduces('application/pdf')
   @ApiParam({
     name: 'chapterId',
     required: true,
@@ -1671,10 +1675,16 @@ export class ContentController {
     @Param('chapterId', ParseIntPipe) chapterId: number,
     @Req() req,
   ) {
-    return this.contentService.getCertificateForChapter(
-      chapterId,
-      req.user?.[0] || req.user,
-    );
+    const { pdfBuffer, fileName } =
+      await this.contentService.getCertificateForChapter(
+        chapterId,
+        req.user?.[0] || req.user,
+      );
+    return new StreamableFile(pdfBuffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+      length: pdfBuffer.length,
+    });
   }
 
   @Post('curriculum/upload-images')
