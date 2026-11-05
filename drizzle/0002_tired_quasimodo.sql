@@ -950,3 +950,13 @@ WHERE name IS NOT NULL
 UPDATE users
 SET name = 'Priya Shukla'
 WHERE id = 36182;
+
+
+
+ALTER TABLE zuvy_module_tracking
+ADD COLUMN certificate_url TEXT;
+
+
+SELECT certificate_url
+FROM zuvy_module_tracking
+LIMIT 1;

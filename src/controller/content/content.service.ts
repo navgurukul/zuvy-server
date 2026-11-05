@@ -60,6 +60,7 @@ import {
   gt,
   SQL,
   desc,
+  isNull,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -94,7 +95,9 @@ import {
   S3Client,
   GetObjectCommand,
   PutObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
@@ -261,45 +264,19 @@ export class ContentService {
     }
   }
 
-  async getCertificateForChapter(chapterId: number, user: any) {
-    const resolvedChapterId = Number(chapterId);
-    if (!Number.isInteger(resolvedChapterId) || resolvedChapterId <= 0) {
-      throw new NotFoundException('Certificate chapter not found');
+  async getCertificateForModule(moduleId: number, user: any) {
+    if (!user?.id) {
+      throw new ForbiddenException('User not authenticated');
     }
-
-    const [chapter] = await db
-      .select({
-        id: zuvyModuleChapter.id,
-        title: zuvyModuleChapter.title,
-        topicId: zuvyModuleChapter.topicId,
-        moduleId: zuvyModuleChapter.moduleId,
-        links: zuvyModuleChapter.links,
-      })
-      .from(zuvyModuleChapter)
-      .where(eq(zuvyModuleChapter.id, resolvedChapterId))
-      .limit(1);
-
-    if (!chapter || chapter.topicId !== 10) {
-      throw new NotFoundException('Certificate chapter not found');
-    }
-
-    const certificateUrl = Array.isArray(chapter.links)
-      ? chapter.links.find(
-          (link): link is string =>
-            typeof link === 'string' && link.trim().length > 0,
-        )
-      : null;
-    if (!certificateUrl) {
-      throw new NotFoundException('Certificate file not found');
-    }
+    const userId = Number(user.id);
 
     const [module] = await db
       .select({ bootcampId: zuvyCourseModules.bootcampId })
       .from(zuvyCourseModules)
-      .where(eq(zuvyCourseModules.id, chapter.moduleId))
+      .where(eq(zuvyCourseModules.id, moduleId))
       .limit(1);
     if (!module?.bootcampId) {
-      throw new NotFoundException('Certificate chapter not found');
+      throw new NotFoundException('Module not found');
     }
 
     const [bootcamp] = await db
@@ -308,7 +285,7 @@ export class ContentService {
       .where(eq(zuvyBootcamps.id, module.bootcampId))
       .limit(1);
     if (!bootcamp) {
-      throw new NotFoundException('Certificate chapter not found');
+      throw new NotFoundException('Module not found');
     }
 
     await this.ensureCertificateAccess(
@@ -316,6 +293,38 @@ export class ContentService {
       module.bootcampId,
       bootcamp.organizationId,
     );
+
+    // user_id + module_id is not unique, so prefer the most complete row
+    const [tracking] = await db
+      .select({
+        id: zuvyModuleTracking.id,
+        progress: zuvyModuleTracking.progress,
+        certificateUrl: zuvyModuleTracking.certificateUrl,
+      })
+      .from(zuvyModuleTracking)
+      .where(
+        and(
+          eq(zuvyModuleTracking.userId, userId),
+          eq(zuvyModuleTracking.moduleId, moduleId),
+          eq(zuvyModuleTracking.bootcampId, module.bootcampId),
+        ),
+      )
+      .orderBy(
+        desc(sql`${zuvyModuleTracking.certificateUrl} is not null`),
+        desc(zuvyModuleTracking.progress),
+        asc(zuvyModuleTracking.id),
+      )
+      .limit(1);
+    if (!tracking) {
+      throw new NotFoundException(
+        'No progress found for this module. Complete the module to download the certificate',
+      );
+    }
+    if (tracking.progress !== 100) {
+      throw new BadRequestException(
+        `Complete the module before downloading the certificate (current progress: ${tracking.progress ?? 0}%)`,
+      );
+    }
 
     const [student] = await db
       .select({ name: users.name })
@@ -326,13 +335,89 @@ export class ContentService {
     if (!studentName) {
       throw new NotFoundException('Student name not found');
     }
+    const safeName = studentName.replace(/[^a-zA-Z0-9]+/g, '_') || 'student';
+    const fileName = `certificate_${safeName}.pdf`;
 
-    const templateBuffer =
-      await this.getCertificateTemplateFromS3(certificateUrl);
-    // Formatted as "MMM dd, yyyy", e.g. "Nov 03, 2026"
-    const issuedDate = new Date().toLocaleDateString('en-US', {
-      month: 'short',
+    const existingKey = tracking.certificateUrl
+      ? this.getS3KeyFromUrl(tracking.certificateUrl)
+      : null;
+    let certificateKey = existingKey;
+    if (!certificateKey) {
+      // Concurrent requests on this instance share one generation
+      let generation = this.certificateGenerations.get(tracking.id);
+      if (!generation) {
+        generation = this.generateModuleCertificate(
+          tracking.id,
+          moduleId,
+          userId,
+          studentName,
+        ).finally(() => this.certificateGenerations.delete(tracking.id));
+        this.certificateGenerations.set(tracking.id, generation);
+      }
+      certificateKey = await generation;
+    }
+
+    return {
+      status: 'success',
+      code: 200,
+      message: existingKey
+        ? 'Certificate already generated'
+        : 'Certificate generated successfully',
+      data: {
+        moduleId,
+        certificateUrl: await this.getCertificateDownloadUrl(
+          certificateKey,
+          fileName,
+        ),
+        fileName,
+      },
+    };
+  }
+
+  private certificateGenerations = new Map<number, Promise<string>>();
+
+  // Personalizes the module's certificate template, uploads it and saves its
+  // S3 key on the tracking row. Returns the key that ends up saved.
+  private async generateModuleCertificate(
+    trackingId: number,
+    moduleId: number,
+    userId: number,
+    studentName: string,
+  ): Promise<string> {
+    const [chapter] = await db
+      .select({ links: zuvyModuleChapter.links })
+      .from(zuvyModuleChapter)
+      .where(
+        and(
+          eq(zuvyModuleChapter.moduleId, moduleId),
+          eq(zuvyModuleChapter.topicId, 10),
+        ),
+      )
+      .orderBy(asc(zuvyModuleChapter.order), asc(zuvyModuleChapter.id))
+      .limit(1);
+    if (!chapter) {
+      throw new NotFoundException(
+        'Certificate chapter not found for this module',
+      );
+    }
+
+    const templateUrl = Array.isArray(chapter.links)
+      ? chapter.links.find(
+          (link): link is string =>
+            typeof link === 'string' && link.trim().length > 0,
+        )
+      : null;
+    if (!templateUrl) {
+      throw new NotFoundException(
+        'Certificate template not found for this module',
+      );
+    }
+
+    const templateBuffer = await this.getCertificateTemplateFromS3(templateUrl);
+    // Formatted as "dd MMMM yyyy", e.g. "03 November 2026"
+    const issuedDate = new Date().toLocaleDateString('en-GB', {
       day: '2-digit',
+      month: 'long',
       year: 'numeric',
       timeZone: 'Asia/Kolkata',
     });
@@ -342,23 +427,92 @@ export class ContentService {
       issuedDate,
     );
 
-    const safeName = studentName.replace(/[^a-zA-Z0-9]+/g, '_') || 'student';
-    return {
-      chapterId: chapter.id,
-      title: chapter.title,
-      fileName: `certificate_${safeName}.pdf`,
+    const uploadedUrl = await this.uploadPdfToS3(
       pdfBuffer,
-    };
+      `certificate_${moduleId}_${userId}.pdf`,
+    );
+    const key = this.getS3KeyFromUrl(uploadedUrl);
+
+    // Only the first save wins, so other instances can't overwrite it
+    const [saved] = await db
+      .update(zuvyModuleTracking)
+      .set({ certificateUrl: key, updatedAt: sql`NOW()` } as any)
+      .where(
+        and(
+          eq(zuvyModuleTracking.id, trackingId),
+          isNull(zuvyModuleTracking.certificateUrl),
+        ),
+      )
+      .returning({ id: zuvyModuleTracking.id });
+    if (saved) {
+      return key;
+    }
+
+    // Another request saved a certificate first: keep it and drop ours
+    await this.deleteS3Object(key);
+    const [existing] = await db
+      .select({ certificateUrl: zuvyModuleTracking.certificateUrl })
+      .from(zuvyModuleTracking)
+      .where(eq(zuvyModuleTracking.id, trackingId))
+      .limit(1);
+    const existingKey = existing?.certificateUrl
+      ? this.getS3KeyFromUrl(existing.certificateUrl)
+      : null;
+    if (!existingKey) {
+      throw new InternalServerErrorException('Failed to save certificate');
+    }
+    return existingKey;
+  }
+
+  // Accepts either one of our bucket URLs or a bare object key
+  private getS3KeyFromUrl(url: string): string | null {
+    const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
+    if (url.startsWith(bucketPrefix)) {
+      return decodeURIComponent(url.slice(bucketPrefix.length));
+    }
+    return /^https?:\/\//i.test(url) ? null : url;
+  }
+
+  // The bucket is private, so downloads go through a short-lived signed URL
+  private async getCertificateDownloadUrl(
+    key: string,
+    fileName: string,
+  ): Promise<string> {
+    try {
+      return await getSignedUrl(
+        this.s3,
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ResponseContentType: 'application/pdf',
+          ResponseContentDisposition: `attachment; filename="${fileName}"`,
+        }),
+        { expiresIn: 15 * 60 },
+      );
+    } catch (err) {
+      throw new InternalServerErrorException(
+        'Failed to create certificate download URL',
+      );
+    }
+  }
+
+  private async deleteS3Object(key: string): Promise<void> {
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+    } catch (err) {
+      this.logger?.warn?.(`Failed to delete S3 object ${key}: ${err?.message}`);
+    }
   }
 
   private async getCertificateTemplateFromS3(
     certificateUrl: string,
   ): Promise<Buffer> {
-    const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
-    if (!certificateUrl.startsWith(bucketPrefix)) {
+    const key = this.getS3KeyFromUrl(certificateUrl);
+    if (!key) {
       throw new NotFoundException('Certificate file not found');
     }
-    const key = decodeURIComponent(certificateUrl.slice(bucketPrefix.length));
 
     try {
       const response = await this.s3.send(
