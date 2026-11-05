@@ -44,13 +44,13 @@ const PARENTS = [
     parentResourceId: 1,
     id: 71,
     key: 'CourseParent',
-    title: 'Course',
+    title: 'Course Studio',
     perms: { view: 94, edit: 95, create: 96, delete: 97 },
     child: {
-      id: 10,
-      key: 'Course',
-      name: 'course',
-      perms: { create: 1, view: 2, edit: 3, delete: 4 },
+      id: 11,
+      key: 'Module',
+      name: 'module',
+      perms: { create: 5, view: 6, edit: 7, delete: 8 },
     },
   },
   {
@@ -60,10 +60,10 @@ const PARENTS = [
     title: 'Question Bank',
     perms: { view: 98, edit: 99, create: 100, delete: 101 },
     child: {
-      id: 14,
-      key: 'Question',
-      name: 'Question',
-      perms: { create: 17, view: 18, edit: 19, delete: 20 },
+      id: 51,
+      key: 'Mcq',
+      name: 'mcqs',
+      perms: { create: 57, view: 58, edit: 59, delete: 60 },
     },
   },
   {
@@ -81,7 +81,11 @@ const PARENTS = [
   },
 ];
 type Parent = (typeof PARENTS)[number];
-const TOP_LEVEL_ID = 57; // Organization stays outside every group
+// Resources outside every group.
+const STANDALONE = [
+  { id: 10, key: 'Course', name: 'course' },
+  { id: 57, key: 'Organization', name: 'organization' },
+];
 
 const resource = (
   id: number,
@@ -113,13 +117,12 @@ const resourceRow = (r: ReturnType<typeof resource>) => [
 // A parent's own permission row.
 const parentRow = (p: Parent) =>
   resource(p.id, p.key, p.title, p.parentResourceId, true);
-// A zuvy_resources row joined to its parent's name, as /rbac/resources reads it.
-const withParentName = (r: ReturnType<typeof resource>) => ({
-  ...r,
-  parentName:
-    PARENTS.find((p) => p.parentResourceId === r.parentResourceId)?.title ??
-    null,
-});
+const parentRows = PARENTS.map((p) => ({
+  id: p.parentResourceId,
+  name: p.title,
+  createdAt: null,
+  updatedAt: null,
+}));
 const permRows = (resourceId: number, perms: Record<string, number>) =>
   Object.entries(perms).map(([name, id]) => ({
     id,
@@ -142,86 +145,107 @@ describe('GET /rbac/resources hierarchy', () => {
       parentRow(p),
       resource(p.child.id, p.child.key, p.child.name, p.parentResourceId),
     ]),
-    resource(TOP_LEVEL_ID, 'Organization', 'organization', null),
-  ].map(withParentName);
+    ...STANDALONE.map((r) => resource(r.id, r.key, r.name, null)),
+  ];
   const permissions = PARENTS.flatMap((p) => [
     ...permRows(p.id, p.perms),
     ...permRows(p.child.id, p.child.perms),
   ]);
-  const data = buildResourceHierarchy(resources, permissions);
-  const byId = (id: number) => data.find((r) => r.id === id);
+  const data = buildResourceHierarchy(parentRows, resources, permissions);
+  const groups = data.filter((r) => r.isParent) as any[];
+  const groupOf = (p: Parent) =>
+    groups.find((g) => g.id === p.parentResourceId);
 
-  it('returns the three parents first, each once', () => {
-    expect(data.slice(0, 3).map((r) => [r.id, r.title, r.isParent])).toEqual(
-      PARENTS.map((p) => [p.id, p.title, true]),
+  it('returns exactly the three parents, in order, each with parentId null', () => {
+    expect(groups.map((g) => [g.id, g.name, g.parentId])).toEqual(
+      PARENTS.map((p) => [p.parentResourceId, p.title, null]),
     );
-    expect(data.filter((r) => r.isParent)).toHaveLength(PARENTS.length);
-  });
-
-  it('gives every entry a unique id, so parent and child ids never overlap', () => {
-    const ids = data.map((r) => r.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(data).toHaveLength(resources.length);
+    expect(data.slice(0, 3)).toEqual(groups);
   });
 
   it.each(PARENTS)(
-    'returns $title with parentId null and its parent table id',
+    "nests $title's children with parentId = the parent id",
     (p: Parent) => {
-      expect(byId(p.id)).toMatchObject({
-        title: p.title,
-        isParent: true,
-        parentId: null,
-        parentResourceId: p.parentResourceId,
-      });
-      expect(byId(p.id)).not.toHaveProperty('parentName');
+      expect(groupOf(p).children).toEqual([
+        expect.objectContaining({
+          id: p.child.id,
+          key: p.child.key,
+          name: p.child.name,
+          title: p.child.name,
+          isParent: false,
+          parentId: p.parentResourceId,
+          resourceId: p.child.id,
+        }),
+      ]);
     },
   );
+
+  it('puts no child under more than one parent and leaves none out', () => {
+    const nested = groups.flatMap((g) => g.children.map((c) => c.id));
+    expect(new Set(nested).size).toBe(nested.length);
+    const placed = [
+      ...nested,
+      ...data.filter((r) => !r.isParent).map((r) => r.id),
+    ];
+    expect(placed.sort()).toEqual(
+      resources
+        .filter((r) => !r.isParent)
+        .map((r) => r.id)
+        .sort(),
+    );
+  });
+
+  it("does not list a parent's own permission row as a child", () => {
+    const listed = [
+      ...groups.flatMap((g) => g.children.map((c) => c.id)),
+      ...data.filter((r) => !r.isParent).map((r) => r.id),
+    ];
+    PARENTS.forEach((p) => expect(listed).not.toContain(p.id));
+  });
+
+  it('returns resources with no parent after the groups, with parentId null', () => {
+    expect(data.slice(3).map((r) => [r.id, r.parentId, r.isParent])).toEqual(
+      STANDALONE.map((r) => [r.id, null, false]),
+    );
+  });
 
   it.each(PARENTS)(
-    'links $title children by parentId, keeping their ids and fields',
+    "gives $title its permission row id and that row's permissions",
     (p: Parent) => {
-      expect(byId(p.child.id)).toMatchObject({
-        id: p.child.id,
-        key: p.child.key,
-        name: p.child.name,
-        title: p.child.name,
-        isParent: false,
-        parentId: p.id,
-        parentResourceId: p.parentResourceId,
-      });
+      expect(groupOf(p).resourceId).toBe(p.id);
+      expect(groupOf(p).permissions.map((x) => x.id)).toEqual(
+        Object.values(p.perms),
+      );
+      expect(groupOf(p).children[0].permissions.map((x) => x.id)).toEqual(
+        Object.values(p.child.perms),
+      );
     },
   );
 
-  it('leaves ungrouped resources at the top level', () => {
-    expect(byId(TOP_LEVEL_ID)).toMatchObject({
-      isParent: false,
-      parentId: null,
-      parentResourceId: null,
+  it('still returns a parent whose permission row or children are missing', () => {
+    const [course] = buildResourceHierarchy(parentRows, [], []) as any[];
+    expect(course).toMatchObject({
+      name: 'Course Studio',
+      resourceId: null,
+      permissions: [],
+      children: [],
     });
   });
 
-  it.each(PARENTS)("lists $title's own permissions only", (p: Parent) => {
-    expect(byId(p.id).permissions.map((x) => x.id)).toEqual(
-      Object.values(p.perms),
-    );
-    expect(byId(p.child.id).permissions.map((x) => x.id)).toEqual(
-      Object.values(p.child.perms),
-    );
-  });
-
-  it('getAllResources reads resources and parents in one query', async () => {
-    mockClient.respond = (text) =>
-      /from "main"\."zuvy_resources" left join "main"\."zuvy_parent_resources"/.test(
-        text,
-      )
-        ? resources.map((r) => [...resourceRow(r), r.parentName])
-        : [];
+  it('getAllResources runs three queries and keeps the existing envelope', async () => {
+    mockClient.respond = (text) => {
+      if (/from "main"\."zuvy_parent_resources"/.test(text))
+        return parentRows.map((r) => [r.id, r.name, r.createdAt, r.updatedAt]);
+      if (/from "main"\."zuvy_resources"/.test(text))
+        return resources.map(resourceRow);
+      return [];
+    };
     const result = await new RbacResourcesService().getAllResources();
     expect(result).toMatchObject({ status: 'success', code: 200 });
-    expect(result.data.filter((r) => r.isParent).map((r) => r.id)).toEqual(
-      PARENTS.map((p) => p.id),
-    );
-    expect(mockClient.queries).toHaveLength(2); // resources + permissions
+    expect(
+      result.data.filter((r) => r.isParent).map((r: any) => r.children.length),
+    ).toEqual([1, 1, 1]);
+    expect(mockClient.queries).toHaveLength(3);
   });
 });
 
@@ -230,11 +254,16 @@ describe('migration 0047', () => {
     readFileSync(join(__dirname, '../../drizzle/migrations', name), 'utf8');
   const up = read('0047_add_parent_resources.sql');
   const down = read('0047_add_parent_resources.down.sql');
-  const grouping = up.slice(up.indexOf('UPDATE "zuvy_resources" child'));
-  const childrenOf = (parentName: string) =>
-    [...grouping.matchAll(new RegExp(`\\('${parentName}', '(\\w+)'\\)`, 'g'))]
+  const mapping = up.slice(up.indexOf('mapping jsonb'));
+  const childrenOf = (parentKey: string) =>
+    [...mapping.matchAll(new RegExp(`"(\\w+)":\\s+"${parentKey}"`, 'g'))]
       .map((m) => m[1])
       .sort();
+
+  it('runs as one transaction', () => {
+    expect(up).toMatch(/^BEGIN;$/m);
+    expect(up.trim().endsWith('COMMIT;')).toBe(true);
+  });
 
   it('creates zuvy_parent_resources with only id, unique name and timestamps', () => {
     const start = up.indexOf(
@@ -265,44 +294,61 @@ describe('migration 0047', () => {
     );
   });
 
-  it('seeds the three parents without duplicates on a re-run', () => {
+  it('seeds the three parents under one name each, without duplicates', () => {
     expect(up).toContain(
-      "VALUES ('Course'), ('Question Bank'), ('Roles & Permissions')",
+      "VALUES ('Course Studio'), ('Question Bank'), ('Roles & Permissions')",
     );
     PARENTS.forEach((p) => expect(up).toContain(`('${p.title}', '${p.key}')`));
     expect(up).toContain('ON CONFLICT ("name") DO NOTHING');
-    // A re-run reuses each parent's permission row instead of adding one.
     expect(up).toContain('ON CONFLICT ("key") DO UPDATE');
+    // A parent created as "Course" by an earlier version is renamed.
+    expect(up).toMatch(
+      /SET "name" = 'Course Studio'[\s\S]*WHERE "name" = 'Course'/,
+    );
+  });
+
+  it('gives parents view, edit, create and delete, and no manager', () => {
     ['view', 'edit', 'create', 'delete'].forEach((name) =>
       expect(up).toContain(`('${name}', `),
     );
-    // Parents have the same four permissions as children; no manager.
     expect(up).not.toContain("('manager', ");
   });
 
-  it('groups the existing resources under their parents', () => {
-    expect(childrenOf('Course')).toEqual([
+  it('maps exactly the listed children, by key', () => {
+    expect(childrenOf('CourseParent')).toEqual([
       'Batch',
       'Bootcamp',
       'Chapter',
-      'Class',
-      'Course',
       'Module',
       'Setting',
       'Student',
       'Submission',
-      'Topic',
     ]);
-    expect(childrenOf('Question Bank')).toEqual([
+    expect(childrenOf('QuestionBankParent')).toEqual([
       'CodingQuestion',
       'Mcq',
       'OpendEnded',
-      'Question',
+      'Topic',
     ]);
-    expect(childrenOf('Roles & Permissions')).toEqual([
+    expect(childrenOf('RolesAndPermissionParent')).toEqual([
       'RolesAndPermission',
       'User',
     ]);
+  });
+
+  it('corrects existing links: listed children get their parent, the rest none', () => {
+    // One update sets every non-parent row to its mapped parent, or to NULL.
+    expect(mapping).toMatch(
+      /LEFT JOIN jsonb_each_text\(mapping\)[\s\S]*WHERE NOT r\.is_parent/,
+    );
+    expect(mapping).toContain(
+      'child.parent_resource_id IS DISTINCT FROM target.parent_id',
+    );
+    expect(mapping).toContain('RAISE WARNING');
+  });
+
+  it('needs no temporary table, so it also works run statement by statement', () => {
+    expect(up).not.toMatch(/TEMP TABLE/i);
   });
 
   it('has a rollback that removes the column, the table and the parent rows', () => {

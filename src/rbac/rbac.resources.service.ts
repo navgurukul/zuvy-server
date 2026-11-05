@@ -14,12 +14,11 @@ import {
   zuvyPermissions,
   zuvyParentResources,
 } from 'drizzle/schema';
-import { eq, asc, getTableColumns } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { permissions } from 'src/helpers';
 
-type ResourceRow = typeof zuvyResources.$inferSelect & {
-  parentName: string | null;
-};
+type ResourceRow = typeof zuvyResources.$inferSelect;
+type ParentRow = typeof zuvyParentResources.$inferSelect;
 type PermissionRow = {
   id: number;
   name: string;
@@ -27,14 +26,17 @@ type PermissionRow = {
   resourceId: number;
 };
 
-// Shapes the resource list for Role Management. Every entry is a
-// zuvy_resources row, so every `id` is unique and is what the permission
-// endpoints take, for parents and children alike.
-//   parent:  the row a zuvy_parent_resources record keeps its own permissions
-//            on (is_parent); title is the parent's name, parentId is null.
-//   child:   any other row; parentId is its parent's `id`.
-// parentResourceId is the zuvy_parent_resources ID in both. Parents come first.
+// Shapes the resource list for Role Management: one entry per parent
+// (zuvy_parent_resources) with its resources nested in `children`, followed by
+// the resources that belong to no parent.
+//   parent:      id/name from zuvy_parent_resources, parentId null. Its own
+//                permissions live on its is_parent zuvy_resources row, whose ID
+//                is `resourceId`.
+//   child:       the zuvy_resources row with parentId = its parent's id.
+//   standalone:  a zuvy_resources row with no parent, parentId null.
+// Every entry has `resourceId`, the ID the permission endpoints take.
 export function buildResourceHierarchy(
+  parents: ParentRow[],
   resources: ResourceRow[],
   resourcePermissions: PermissionRow[],
 ) {
@@ -47,22 +49,54 @@ export function buildResourceHierarchy(
     list.push(permission);
     permissionsByResource.set(resourceId, list);
   }
-  const parentIdByParentResourceId = new Map(
-    resources.filter((r) => r.isParent).map((r) => [r.parentResourceId, r.id]),
-  );
+  const permissionsOf = (resourceId: number) =>
+    permissionsByResource.get(resourceId) ?? [];
 
-  const entries = resources.map(({ parentName, ...resource }) => ({
+  const ownRowByParent = new Map<number, ResourceRow>();
+  const childrenByParent = new Map<number, ResourceRow[]>();
+  const standalone: ResourceRow[] = [];
+  for (const resource of resources) {
+    if (resource.isParent) {
+      ownRowByParent.set(resource.parentResourceId, resource);
+    } else if (resource.parentResourceId == null) {
+      standalone.push(resource);
+    } else {
+      const list = childrenByParent.get(resource.parentResourceId) ?? [];
+      list.push(resource);
+      childrenByParent.set(resource.parentResourceId, list);
+    }
+  }
+
+  const resourceEntry = (resource: ResourceRow, parentId: number | null) => ({
     ...resource,
-    title: resource.isParent ? (parentName ?? resource.name) : resource.name,
-    parentId: resource.isParent
-      ? null
-      : (parentIdByParentResourceId.get(resource.parentResourceId) ?? null),
-    parentResourceId: resource.parentResourceId ?? null,
-    permissions: permissionsByResource.get(resource.id) ?? [],
-  }));
+    title: resource.name,
+    isParent: false,
+    parentId,
+    resourceId: resource.id,
+    permissions: permissionsOf(resource.id),
+  });
+
+  const parentEntries = parents.map((parent) => {
+    const ownRow = ownRowByParent.get(parent.id);
+    return {
+      id: parent.id,
+      name: parent.name,
+      title: parent.name,
+      isParent: true,
+      parentId: null,
+      resourceId: ownRow?.id ?? null,
+      permissions: ownRow ? permissionsOf(ownRow.id) : [],
+      createdAt: parent.createdAt,
+      updatedAt: parent.updatedAt,
+      children: (childrenByParent.get(parent.id) ?? []).map((child) =>
+        resourceEntry(child, parent.id),
+      ),
+    };
+  });
+
   return [
-    ...entries.filter((r) => r.isParent),
-    ...entries.filter((r) => !r.isParent),
+    ...parentEntries,
+    ...standalone.map((resource) => resourceEntry(resource, null)),
   ];
 }
 
@@ -119,34 +153,30 @@ export class RbacResourcesService {
 
   async getAllResources() {
     try {
-      const resources = await db
-        .select({
-          ...getTableColumns(zuvyResources),
-          parentName: zuvyParentResources.name,
-        })
-        .from(zuvyResources)
-        .leftJoin(
-          zuvyParentResources,
-          eq(zuvyResources.parentResourceId, zuvyParentResources.id),
-        )
-        .orderBy(asc(zuvyResources.name));
-
-      const resourcePermissions = await db
-        .select({
-          id: zuvyPermissions.id,
-          name: zuvyPermissions.name,
-          description: zuvyPermissions.description,
-          resourceId: zuvyPermissions.resourcesId,
-        })
-        .from(zuvyPermissions)
-        .orderBy(asc(zuvyPermissions.id));
+      // Three queries in total, however many resources there are.
+      const [parents, resources, resourcePermissions] = await Promise.all([
+        db
+          .select()
+          .from(zuvyParentResources)
+          .orderBy(asc(zuvyParentResources.id)),
+        db.select().from(zuvyResources).orderBy(asc(zuvyResources.name)),
+        db
+          .select({
+            id: zuvyPermissions.id,
+            name: zuvyPermissions.name,
+            description: zuvyPermissions.description,
+            resourceId: zuvyPermissions.resourcesId,
+          })
+          .from(zuvyPermissions)
+          .orderBy(asc(zuvyPermissions.id)),
+      ]);
 
       // let pascalResources = convertToPascalCaseWithSpaces(resources);
       return {
         status: 'success',
         message: 'Resources fetched successfully',
         code: 200,
-        data: buildResourceHierarchy(resources, resourcePermissions),
+        data: buildResourceHierarchy(parents, resources, resourcePermissions),
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to retrieve resources');
