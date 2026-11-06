@@ -957,6 +957,3 @@ ALTER TABLE zuvy_module_tracking
 ADD COLUMN certificate_url TEXT;
 
 
-SELECT certificate_url
-FROM zuvy_module_tracking
-LIMIT 1;
