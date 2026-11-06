@@ -24,6 +24,7 @@ import {
   customType,
   numeric,
   primaryKey,
+  AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 // import { users } from './users'; // Import the 'users' module
 
@@ -4153,13 +4154,19 @@ export const zuvyResources = main.table('zuvy_resources', {
   key: varchar('key', { length: 64 }).notNull().unique(),
   name: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
-  // Parent group (e.g. Course) this resource sits under in Role Management.
+  // Parent group (e.g. Course Studio) this resource sits under in Role Management.
   parentResourceId: integer('parent_resource_id').references(
     () => zuvyParentResources.id,
     { onDelete: 'set null' },
   ),
+  // Resource this one is nested under inside its group (e.g. Chapter under
+  // Module); null for a resource directly under its group.
+  parentId: integer('parent_id').references(
+    (): AnyPgColumn => zuvyResources.id,
+    { onDelete: 'set null' },
+  ),
   // Permissions always belong to a zuvy_resources row, so each parent has one
-  // row of its own (is_parent) that its view/edit/create/manager hang off.
+  // row of its own (is_parent) that its view/edit/create/delete hang off.
   isParent: boolean('is_parent').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

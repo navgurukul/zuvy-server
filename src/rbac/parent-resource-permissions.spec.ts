@@ -93,12 +93,14 @@ const resource = (
   name: string,
   parentResourceId: number | null,
   isParent = false,
+  parentId: number | null = null,
 ) => ({
   id,
   key,
   name,
   description: null,
   parentResourceId,
+  parentId,
   isParent,
   createdAt: null,
   updatedAt: null,
@@ -110,6 +112,7 @@ const resourceRow = (r: ReturnType<typeof resource>) => [
   r.name,
   r.description,
   r.parentResourceId,
+  r.parentId,
   r.isParent,
   r.createdAt,
   r.updatedAt,
@@ -359,6 +362,163 @@ describe('migration 0047', () => {
   });
 });
 
+describe('GET /rbac/resources Course Studio tree', () => {
+  // Course Studio as it is in the database after migration 0048.
+  const GROUP = 1;
+  const CURRICULUM = 90;
+  const rows = [
+    resource(71, 'CourseParent', 'Course Studio', GROUP, true),
+    resource(64, 'Bootcamp', 'bootcamp', GROUP),
+    resource(CURRICULUM, 'Curriculum', 'Curriculum', GROUP),
+    resource(11, 'Module', 'module', GROUP, false, CURRICULUM),
+    resource(31, 'Chapter', 'chapter', GROUP, false, 11),
+    resource(18, 'Student', 'student', GROUP),
+    resource(12, 'Batch', 'batch', GROUP),
+    resource(17, 'Submission', 'submission', GROUP),
+    resource(30, 'Setting', 'setting', GROUP),
+    resource(10, 'Course', 'course', null),
+  ];
+  const perms = [
+    ...permRows(CURRICULUM, { create: 133, view: 134, edit: 135, delete: 136 }),
+    ...permRows(31, { create: 53, view: 54, edit: 55, delete: 56 }),
+  ];
+  const [courseStudio, , , standalone] = buildResourceHierarchy(
+    parentRows,
+    rows,
+    perms,
+  ) as any[];
+  const outline = (node: any): any => [
+    node.key ?? node.name,
+    node.parentId,
+    node.children.map(outline),
+  ];
+
+  it('nests Curriculum > Module > Chapter and keeps the rest directly under Course Studio', () => {
+    expect(outline(courseStudio)).toEqual([
+      'Course Studio',
+      null,
+      [
+        ['Bootcamp', GROUP, []],
+        ['Curriculum', GROUP, [['Module', CURRICULUM, [['Chapter', 11, []]]]]],
+        ['Student', GROUP, []],
+        ['Batch', GROUP, []],
+        ['Submission', GROUP, []],
+        ['Setting', GROUP, []],
+      ],
+    ]);
+  });
+
+  it('keeps every nested resource in the Course Studio group, with its own permissions', () => {
+    const chapter = courseStudio.children[1].children[0].children[0];
+    expect(chapter).toMatchObject({
+      id: 31,
+      resourceId: 31,
+      parentId: 11,
+      parentResourceId: GROUP,
+      isParent: false,
+      children: [],
+    });
+    expect(chapter.permissions.map((p) => p.id)).toEqual([53, 54, 55, 56]);
+    expect(courseStudio.children[1].permissions.map((p) => p.id)).toEqual([
+      133, 134, 135, 136,
+    ]);
+  });
+
+  it('lists every resource exactly once', () => {
+    const ids: number[] = [];
+    const walk = (node: any) => {
+      ids.push(node.id);
+      node.children.forEach(walk);
+    };
+    walk(courseStudio);
+    walk(standalone);
+    expect(ids.slice(1).sort()).toEqual(
+      rows
+        .filter((r) => !r.isParent)
+        .map((r) => r.id)
+        .sort(),
+    );
+    expect(standalone).toMatchObject({
+      key: 'Course',
+      parentId: null,
+      children: [],
+    });
+  });
+
+  it('still lists resources caught in a parent_id cycle, once each', () => {
+    const looped = [
+      resource(1, 'A', 'a', null, false, 2),
+      resource(2, 'B', 'b', null, false, 1),
+    ];
+    const data = buildResourceHierarchy([], looped, []) as any[];
+    const ids: number[] = [];
+    const walk = (node: any) => {
+      ids.push(node.id);
+      node.children.forEach(walk);
+    };
+    data.forEach(walk);
+    expect(ids.sort()).toEqual([1, 2]);
+  });
+});
+
+describe('migration 0048', () => {
+  const read = (name: string) =>
+    readFileSync(join(__dirname, '../../drizzle/migrations', name), 'utf8');
+  const up = read('0048_nest_course_studio_resources.sql');
+  const down = read('0048_nest_course_studio_resources.down.sql');
+  const nesting = up.slice(up.indexOf('nesting jsonb'));
+
+  it('runs as one transaction without temporary tables', () => {
+    expect(up).toMatch(/^BEGIN;$/m);
+    expect(up.trim().endsWith('COMMIT;')).toBe(true);
+    expect(up).not.toMatch(/TEMP TABLE/i);
+  });
+
+  it('adds parent_id as a self-reference that cannot point at itself', () => {
+    expect(up).toContain('ADD COLUMN IF NOT EXISTS "parent_id" integer');
+    expect(up).toMatch(
+      /FOREIGN KEY \("parent_id"\) REFERENCES "zuvy_resources"\("id"\) ON DELETE SET NULL/,
+    );
+    expect(up).toContain('CHECK ("parent_id" <> "id")');
+  });
+
+  it('adds Curriculum once, in Course Studio, with view/edit/create/delete', () => {
+    expect(up).toMatch(
+      /INSERT INTO "zuvy_resources"[\s\S]*'Curriculum', 'Curriculum'[\s\S]*ON CONFLICT \("key"\) DO NOTHING/,
+    );
+    ['create', 'view', 'edit', 'delete'].forEach((name) =>
+      expect(up).toContain(`('${name}', `),
+    );
+    expect(up).toMatch(/WHERE p\.resource_id = r\.id AND p\.name = v\.name/);
+  });
+
+  it('nests Module under Curriculum and Chapter under Module, by key', () => {
+    const pairs = [...nesting.matchAll(/"(\w+)":\s+"(\w+)"/g)].map((m) => [
+      m[1],
+      m[2],
+    ]);
+    expect(pairs).toEqual([
+      ['Curriculum', 'CourseParent'],
+      ['Module', 'Curriculum'],
+      ['Chapter', 'Module'],
+    ]);
+    // Everything not listed sits directly under its group.
+    expect(nesting).toMatch(
+      /LEFT JOIN jsonb_each_text\(nesting\)[\s\S]*WHERE NOT r\.is_parent/,
+    );
+    expect(nesting).toContain(
+      'child.parent_id IS DISTINCT FROM target.parent_id',
+    );
+  });
+
+  it('has a rollback that removes Curriculum and parent_id', () => {
+    expect(down).toContain(
+      'DELETE FROM "zuvy_resources" WHERE key = \'Curriculum\'',
+    );
+    expect(down).toContain('DROP COLUMN IF EXISTS "parent_id"');
+  });
+});
+
 describe('resource parentResourceId validation', () => {
   const service = new RbacResourcesService();
   const [course] = PARENTS;
@@ -408,6 +568,67 @@ describe('resource parentResourceId validation', () => {
     const [update] = queriesMatching(/^update "main"\."zuvy_resources"/);
     expect(update.text).toContain('"parent_resource_id" = $1');
     expect(update.params).toEqual([course.parentResourceId, 11]);
+  });
+});
+
+describe('resource parentId (nesting) validation', () => {
+  const service = new RbacResourcesService();
+  const GROUP = 1;
+  // id -> [is_parent, parent_resource_id, parent_id]
+  const table: Record<number, [boolean, number | null, number | null]> = {
+    71: [true, GROUP, null], // Course Studio's own row
+    90: [false, GROUP, null], // Curriculum
+    11: [false, GROUP, 90], // Module
+    31: [false, GROUP, 11], // Chapter
+  };
+  beforeEach(() => {
+    mockClient.respond = (text, params) => {
+      const row = table[params[0] as number];
+      if (
+        /select "is_parent", "parent_resource_id" from "main"\."zuvy_resources"/.test(
+          text,
+        )
+      )
+        return row ? [[row[0], row[1]]] : [];
+      if (/select "parent_id" from "main"\."zuvy_resources"/.test(text))
+        return row ? [[row[2]]] : [];
+      if (/select "is_parent" from "main"\."zuvy_resources"/.test(text))
+        return row ? [[row[0]]] : [];
+      if (/from "main"\."zuvy_parent_resources"/.test(text)) return [[GROUP]];
+      if (/^update "main"\."zuvy_resources"/.test(text))
+        return [
+          resourceRow(resource(31, 'Chapter', 'chapter', GROUP, false, 11)),
+        ];
+      return [];
+    };
+  });
+
+  it('nests a resource and puts it in its new parent group', async () => {
+    await service.updateResource(31, { parentId: 11 });
+    const [update] = queriesMatching(/^update "main"\."zuvy_resources"/);
+    expect(update.text).toContain('"parent_resource_id" = $');
+    expect(update.text).toContain('"parent_id" = $');
+    expect(update.params).toEqual(expect.arrayContaining([11, GROUP, 31]));
+  });
+
+  it.each([
+    ['itself', 31, 31, BadRequestException],
+    ['one of its own children', 90, 31, BadRequestException],
+    ["a parent's own permission row", 11, 71, BadRequestException],
+    ['a resource that does not exist', 11, 999, NotFoundException],
+  ])('refuses nesting under %s', async (_label, selfId, parentId, error) => {
+    await expect(
+      service.updateResource(selfId as number, {
+        parentId: parentId as number,
+      }),
+    ).rejects.toBeInstanceOf(error);
+    expect(queriesMatching(/^update/)).toHaveLength(0);
+  });
+
+  it('refuses a parentResourceId that disagrees with the parent resource group', async () => {
+    await expect(
+      service.updateResource(31, { parentId: 11, parentResourceId: 2 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 

@@ -26,15 +26,26 @@ type PermissionRow = {
   resourceId: number;
 };
 
-// Shapes the resource list for Role Management: one entry per parent
-// (zuvy_parent_resources) with its resources nested in `children`, followed by
-// the resources that belong to no parent.
+type ResourceNode = Omit<ResourceRow, 'parentId'> & {
+  title: string;
+  isParent: false;
+  parentId: number | null;
+  resourceId: number;
+  permissions: Omit<PermissionRow, 'resourceId'>[];
+  children: ResourceNode[];
+};
+
+// Shapes the resource list for Role Management as a tree: one entry per parent
+// (zuvy_parent_resources) with its resources nested in `children` to any
+// depth (zuvy_resources.parent_id), followed by the resources in no group.
 //   parent:      id/name from zuvy_parent_resources, parentId null. Its own
 //                permissions live on its is_parent zuvy_resources row, whose ID
 //                is `resourceId`.
-//   child:       the zuvy_resources row with parentId = its parent's id.
-//   standalone:  a zuvy_resources row with no parent, parentId null.
-// Every entry has `resourceId`, the ID the permission endpoints take.
+//   resource:    a zuvy_resources row. parentId is the node above it: the
+//                resource it is nested under, else its parent's id, else null.
+//                parentResourceId is always its group.
+// Every node has `children` (empty for a leaf) and `resourceId`, the ID the
+// permission endpoints take.
 export function buildResourceHierarchy(
   parents: ParentRow[],
   resources: ResourceRow[],
@@ -49,32 +60,48 @@ export function buildResourceHierarchy(
     list.push(permission);
     permissionsByResource.set(resourceId, list);
   }
-  const permissionsOf = (resourceId: number) =>
-    permissionsByResource.get(resourceId) ?? [];
 
   const ownRowByParent = new Map<number, ResourceRow>();
-  const childrenByParent = new Map<number, ResourceRow[]>();
-  const standalone: ResourceRow[] = [];
+  const rows = new Map<number, ResourceRow>();
   for (const resource of resources) {
-    if (resource.isParent) {
+    if (resource.isParent)
       ownRowByParent.set(resource.parentResourceId, resource);
-    } else if (resource.parentResourceId == null) {
-      standalone.push(resource);
-    } else {
-      const list = childrenByParent.get(resource.parentResourceId) ?? [];
-      list.push(resource);
-      childrenByParent.set(resource.parentResourceId, list);
-    }
+    else rows.set(resource.id, resource);
   }
 
-  const resourceEntry = (resource: ResourceRow, parentId: number | null) => ({
-    ...resource,
-    title: resource.name,
-    isParent: false,
-    parentId,
-    resourceId: resource.id,
-    permissions: permissionsOf(resource.id),
-  });
+  // Resources nested under another resource, and the top of each group.
+  const nestedUnder = new Map<number, ResourceRow[]>();
+  const topOfGroup = new Map<number, ResourceRow[]>();
+  const standalone: ResourceRow[] = [];
+  const push = (
+    map: Map<number, ResourceRow[]>,
+    key: number,
+    row: ResourceRow,
+  ) => map.set(key, [...(map.get(key) ?? []), row]);
+  for (const row of rows.values()) {
+    if (row.parentId != null && rows.has(row.parentId))
+      push(nestedUnder, row.parentId, row);
+    else if (row.parentResourceId != null)
+      push(topOfGroup, row.parentResourceId, row);
+    else standalone.push(row);
+  }
+
+  const placed = new Set<number>();
+  const toNode = (row: ResourceRow, parentId: number | null): ResourceNode => {
+    placed.add(row.id);
+    const { parentId: _nestedUnder, ...fields } = row;
+    return {
+      ...fields,
+      title: row.name,
+      isParent: false,
+      parentId,
+      resourceId: row.id,
+      permissions: permissionsByResource.get(row.id) ?? [],
+      children: (nestedUnder.get(row.id) ?? [])
+        .filter((child) => !placed.has(child.id)) // never loop on a cycle
+        .map((child) => toNode(child, row.id)),
+    };
+  };
 
   const parentEntries = parents.map((parent) => {
     const ownRow = ownRowByParent.get(parent.id);
@@ -85,19 +112,23 @@ export function buildResourceHierarchy(
       isParent: true,
       parentId: null,
       resourceId: ownRow?.id ?? null,
-      permissions: ownRow ? permissionsOf(ownRow.id) : [],
+      permissions: ownRow ? (permissionsByResource.get(ownRow.id) ?? []) : [],
       createdAt: parent.createdAt,
       updatedAt: parent.updatedAt,
-      children: (childrenByParent.get(parent.id) ?? []).map((child) =>
-        resourceEntry(child, parent.id),
+      children: (topOfGroup.get(parent.id) ?? []).map((row) =>
+        toNode(row, parent.id),
       ),
     };
   });
+  const standaloneEntries = standalone.map((row) => toNode(row, null));
+  // Rows only reachable through a cycle of parent_id links still get listed,
+  // each once.
+  const unplaced: ResourceNode[] = [];
+  for (const row of rows.values()) {
+    if (!placed.has(row.id)) unplaced.push(toNode(row, null));
+  }
 
-  return [
-    ...parentEntries,
-    ...standalone.map((resource) => resourceEntry(resource, null)),
-  ];
+  return [...parentEntries, ...standaloneEntries, ...unplaced];
 }
 
 @Injectable()
@@ -106,12 +137,13 @@ export class RbacResourcesService {
 
   async createResource(createResourceDto: CreateResourceDto) {
     try {
-      await this.assertValidParent(createResourceDto.parentResourceId);
+      const values = await this.withNestedGroup(createResourceDto);
+      await this.assertValidParent(values.parentResourceId);
 
       // Create the resource first
       const [resource] = await db
         .insert(zuvyResources)
-        .values(createResourceDto)
+        .values(values)
         .returning();
 
       // Create default permissions for this resource
@@ -202,11 +234,12 @@ export class RbacResourcesService {
 
   async updateResource(id: number, updateData: Partial<CreateResourceDto>) {
     try {
-      await this.assertValidParent(updateData.parentResourceId, id);
+      const values = await this.withNestedGroup(updateData, id);
+      await this.assertValidParent(values.parentResourceId, id);
 
       const [resource] = await db
         .update(zuvyResources)
-        .set(updateData)
+        .set(values)
         .where(eq(zuvyResources.id, id))
         .returning();
 
@@ -248,6 +281,65 @@ export class RbacResourcesService {
     } catch (error) {
       throw error;
     }
+  }
+
+  // A resource can be nested under another resource (never a parent's own
+  // permission row, itself, or anything nested under it). It then joins that
+  // resource's group, so parentResourceId is filled in or must agree.
+  private async withNestedGroup<T extends Partial<CreateResourceDto>>(
+    data: T,
+    selfId?: number,
+  ): Promise<T> {
+    const { parentId } = data;
+    if (parentId === undefined || parentId === null) return data;
+    if (parentId === selfId) {
+      throw new BadRequestException('A resource cannot be nested under itself');
+    }
+
+    const [parent] = await db
+      .select({
+        isParent: zuvyResources.isParent,
+        parentResourceId: zuvyResources.parentResourceId,
+      })
+      .from(zuvyResources)
+      .where(eq(zuvyResources.id, parentId))
+      .limit(1);
+    if (!parent) {
+      throw new NotFoundException(`Resource with ID ${parentId} not found`);
+    }
+    if (parent.isParent) {
+      throw new BadRequestException(
+        'Use parentResourceId to put a resource directly under a parent',
+      );
+    }
+
+    if (selfId !== undefined) {
+      // Walk up from the new parent; reaching this resource would be a cycle.
+      let ancestorId: number | null = parentId;
+      for (let depth = 0; ancestorId !== null && depth < 50; depth++) {
+        if (ancestorId === selfId) {
+          throw new BadRequestException(
+            'A resource cannot be nested under one of its own children',
+          );
+        }
+        const [ancestor] = await db
+          .select({ parentId: zuvyResources.parentId })
+          .from(zuvyResources)
+          .where(eq(zuvyResources.id, ancestorId))
+          .limit(1);
+        ancestorId = ancestor?.parentId ?? null;
+      }
+    }
+
+    if (
+      data.parentResourceId !== undefined &&
+      data.parentResourceId !== parent.parentResourceId
+    ) {
+      throw new BadRequestException(
+        'parentResourceId must match the group of the resource in parentId',
+      );
+    }
+    return { ...data, parentResourceId: parent.parentResourceId };
   }
 
   // A resource can be put under a parent that exists, but a parent's own

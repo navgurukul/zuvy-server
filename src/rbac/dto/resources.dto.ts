@@ -49,4 +49,15 @@ export class CreateResourceDto {
   @IsNumber()
   @IsOptional()
   parentResourceId?: number | null;
+
+  @ApiProperty({
+    description:
+      "ID (zuvy_resources) of the resource this one is nested under, e.g. Module under Curriculum; it joins that resource's parent group",
+    example: 11,
+    required: false,
+    nullable: true,
+  })
+  @IsNumber()
+  @IsOptional()
+  parentId?: number | null;
 }

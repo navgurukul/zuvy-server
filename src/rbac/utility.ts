@@ -61,6 +61,7 @@ export const ResourceKeys = [
   'CourseParent',
   'QuestionBankParent',
   'RolesAndPermissionParent',
+  'Curriculum',
   'User',
   'Bootcamp',
   'Mcq',
