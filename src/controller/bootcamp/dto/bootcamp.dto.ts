@@ -8,6 +8,7 @@ import {
   IsEmail,
   IsBoolean,
   IsIn,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -250,24 +251,40 @@ export class PatchBootcampDto {
   @IsString()
   language: string;
 }
+// A student is identified by email, Student ID, or both. Email-less
+// (Student ID) accounts can only be matched by their Student ID.
 class studentEmail {
   @ApiProperty({
     type: String,
     example: 'example@gmail.com',
-    required: true,
+    required: false,
+    description: 'Required when studentId is not given',
   })
-  @IsNotEmpty()
+  @ValidateIf((o) => !o.studentId || (o.email != null && o.email !== ''))
+  @IsNotEmpty({ message: 'Either email or studentId is required' })
   @IsEmail()
-  email: string;
+  email?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'aruneshdharct1',
+    required: false,
+    description: 'Required when email is not given',
+  })
+  @IsOptional()
+  @IsString()
+  studentId?: string;
 
   @ApiProperty({
     type: String,
     example: 'example',
-    required: true,
+    required: false,
+    description: 'Required when studentId is not given',
   })
+  @ValidateIf((o) => !o.studentId || o.name != null)
   @IsNotEmpty()
   @IsString()
-  name: string;
+  name?: string;
 }
 export class studentDataDto {
   @ApiProperty({

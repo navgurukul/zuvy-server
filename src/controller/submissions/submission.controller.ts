@@ -576,7 +576,7 @@ export class SubmissionController {
     name: 'searchStudent',
     type: String,
     required: false,
-    description: 'Search by student name or email',
+    description: 'Search by student name, email or Student ID',
   })
   @ApiQuery({
     name: 'orderBy',

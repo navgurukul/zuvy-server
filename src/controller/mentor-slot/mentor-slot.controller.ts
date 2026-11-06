@@ -361,6 +361,12 @@ export class MentorSlotController {
 ========================================================================== */
 
   @Post('mentor/profile')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'edit_profile',
+    resourceType: 'mentor_dashboard',
+    displayType: 'mentor profile',
+  })
   async createOrUpdateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
     const user = req.user?.[0];
 

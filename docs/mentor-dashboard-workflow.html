@@ -1,0 +1,470 @@
+<title>Mentor Dashboard Workflow</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root{
+  --bg:#eef1f2; --surface:#ffffff; --surface-2:#f5f8f8;
+  --ink:#16212b; --ink-soft:#55636f; --ink-faint:#8a99a3;
+  --line:#d7dee1; --line-soft:#e6ebed;
+  --accent:#256b64; --accent-ink:#ffffff; --accent-soft:#e2f0ee; --accent-line:#bcdad5;
+  --code-bg:#eef2f0; --code-ink:#1d2b28;
+  --crit:#b23a48; --crit-soft:#fbe9eb; --crit-line:#eec3c8;
+  --high:#93650b; --high-soft:#faf1de; --high-line:#edd8ab;
+  --med:#6552a8; --med-soft:#ede9f8; --med-line:#cabdea;
+  --low:#55636f; --low-soft:#eef1f2; --low-line:#d7dee1;
+  --shadow:0 1px 2px rgba(20,30,35,.06), 0 10px 28px -14px rgba(20,30,35,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#10161b; --surface:#182228; --surface-2:#1c262d;
+    --ink:#e8edf0; --ink-soft:#a9b7c0; --ink-faint:#728089;
+    --line:#2c3941; --line-soft:#212c33;
+    --accent:#5cb8ac; --accent-ink:#07211d; --accent-soft:#173330; --accent-line:#2b5b53;
+    --code-bg:#16211f; --code-ink:#cfe8e0;
+    --crit:#e2707d; --crit-soft:#3a181c; --crit-line:#6e2a33;
+    --high:#dba646; --high-soft:#33270e; --high-line:#6b4f18;
+    --med:#ac9be3; --med-soft:#241c3d; --med-line:#4a3b7e;
+    --low:#a9b7c0; --low-soft:#1c262d; --low-line:#2c3941;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.6);
+  }
+}
+
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans', system-ui, sans-serif; font-size:15px; line-height:1.6; }
+h1,h2,h3,h4{ font-family:'Source Serif 4', Georgia, serif; text-wrap:balance; color:var(--ink); font-weight:600; margin:0; }
+code, .mono{ font-family:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace; }
+a{ color:var(--accent); }
+
+.wrap{ max-width:1120px; margin:0 auto; padding:0 28px 100px; }
+
+.topnav{ position:sticky; top:0; z-index:20; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+.topnav-inner{ max-width:1120px; margin:0 auto; padding:0 28px; display:flex; align-items:center; gap:18px; overflow-x:auto; }
+.topnav-brand{ font-family:'Source Serif 4',serif; font-weight:700; font-size:14.5px; padding:12px 0; white-space:nowrap; }
+.topnav a.navlink{ font-size:11.5px; font-weight:500; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); text-decoration:none; padding:14px 0; white-space:nowrap; border-bottom:2px solid transparent; }
+.topnav a.navlink:hover{ color:var(--ink); border-bottom-color:var(--accent-line); }
+
+.hero{ padding:48px 0 32px; border-bottom:1px solid var(--line); }
+.eyebrow{ font-size:12px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); margin-bottom:12px; }
+h1.title{ font-size:38px; line-height:1.1; letter-spacing:-.01em; margin-bottom:12px; }
+.dek{ font-size:17px; color:var(--ink-soft); max-width:680px; margin-bottom:22px; }
+.meta-row{ display:flex; flex-wrap:wrap; gap:10px 26px; padding-top:18px; border-top:1px solid var(--line-soft); }
+.meta-item{ font-size:12px; color:var(--ink-faint); }
+.meta-item b{ color:var(--ink-soft); font-weight:600; display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px; }
+
+section{ padding:44px 0; border-bottom:1px solid var(--line); }
+section:last-of-type{ border-bottom:none; }
+.section-head{ margin-bottom:22px; max-width:720px; }
+.section-num{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--accent); font-weight:500; margin-bottom:6px; display:block; }
+h2.section-title{ font-size:25px; margin-bottom:8px; }
+.section-dek{ color:var(--ink-soft); font-size:14px; }
+
+.callout{ border:1px solid var(--crit-line); background:var(--crit-soft); border-radius:10px; padding:18px 22px; }
+.callout .tag{ display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:#fff; background:var(--crit); padding:3px 9px; border-radius:20px; margin-bottom:10px; }
+.callout ul{ margin:8px 0 0; padding-left:20px; font-size:13.5px; }
+.callout li{ margin-bottom:6px; }
+
+.diagram-wrap{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:20px; box-shadow:var(--shadow); overflow-x:auto; }
+.diagram-wrap svg{ display:block; min-width:900px; width:100%; height:auto; margin:0 auto; }
+.diagram-wrap svg text{ font-family:'IBM Plex Sans', sans-serif; fill:var(--ink); }
+.diagram-wrap svg .phase-box rect{ fill:var(--surface-2); stroke:var(--line); stroke-width:1.25; }
+.diagram-wrap svg .phase-box.manual rect{ stroke:var(--high); stroke-dasharray:4 3; fill:var(--high-soft); }
+.diagram-wrap svg .arrow{ stroke:var(--ink-faint); stroke-width:1.4; fill:none; }
+.diagram-wrap svg marker path{ fill:var(--ink-faint); }
+.diagram-wrap svg .eyebrow{ font-size:8px; letter-spacing:.07em; fill:var(--ink-faint); }
+figcaption{ font-size:12px; color:var(--ink-faint); margin-top:12px; }
+
+.phase-block{ margin-bottom:40px; }
+.phase-block:last-child{ margin-bottom:0; }
+.phase-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+.phase-head h3{ font-size:19px; }
+.phase-num{ font-family:'IBM Plex Mono',monospace; color:var(--accent); font-size:12px; font-weight:600; }
+.phase-dek{ font-size:13.5px; color:var(--ink-soft); margin:6px 0 14px; max-width:680px; }
+
+.reality{ background:var(--high-soft); border:1px solid var(--high-line); border-radius:8px; padding:12px 16px; font-size:13px; margin-top:10px; }
+.reality b{ color:var(--high); font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; display:block; margin-bottom:4px; }
+
+.table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
+table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:760px; }
+th{ text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); background:var(--surface-2); padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td{ padding:9px 12px; border-bottom:1px solid var(--line-soft); vertical-align:top; color:var(--ink-soft); }
+tr:last-child td{ border-bottom:none; }
+td.path{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink); white-space:nowrap; }
+td.method{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; white-space:nowrap; }
+.m-get{ color:var(--accent); } .m-post{ color:var(--high); } .m-delete{ color:var(--crit); } .m-patch{ color:var(--med); }
+tr.hide{ display:none; }
+
+.legend{ display:flex; gap:16px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-faint); margin-bottom:18px; }
+.legend span{ display:inline-flex; align-items:center; gap:5px; }
+.legend i{ width:8px; height:8px; border-radius:2px; display:inline-block; }
+
+.issue{ background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--line); border-radius:9px; padding:14px 18px; margin-bottom:10px; box-shadow:var(--shadow); }
+.issue.crit{ border-left-color:var(--crit); }
+.issue.high{ border-left-color:var(--high); }
+.issue.med{ border-left-color:var(--med); }
+.issue.low{ border-left-color:var(--low); }
+.issue-head{ display:flex; align-items:center; gap:9px; margin-bottom:5px; }
+.sev{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:20px; }
+.sev.crit{ color:var(--crit); background:var(--crit-soft); } .sev.high{ color:var(--high); background:var(--high-soft); }
+.sev.med{ color:var(--med); background:var(--med-soft); } .sev.low{ color:var(--low); background:var(--low-soft); }
+.issue h4{ font-size:14px; font-weight:600; font-family:'IBM Plex Sans',sans-serif; display:inline; }
+.issue p{ font-size:13px; margin:0; color:var(--ink-soft); }
+.vbadge{ font-size:9.5px; font-weight:700; letter-spacing:.03em; color:var(--accent); background:var(--accent-soft); border:1px solid var(--accent-line); padding:1px 7px 2px; border-radius:20px; margin-left:7px; white-space:nowrap; }
+
+.search-row{ display:flex; gap:10px; margin-bottom:16px; }
+.search-row input{ flex:1; padding:9px 13px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:13px; }
+.search-count{ font-size:12px; color:var(--ink-faint); align-self:center; white-space:nowrap; }
+
+footer{ padding:32px 0 10px; color:var(--ink-faint); font-size:12px; }
+</style>
+
+<div class="topnav">
+  <div class="topnav-inner">
+    <span class="topnav-brand">Mentor Dashboard Workflow</span>
+    <a class="navlink" href="#overview">Overview</a>
+    <a class="navlink" href="#flow">Flow</a>
+    <a class="navlink" href="#phases">Phases &amp; APIs</a>
+    <a class="navlink" href="#licenses">Zoom licenses</a>
+    <a class="navlink" href="#notifications">Notifications</a>
+    <a class="navlink" href="#jobs">Background jobs</a>
+    <a class="navlink" href="#issues">Known issues</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero" id="overview">
+    <div class="eyebrow">Current-state reference · zuvy-server</div>
+    <h1 class="title">Mentor Dashboard Workflow</h1>
+    <p class="dek">What actually happens end to end, from a mentor completing their profile to a student watching the recording — every API endpoint involved, grouped by phase, plus every bug this audit turned up along the way.</p>
+
+    <div class="search-row">
+      <input type="search" id="globalSearch" placeholder="Search any endpoint, path, or purpose across this whole doc…" />
+      <span class="search-count" id="searchCount"></span>
+    </div>
+
+    <div class="meta-row">
+      <div class="meta-item"><b>Scope</b>Backend (zuvy-server) only — no frontend repo access</div>
+      <div class="meta-item"><b>Audited</b>Fresh reads, Oct 26 2026, branch feat/zoom-recordings-s3 @ 95bdb1a5</div>
+      <div class="meta-item"><b>Re-verified</b>6 of the highest-severity findings independently re-confirmed by a second, direct source read — see the ✓ tags in Known issues</div>
+      <div class="meta-item"><b>Routes covered</b>~45, across instructor/student/public/legacy controllers</div>
+      <div class="meta-item"><b>Status</b>Reflects the code as it runs today, not any PRD's intent</div>
+    </div>
+  </header>
+
+  <section>
+    <div class="callout">
+      <span class="tag">Read this first</span>
+      <p style="margin:0 0 8px;font-size:13.5px;">Four things shape almost everything downstream, so they're worth knowing before the phase-by-phase detail:</p>
+      <ul>
+        <li><b>A mentor's attendance is never captured automatically.</b> There's a real, working webhook-driven attendance pipeline in this codebase — it just only covers regular classes, not mentor sessions. For mentor bookings, <code class="mono">joinedAt</code>/<code class="mono">leftAt</code> are written by exactly one thing: a manual <code class="mono">POST …/attendance</code> call. Nothing else writes them.</li>
+        <li><b>A session almost never ends up MISSED.</b> Two separate scheduled jobs mark a booking COMPLETED purely by clock time, with no attendance check at all, and one of them runs on every single session-list page load. The MISSED path exists in code but is effectively unreachable.</li>
+        <li><b>Accepting a reschedule does not move the Zoom meeting.</b> The booking row points at the new slot time; the actual Zoom meeting keeps its original start time. Both participants would show up at the time they were told, and the meeting wouldn't be live.</li>
+        <li><b>The meeting is created at booking time, not slot-creation time.</b> A mentor opening a slot only reserves a database seat in the Zoom license pool — the real Zoom meeting, with its join link and waiting-room settings, is created inside the student's booking transaction.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="section-head">
+      <span class="section-num">01 · The shape of it</span>
+      <h2 class="section-title">End-to-end flow</h2>
+      <p class="section-dek">Dashed, amber boxes are phases with no automatic system signal today — a human has to do something for the system to know what happened.</p>
+    </div>
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 1000 380" role="img" aria-label="Mentor dashboard end to end flow: onboarding, availability setup, discovery, booking which creates the Zoom meeting, pre-session reschedule or cancel, live session with manual attendance only, post-session feedback and completion, and recording processing">
+        <defs><marker id="af" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+        <g class="arrow-group">
+          <line class="arrow" x1="150" y1="60" x2="250" y2="60" marker-end="url(#af)"/>
+          <line class="arrow" x1="350" y1="60" x2="450" y2="60" marker-end="url(#af)"/>
+          <line class="arrow" x1="550" y1="60" x2="650" y2="60" marker-end="url(#af)"/>
+          <line class="arrow" x1="850" y1="60" x2="850" y2="130" marker-end="url(#af)"/>
+          <line class="arrow" x1="750" y1="170" x2="650" y2="170" marker-end="url(#af)"/>
+          <line class="arrow" x1="450" y1="170" x2="350" y2="170" marker-end="url(#af)"/>
+          <line class="arrow" x1="150" y1="170" x2="150" y2="240" marker-end="url(#af)"/>
+          <line class="arrow" x1="250" y1="280" x2="350" y2="280" marker-end="url(#af)"/>
+          <line class="arrow" x1="450" y1="280" x2="550" y2="280" marker-end="url(#af)"/>
+          <line class="arrow" x1="650" y1="280" x2="750" y2="280" marker-end="url(#af)"/>
+        </g>
+        <g class="phase-box"><rect x="20" y="40" width="130" height="40" rx="8"/><text x="85" y="56" text-anchor="middle" class="eyebrow">1 · MENTOR</text><text x="85" y="70" text-anchor="middle" font-size="10.5">Profile &amp; availability</text></g>
+        <g class="phase-box"><rect x="250" y="40" width="100" height="40" rx="8"/><text x="300" y="56" text-anchor="middle" class="eyebrow">2 · STUDENT</text><text x="300" y="70" text-anchor="middle" font-size="10.5">Discovery</text></g>
+        <g class="phase-box"><rect x="450" y="40" width="100" height="40" rx="8"/><text x="500" y="56" text-anchor="middle" class="eyebrow">3</text><text x="500" y="70" text-anchor="middle" font-size="10.5">Booking</text></g>
+        <g class="phase-box"><rect x="650" y="40" width="100" height="40" rx="8"/><text x="700" y="56" text-anchor="middle" class="eyebrow">Zoom</text><text x="700" y="70" text-anchor="middle" font-size="10.5">Meeting created</text></g>
+        <g class="phase-box"><rect x="800" y="130" width="100" height="40" rx="8"/><text x="850" y="146" text-anchor="middle" class="eyebrow">4</text><text x="850" y="160" text-anchor="middle" font-size="10.5">Reminders sent</text></g>
+        <g class="phase-box"><rect x="650" y="150" width="100" height="40" rx="8"/><text x="700" y="166" text-anchor="middle" class="eyebrow">4b</text><text x="700" y="180" text-anchor="middle" font-size="10.5">Reschedule / cancel</text></g>
+        <g class="phase-box manual"><rect x="450" y="150" width="100" height="40" rx="8"/><text x="500" y="166" text-anchor="middle" class="eyebrow">5 · MANUAL</text><text x="500" y="180" text-anchor="middle" font-size="10.5">Live session</text></g>
+        <g class="phase-box manual"><rect x="250" y="150" width="100" height="40" rx="8"/><text x="300" y="166" text-anchor="middle" class="eyebrow">6 · MANUAL</text><text x="300" y="180" text-anchor="middle" font-size="10.5">Attendance + complete</text></g>
+        <g class="phase-box"><rect x="100" y="240" width="100" height="40" rx="8"/><text x="150" y="256" text-anchor="middle" class="eyebrow">6b</text><text x="150" y="270" text-anchor="middle" font-size="10.5">Feedback both sides</text></g>
+        <g class="phase-box"><rect x="200" y="260" width="100" height="40" rx="8"/><text x="250" y="276" text-anchor="middle" class="eyebrow">7</text><text x="250" y="290" text-anchor="middle" font-size="10.5">Recording ingest</text></g>
+        <g class="phase-box"><rect x="400" y="260" width="100" height="40" rx="8"/><text x="450" y="276" text-anchor="middle" class="eyebrow">7</text><text x="450" y="290" text-anchor="middle" font-size="10.5">Download + merge</text></g>
+        <g class="phase-box"><rect x="600" y="260" width="100" height="40" rx="8"/><text x="650" y="276" text-anchor="middle" class="eyebrow">7</text><text x="650" y="290" text-anchor="middle" font-size="10.5">S3 + YouTube upload</text></g>
+        <g class="phase-box"><rect x="800" y="260" width="140" height="40" rx="8"/><text x="870" y="276" text-anchor="middle" class="eyebrow">8</text><text x="870" y="290" text-anchor="middle" font-size="10.5">Playback in dashboard</text></g>
+      </svg>
+      <figcaption>Dashed amber = no automatic signal (someone has to click something). Diagram reads left-to-right, then wraps down and left-to-right again.</figcaption>
+    </div>
+  </section>
+
+  <section id="phases">
+    <div class="section-head">
+      <span class="section-num">02 · Phase by phase</span>
+      <h2 class="section-title">Every endpoint, where it's used</h2>
+      <p class="section-dek">Canonical routes only (<code class="inline">/instructor/*</code>, <code class="inline">/student/*</code>, <code class="inline">/mentors/*</code>, <code class="inline">/mentor-sessions/*</code>). The legacy, unprefixed <code class="inline">/mentor-slots/*</code> controller exposes the same operations under older paths for backward compatibility — see the note at the end of this section.</p>
+    </div>
+
+    <div class="phase-block" id="p1">
+      <div class="phase-head"><span class="phase-num">PHASE 1</span><h3>Mentor onboarding &amp; profile</h3></div>
+      <p class="phase-dek">A mentor's first-ever interaction. <code class="inline">bio</code>, a non-empty <code class="inline">expertise</code> array, and <code class="inline">pastExperiences</code> are required — but only checked later, at slot creation, not when the profile itself is saved.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-slots/profile</td><td>Read the mentor's own profile for the current org</td><td>instructor-mentor-slot.controller.ts:239</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/profile</td><td>Create the per-org mentor-management row if missing, upsert profile fields</td><td>:248</td></tr>
+          <tr><td class="method m-patch">PATCH</td><td class="path">/instructor/mentor-slots/profile</td><td>Update bio / expertise / past experience / title</td><td>:229</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="phase-block" id="p2">
+      <div class="phase-head"><span class="phase-num">PHASE 2</span><h3>Availability setup</h3></div>
+      <p class="phase-dek">Creating a slot reserves a Zoom license seat in the database — it does <b>not</b> create the actual Zoom meeting yet. Single slots run the full gate (profile complete → assigned to a mentorship-enabled bootcamp batch → Zoom account active); RRULE-based recurrence skips all three.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/create</td><td>Create one availability slot; reserves a Zoom license seat</td><td>instructor-mentor-slot.controller.ts:45</td></tr>
+          <tr><td class="method m-delete">DELETE</td><td class="path">/instructor/mentor-slots/:slotId</td><td>Delete an upcoming, unbooked slot; releases its license</td><td>:55</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-slots/my?weekOffset&amp;sort</td><td>One Mon–Sun week of slots, with a computed status (available/full/completed/closed) and weekly totals</td><td>:65</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-slots/:slotId/details</td><td>One owned slot plus its bookings</td><td>:85</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/recurrence</td><td>Generate up to 200 slots from an RRULE (skips the profile/bootcamp/Zoom-active gate)</td><td>:275</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Gap</b>No "fixed window" mode (e.g. mentor sets 12pm–6pm, system auto-splits into 4–5 slots) exists at all today — only a single explicit start/end slot, or an RRULE that repeats that same slot across days.</div>
+    </div>
+
+    <div class="phase-block" id="p3">
+      <div class="phase-head"><span class="phase-num">PHASE 3</span><h3>Discovery (student-facing)</h3></div>
+      <p class="phase-dek">Despite the <code class="inline">/mentors</code> prefix reading as public, the app's global JWT guard still applies — a student must be logged in to browse mentors.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-get">GET</td><td class="path">/mentors</td><td>Search mentors — returns each mentor's available/full/completed slot counts</td><td>mentor-public.controller.ts:18</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/mentors/:mentorUserId</td><td>One mentor's public profile</td><td>:31</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/mentors/:mentorId/availability</td><td>That mentor's bookable (available, public, future, not-full) slots</td><td>:42</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="phase-block" id="p4">
+      <div class="phase-head"><span class="phase-num">PHASE 4</span><h3>Booking — where the Zoom meeting is actually created</h3></div>
+      <p class="phase-dek">One transaction does a lot: enrollment + mentorship-enabled check, a 3-per-year quota with a 21-day cooldown, a row lock on the slot, a buffer-conflict check, the booking insert, two in-app notifications — <i>then</i> it creates the real Zoom meeting and only commits once that succeeds.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-post">POST</td><td class="path">/student/mentor-slots/book</td><td>Book a slot — eligibility → quota → lock slot → insert booking → notify → create Zoom meeting → save meeting fields → enqueue recording row → fire-and-forget email</td><td>mentor-slot.service.ts bookSlot(), :753-1209</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/student/mentor-slots/my</td><td>The student's own bookings</td><td>student-mentor-slot.controller.ts:95</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Zoom payload at booking time</b><code class="mono">join_before_host:false</code>, <code class="mono">waiting_room:true</code> (custom, non-invitees held), <code class="mono">meeting_invitees:[studentEmail]</code>, <code class="mono">alternative_hosts:mentorEmail</code>, <code class="mono">auto_recording:'cloud'</code>. Any Zoom failure throws and rolls back the whole booking.</div>
+    </div>
+
+    <div class="phase-block" id="p5">
+      <div class="phase-head"><span class="phase-num">PHASE 5</span><h3>Pre-session — reschedule &amp; cancel</h3></div>
+      <p class="phase-dek">A pending reschedule auto-expires after 24 hours via a cron. Neither accepting a reschedule nor cancelling touches the underlying Zoom meeting.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-post">POST</td><td class="path">/student/mentor-slots/bookings/:id/reschedule?slotId</td><td>Student requests a move to another of the same mentor's slots</td><td>student-mentor-slot.controller.ts:117</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/student/mentor-slots/bookings/:id/reschedule/slots</td><td>Valid replacement slots (same mentor, same org)</td><td>:133</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/bookings/:id/reschedule/accept</td><td>Mentor accepts — moves the booking to the new slot (Zoom meeting NOT updated)</td><td>instructor-mentor-slot.controller.ts:98</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/bookings/:id/reschedule/decline</td><td>Mentor declines</td><td>:113</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/student|instructor/mentor-slots/bookings/:id/cancel</td><td>Either side cancels, with a reason (≥10 chars); Zoom meeting not deleted</td><td>student :148 / instructor :202</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Confirmed bug</b>Accepting a reschedule updates the booking's <code class="mono">slotAvailabilityId</code> and the Google Calendar event — the Zoom meeting itself keeps its original start time. Both sides would be told the new time, but the meeting goes live at the old one.</div>
+    </div>
+
+    <div class="phase-block" id="p6">
+      <div class="phase-head"><span class="phase-num">PHASE 6</span><h3>Live session</h3></div>
+      <p class="phase-dek">Listing endpoints, not action endpoints — the system has no idea whether the session is actually happening beyond the clock.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-sessions/my</td><td>Mentor's bookings, paginated, with status counts</td><td>instructor-mentor-slot.controller.ts:291</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/student/mentor-sessions/my</td><td>Student's sessions, paginated, with status counts</td><td>student-mentor-slot.controller.ts:221</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/mentor-sessions/:sessionId</td><td>One session's detail, for either the mentor or the student on it</td><td>session.controller.ts:130</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>No real-time signal</b>There's a working webhook-driven attendance pipeline in this codebase (job queue + worker, retry logic, the lot) — it only ever gets fed from regular classes. Mentor bookings never reach it. During the live window, the system is purely trusting the clock.</div>
+    </div>
+
+    <div class="phase-block" id="p7">
+      <div class="phase-head"><span class="phase-num">PHASE 7</span><h3>Post-session — attendance, completion, feedback</h3></div>
+      <p class="phase-dek">The only place attendance data for a mentor session is ever written.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/bookings/:id/attendance</td><td>Manually set joinedAt/leftAt — the only writer of attendance data for a mentor session</td><td>instructor-mentor-slot.controller.ts:175</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/bookings/:id/complete</td><td>Manually mark COMPLETED</td><td>:190</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/instructor/mentor-slots/bookings/:id/feedback</td><td>Mentor's feedback on the student</td><td>:128</td></tr>
+          <tr><td class="method m-post">POST</td><td class="path">/student/mentor-slots/bookings/:id/feedback</td><td>Student's feedback on the mentor — one-shot, locks on first submit</td><td>student-mentor-slot.controller.ts:175</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-slots/bookings/:id/student-feedback</td><td>Read the student's feedback for this session</td><td>instructor-mentor-slot.controller.ts:143</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/student/mentor-slots/bookings/:id/mentor-feedback</td><td>Read the mentor's feedback for this session</td><td>student-mentor-slot.controller.ts:190</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/instructor|student/mentor-slots/feedbacks?filter</td><td>All feedback received, with an average rating (30days/3months/all)</td><td>instructor :155 / student :202</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Confirmed bug</b>Student feedback is rejected the moment any feedback already exists for that booking — but the error message says "locked after 24 hours," which is the mentor-side rule, not this one. Mentor feedback is freely editable for 24 hours after the first submission, then a cron locks it. Neither side checks that the session has actually happened — feedback can be submitted before it starts, or on a cancelled booking.</div>
+    </div>
+
+    <div class="phase-block" id="p8">
+      <div class="phase-head"><span class="phase-num">PHASE 8</span><h3>Recordings</h3></div>
+      <p class="phase-dek">Starts from a Zoom webhook, not an API call a user makes. See the <a href="#issues">Known issues</a> section for two separate ways this can silently stall.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-post">POST</td><td class="path">/webhooks/zoom</td><td>Zoom's recording.completed and meeting.ended events feed the recording worker for this booking</td><td>zoom.webhook.controller.ts:168, :256</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/instructor|student/mentor-slots/bookings/:id/recordings</td><td>Every recording row for this booking, regardless of processing status</td><td>instructor :217 / student :163</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Pipeline stages</b><code class="mono">DISCOVERED → PROCESSING_METADATA → METADATA_READY → PROCESSING_DOWNLOAD → DOWNLOADING → DOWNLOADED → MERGING → MERGED → PROCESSING_S3_UPLOAD → S3_UPLOADED → PROCESSING_YOUTUBE_UPLOAD → YOUTUBE_PROCESSING → COMPLETED</code> (or FAILED → PERMANENT_FAILED after 5 retries). Every stage is gated by an env flag that defaults OFF — if <code class="mono">RECORDING_WORKER_ENABLED</code> is off nothing runs at all; if <code class="mono">YOUTUBE_UPLOAD_ENABLED</code> is off, rows get stuck in <code class="mono">PROCESSING_YOUTUBE_UPLOAD</code> forever.</div>
+    </div>
+
+    <div class="phase-block" id="p9">
+      <div class="phase-head"><span class="phase-num">PHASE 9</span><h3>Metrics &amp; performance</h3></div>
+      <p class="phase-dek">There is no single "dashboard summary" call — the mentor UI has to assemble its at-a-glance view from several of these.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Source</th></tr></thead>
+        <tbody class="ep">
+          <tr><td class="method m-get">GET</td><td class="path">/instructor/mentor-slots/metrics?filter</td><td>Session totals, completion/cancellation rate, ratings, slot utilization</td><td>instructor-mentor-slot.controller.ts:258</td></tr>
+          <tr><td class="method m-get">GET</td><td class="path">/student/mentor-slots/metrics?filter</td><td>Quota/credits remaining, next-eligible date, session counts</td><td>student-mentor-slot.controller.ts:101</td></tr>
+        </tbody>
+      </table></div>
+      <div class="reality"><b>Composed from 5–6 calls</b>Metrics + <code class="inline">mentor-sessions/my?filter=upcoming</code> + <code class="inline">mentor-slots/my</code> (week view) + <code class="inline">mentor-slots/feedbacks</code> + <code class="inline">mentor-slots/profile</code> + <code class="inline">/notifications</code> — that's what a "Dashboard" page actually has to stitch together today.</div>
+    </div>
+
+    <div class="reality" style="margin-top:8px;"><b>Legacy routes still live</b>An unprefixed <code class="mono">/mentor-slots/*</code> controller (<code class="mono">mentor-slot.controller.ts</code>) duplicates nearly every operation above under older paths (e.g. <code class="mono">POST /mentor-slots/book</code>, <code class="mono">GET /mentor-slots/mentor/profile</code>) — kept for backward compatibility per <code class="mono">MENTOR_SLOT_ROUTE_MIGRATION.md</code>, calling the exact same service methods. New integrations should use the <code class="inline">/instructor</code>, <code class="inline">/student</code>, and <code class="inline">/mentors</code> routes documented above.</div>
+  </section>
+
+  <section id="licenses">
+    <div class="section-head">
+      <span class="section-num">03 · Cross-cutting</span>
+      <h2 class="section-title">Zoom license allocation</h2>
+      <p class="section-dek">Runs invisibly inside slot-creation and booking — two layers, both in <code class="inline">zoom-license.service.ts</code>.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>When</th><th>What happens</th><th>If it fails</th></tr></thead>
+      <tbody>
+        <tr><td>Slot creation</td><td>A database seat is reserved in <code class="mono">license_assignments</code> (sourceType <code class="mono">mentor_slot</code>), with a 2-minute cooldown around the slot window</td><td>Slot creation fails outright (<code class="mono">BadRequestException</code>) if the pool has no free, non-protected seat</td></tr>
+        <tr><td>Booking (Zoom-side)</td><td><code class="mono">ensureHostLicensedForWindow</code> makes sure the mentor's actual Zoom account is licensed right now — if not, it finds a "donor" (another licensed, non-protected user with no overlap) and downgrades them to free up a seat</td><td>No donor available → booking fails</td></tr>
+        <tr><td>Slot deletion</td><td><code class="mono">releaseMentorSlotAssignment</code> frees the DB seat — <b>the only place this happens</b></td><td>—</td></tr>
+      </tbody>
+    </table></div>
+    <div class="reality"><b>Gap</b>Nothing releases a license on cancel, on completion, or for the old slot after a reschedule. Seats only free up once the time window plus cooldown naturally passes, or get reassigned by the donor-downgrade logic for someone else's booking.</div>
+  </section>
+
+  <section id="notifications">
+    <div class="section-head">
+      <span class="section-num">04 · Cross-cutting</span>
+      <h2 class="section-title">Notifications</h2>
+      <p class="section-dek">All in-app, via one shared <code class="inline">NotificationService</code>. No push, and exactly one email in this entire module.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Type</th><th>Recipient</th><th>Fires at</th></tr></thead>
+      <tbody>
+        <tr><td>BOOKING_CREATED</td><td>Mentor</td><td>Booking insert, before the Zoom meeting is created</td></tr>
+        <tr><td>BOOKING_CONFIRMED</td><td>Student</td><td>Same moment</td></tr>
+        <tr><td>BOOKING_CANCELLED</td><td>Both</td><td>Cancel</td></tr>
+        <tr><td>RESCHEDULE_REQUEST</td><td>Mentor</td><td>Student requests a reschedule</td></tr>
+        <tr><td>RESCHEDULE_ACCEPTED</td><td>Student</td><td>Mentor accepts</td></tr>
+        <tr><td>RESCHEDULE_DECLINED</td><td>Student</td><td>Mentor declines</td></tr>
+        <tr><td>FEEDBACK_SUBMITTED</td><td>Mentor only</td><td>After <i>student</i> feedback — there's no equivalent nudge to the student when the mentor leaves feedback</td></tr>
+        <tr><td>SESSION_REMINDER_24H</td><td>Student only</td><td>Cron, 10-min cadence, 24h±10min before start</td></tr>
+        <tr><td>SESSION_REMINDER_1H</td><td>Student only</td><td>Cron, every minute, 1h±1min before start</td></tr>
+      </tbody>
+    </table></div>
+    <div class="reality"><b>Also found</b>One fire-and-forget email per booking goes to a hard-coded <code class="mono">team@zuvy.org</code> — not to the mentor or the student. No notification exists anywhere for: mentor feedback received, attendance recorded, completion, MISSED, or a reschedule request silently expiring after 24 hours.</div>
+  </section>
+
+  <section id="jobs">
+    <div class="section-head">
+      <span class="section-num">05 · Cross-cutting</span>
+      <h2 class="section-title">Background jobs</h2>
+      <p class="section-dek">No HTTP route — these run on a schedule and quietly decide a lot of the state the UI reads.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Job</th><th>Schedule</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>handleSessionTransitions</td><td>Every minute</td><td>SCHEDULED→IN_PROGRESS→COMPLETED purely by clock time, no attendance check; loads every booking with no WHERE clause</td></tr>
+        <tr><td>lockExpiredFeedback</td><td>Every 10 min</td><td>Locks mentor feedback 24h after it was first submitted</td></tr>
+        <tr><td>expireRescheduleRequests</td><td>Every 5 min</td><td>A pending reschedule older than 24h becomes "declined"</td></tr>
+        <tr><td>resetStudentQuotas</td><td>Daily, midnight</td><td>Only actually does anything on April 15 each year (the annual quota reset date)</td></tr>
+        <tr><td>send24HourReminders / send1HourReminders</td><td>10 min / every min</td><td>Student-only session reminders — the job class appears registered in two different modules, so reminders may fire twice</td></tr>
+        <tr><td>Zoom waiting-room reaffirm</td><td>Every minute</td><td>Re-applies waiting-room settings for meetings that started in the last 2 minutes, correcting Zoom-side drift</td></tr>
+        <tr><td>Recording worker loop</td><td>5s interval (if enabled) + hourly S3 audit + nightly 2am IST health check</td><td>Advances the recording pipeline; restores a YouTube video from the Glacier copy if it's taken down</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="issues">
+    <div class="section-head">
+      <span class="section-num">06 · Catalogue</span>
+      <h2 class="section-title">Known issues found in this audit</h2>
+      <p class="section-dek">Everything below is a live behavior in the code today, confirmed with file:line evidence — not a hypothetical. Ordered most to least urgent.</p>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--crit)"></i> Critical</span>
+      <span><i style="background:var(--high)"></i> High</span>
+      <span><i style="background:var(--med)"></i> Medium</span>
+      <span><i style="background:var(--low)"></i> Low / cleanup</span>
+      <span><span class="vbadge">✓ RE-VERIFIED</span> independently re-confirmed by a second, direct read of the source — the rest reflect one systematic audit pass that wasn't separately cross-checked line by line</span>
+    </div>
+
+    <div class="issue crit"><div class="issue-head"><span class="sev crit">Critical</span><h4>Mentor attendance has no automatic signal, and MISSED is effectively unreachable</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p>Attendance is written only by a manual API call. Two separate code paths (the lifecycle cron and a check that runs on every session-list page load) mark a booking COMPLETED by clock time alone, with no attendance check — and the clock-based COMPLETED transition always wins before the no-show check gets a chance to run. Re-read the full cron method directly: the three transitions use the lifecycle value from the original query, not re-fetched between awaits, so MISSED only fires if the job missed the entire slot window.</p></div>
+
+    <div class="issue crit"><div class="issue-head"><span class="sev crit">Critical</span><h4>Accepting a reschedule doesn't move the Zoom meeting</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p>The booking points at a new slot time; the Zoom meeting itself still starts at the original time. Both participants are told the new time but the meeting isn't live then. Re-read <code class="mono">acceptReschedule</code> end to end (lines 1934–2093): it updates the booking's slot pointer and, if a Google refresh token exists, the Calendar event — there is no <code class="mono">zoomService</code> call anywhere in the function.</p></div>
+
+    <div class="issue high"><div class="issue-head"><span class="sev high">High</span><h4>Recordings can stall forever if YOUTUBE_UPLOAD_ENABLED is off</h4></div><p>Rows get stuck in <code class="mono">PROCESSING_YOUTUBE_UPLOAD</code> indefinitely — the job picker explicitly skips any row in a <code class="mono">PROCESSING_*</code> state, and nothing resets one.</p></div>
+
+    <div class="issue high"><div class="issue-head"><span class="sev high">High</span><h4>The recording row enqueued at booking time likely never saves</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p><code class="mono">enqueueMentorRecordingJob</code> inserts against the global DB connection while the booking row still only exists inside an uncommitted transaction — the foreign key should fail. The error is caught and only logged, so bookings silently fall back to the <code class="mono">meeting.ended</code> webhook to create the recording row instead. Re-traced the call site directly: it's invoked via <code class="mono">this.</code> (not <code class="mono">trx.</code>) at line 1111, inside the still-open transaction that started at line 758 and doesn't close until 1208 — the mechanism is confirmed from the code; it hasn't been watched throwing against a live database.</p></div>
+
+    <div class="issue high"><div class="issue-head"><span class="sev high">High</span><h4>DTO validation is not enforced anywhere in this module</h4></div><p>There's no global <code class="mono">ValidationPipe</code> and none added locally, so every <code class="mono">class-validator</code> decorator on these DTOs (<code class="mono">@IsDateString</code>, <code class="mono">@MinLength</code>, etc.) is currently decorative. Extra or malformed body fields pass straight through to the service layer.</p></div>
+
+    <div class="issue med"><div class="issue-head"><span class="sev med">Medium</span><h4>No Zoom license is ever released on cancel or completion</h4></div><p>Release only happens when a slot itself is deleted. A cancelled or completed booking's seat sits reserved until its time window plus cooldown naturally passes.</p></div>
+
+    <div class="issue med"><div class="issue-head"><span class="sev med">Medium</span><h4>Student feedback's error message is wrong</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p>It's rejected the instant any feedback already exists (one-shot), but the error text says "locked after 24 hours" — that's actually the separate mentor-side rule. Re-read <code class="mono">submitStudentFeedback</code> directly: <code class="mono">if (booking.studentFeedback) throw new ForbiddenException('Feedback is locked after 24 hours.')</code> — no time check at all.</p></div>
+
+    <div class="issue med"><div class="issue-head"><span class="sev med">Medium</span><h4>Feedback has no gate on the session having happened</h4></div><p>Neither side checks lifecycle state or slot end time — feedback can be submitted before a session starts, or on a cancelled booking.</p></div>
+
+    <div class="issue med"><div class="issue-head"><span class="sev med">Medium</span><h4>Session reminders may double-fire</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p>The job class handling 24h/1h reminders appears registered as a provider in two different modules. Re-checked directly: <code class="mono">app.module.ts</code> imports <code class="mono">NewNotificationModule</code> (which provides <code class="mono">NotificationJob</code>) and separately lists <code class="mono">NotificationJob</code> again in its own top-level providers array — two instances in two injector scopes, each independently scheduling the same crons.</p></div>
+
+    <div class="issue med"><div class="issue-head"><span class="sev med">Medium</span><h4>A pre-upload eligibility check likely silently no-ops for mentor recordings</h4><span class="vbadge">✓ RE-VERIFIED</span></div><p>It queries an <code class="mono">end_time</code> column on the mentor booking table that doesn't exist there — wrapped in a try/catch, so it fails quietly rather than blocking anything. Re-read the raw query directly: <code class="mono">SELECT end_time FROM zuvy_mentor_slot_booking</code> — that table's only time fields live on the related slot table, not here.</p></div>
+
+    <div class="issue low"><div class="issue-head"><span class="sev low">Low</span><h4>Recurrence-created slots skip the normal creation gate</h4></div><p>Profile completeness, mentorship-enabled-bootcamp membership, and active-Zoom-account checks all run for a single slot but not for RRULE-generated ones.</p></div>
+
+    <div class="issue low"><div class="issue-head"><span class="sev low">Low</span><h4>Dead code: an unused webhook event switch</h4></div><p>A second Zoom webhook handler class is registered as a provider but nothing ever calls it — safe to delete, mostly a trap for the next person who greps for "recording.completed" and finds two handlers.</p></div>
+
+    <div class="issue low"><div class="issue-head"><span class="sev low">Low</span><h4>No "fixed window" availability mode</h4></div><p>Only a single explicit slot or an RRULE day-repeat exist — nothing auto-splits a block of hours into several bookable slots. (Also flagged separately in the Mentorship Monitoring scoping work.)</p></div>
+  </section>
+
+  <footer>
+    Compiled from a fresh, line-cited audit of <code class="inline">zuvy-server</code> (branch <code class="inline">feat/zoom-recordings-s3</code> @ <code class="inline">95bdb1a5</code>) on Oct 26, 2026, with a second pass re-confirming the 6 ✓-tagged findings in <a href="#issues">Known issues</a> by direct source read rather than relying on the first pass alone. Endpoint inventory and the recording/license-allocation internals reflect the first pass only. Frontend behavior (zuvy-client) is out of scope — this reflects backend reality only.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var input = document.getElementById('globalSearch');
+  var countEl = document.getElementById('searchCount');
+  var rows = Array.from(document.querySelectorAll('tbody.ep tr'));
+  function apply(){
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    rows.forEach(function(r){
+      var text = r.textContent.toLowerCase();
+      var match = !q || text.indexOf(q) !== -1;
+      r.classList.toggle('hide', !match);
+      if (match) shown++;
+    });
+    countEl.textContent = q ? (shown + ' / ' + rows.length + ' endpoints') : '';
+  }
+  input.addEventListener('input', apply);
+})();
+</script>

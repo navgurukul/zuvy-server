@@ -14,6 +14,7 @@ import {
   Query,
   Put,
   Req,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -40,6 +41,8 @@ import { RbacResourcesService } from './rbac.resources.service';
 import { CreateResourceDto } from './dto/resources.dto';
 import { bigint } from 'drizzle-orm/mysql-core';
 import { RbacService } from './rbac.service';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 // import { PermissionsGuard } from './guards/permissions.guard';
 // import { RequirePermissions } from './decorators/require-permissions.decorator';
 
@@ -86,6 +89,14 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_permission',
+    resourceType: 'permission',
+    displayType: 'a new permission name',
+    permissionName: 'createPermission',
+    getResourceName: (_result, params) => params?.name || '',
+  })
   async createPermission(
     @Body() createPermissionDto: CreatePermissionDto,
   ): Promise<any> {
@@ -205,6 +216,15 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_permission_to_role',
+    resourceType: 'permission',
+    displayType: 'a new permission to role',
+    permissionName: 'assignPermission',
+    getResourceName: (_result, params) =>
+      params?.roleId ? `roleId: ${params.roleId}` : '',
+  })
   async assignPermissionsToRole(
     @Body() assignPermissionsDto: AssignPermissionsToRoleDto,
     @Req() req,
@@ -265,6 +285,15 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_permission_to_user',
+    resourceType: 'permission',
+    displayType: 'Assign permissions to user',
+    permissionName: 'assignPermission',
+    getResourceName: (_result, params) =>
+      params?.userId ? `userId: ${params.userId}` : '',
+  })
   async assignPermissionsToUser(
     @Body() assignPermissionsDto: AssignPermissionsToUserDto,
   ): Promise<any> {
@@ -399,6 +428,15 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_permission',
+    resourceType: 'permission',
+    displayType: 'permission',
+    permissionName: 'deletePermission',
+    getResourceName: (_result, params) =>
+      params?.id ? `permission ${params.id}` : '',
+  })
   async deletePermission(@Param('id', ParseIntPipe) id: number): Promise<any> {
     try {
       const result = await this.rbacPermissionService.deletePermission(id);
@@ -449,6 +487,13 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_resource',
+    resourceType: 'resource',
+    displayType: ' a new resource name',
+    getResourceName: (_result, params) => params?.name || '',
+  })
   async createResource(@Body() createResourceDto: CreateResourceDto) {
     try {
       const result =
@@ -591,6 +636,14 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'update_resource',
+    resourceType: 'resource',
+    displayType: 'resource',
+    getResourceName: (_result, params) =>
+      params?.name || `resource ${params?.id ?? ''}`,
+  })
   async updateResource(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateResourceDto: CreateResourceDto,
@@ -636,6 +689,13 @@ export class RbacController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_resource',
+    resourceType: 'resource',
+    displayType: 'resource',
+    getResourceName: (_result, params) => `resource ${params?.id ?? ''}`,
+  })
   async deleteResource(@Param('id', ParseIntPipe) id: number) {
     try {
       await this.resourcesService.deleteResource(id);

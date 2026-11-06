@@ -20,9 +20,13 @@ import {
   zuvyBatches,
   zuvyBootcamps,
   zuvyStudentCredentials,
+  zuvyStudentIdCounters,
 } from 'drizzle/schema';
-import { AuthService } from 'src/auth/auth.service';
+import { AuthService, LoginClientInfo } from 'src/auth/auth.service';
+import { SchoolsService } from 'src/schools/schools.service';
+import { cleanText, placeKey } from 'src/schools/school-rows';
 import { CaptchaService } from './captcha.service';
+import { transliterateDevanagari } from './devanagari';
 
 const scryptAsync = promisify(scrypt) as (
   password: string,
@@ -34,10 +38,12 @@ const scryptAsync = promisify(scrypt) as (
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 };
 const SCRYPT_KEYLEN = 64;
 
-// No 0/O, 1/I/L: Student IDs are read aloud and copied by children.
-const STUDENT_ID_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const STUDENT_ID_PREFIX = 'ZV';
-const STUDENT_ID_RANDOM_LENGTH = 6;
+// Student IDs are first + last name in lowercase, "ct" and a number:
+// "Arunesh Dhar" → aruneshdharct1, the next Arunesh Dhar → aruneshdharct2.
+// The number is counted per name, so IDs stay short.
+const STUDENT_ID_MAX_BASE_LENGTH = 30;
+const STUDENT_ID_FALLBACK_BASE = 'student';
+const STUDENT_ID_ATTEMPTS = 5;
 const GENERATED_PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const GENERATED_PASSWORD_LENGTH = 8;
 
@@ -58,9 +64,59 @@ export function canEnrollInCourse(
   return orgRoles.some((role) => ENROLL_ROLES.includes(role));
 }
 
+/**
+ * The name part of a Student ID: first name + last name, lowercase, letters
+ * only. Middle names are skipped and accents removed; Hindi (Devanagari) is
+ * spelled in English letters:
+ *   "Arunesh Kumar Dhar" → "aruneshdhar", "Arunesh" → "arunesh",
+ *   "José Ñúñez" → "josenunez", "रवि" → "ravi".
+ * Names with no usable letters (e.g. another script) use "student".
+ */
+export function studentIdBaseFromName(name: string): string {
+  const parts = transliterateDevanagari(name)
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.replace(/[^a-z]/g, ''))
+    .filter(Boolean);
+  const first = parts[0] ?? '';
+  const last = parts.length > 1 ? parts[parts.length - 1] : '';
+  const base = (first + last).slice(0, STUDENT_ID_MAX_BASE_LENGTH);
+  return base || STUDENT_ID_FALLBACK_BASE;
+}
+
+/** aruneshdhar + 1 → aruneshdharct1; aruneshdhar + 900 → aruneshdharct900. */
+export function formatStudentId(base: string, sequence: number): string {
+  return `${base}ct${sequence}`;
+}
+
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 const INVALID_CREDENTIALS = 'Invalid Student ID or password';
+
+export interface StudentSignupInput extends LoginClientInfo {
+  name: string;
+  password: string;
+  state: string;
+  city: string;
+  /** A school picked from the list. */
+  udiseCode?: string | null;
+  /** A school that is not in the list, typed in by the student. */
+  schoolName?: string | null;
+  captchaToken?: string;
+}
+
+/**
+ * The school saved on a Student ID account at sign-up. udiseCode is null
+ * when the student's school was not in the list and they typed its name.
+ */
+export interface StudentSchool {
+  state: string;
+  city: string;
+  schoolName: string;
+  udiseCode: string | null;
+}
 
 @Injectable()
 export class StudentAuthService {
@@ -69,16 +125,18 @@ export class StudentAuthService {
   constructor(
     private readonly authService: AuthService,
     private readonly captchaService: CaptchaService,
+    private readonly schoolsService: SchoolsService,
   ) {}
 
-  async signup(
-    name: string,
-    password: string,
-    captchaToken?: string,
-    clientIp?: string,
-  ) {
-    // Before any database work, so bots never create rows.
-    await this.captchaService.verify(captchaToken, clientIp);
+  async signup(input: StudentSignupInput) {
+    const { name, password, captchaToken, ip, userAgent } = input;
+
+    // Only a read, so it can run first: a wrong pick does not use up the
+    // captcha token, and the student can fix it and resubmit.
+    const school = await this.resolveSchool(input);
+
+    // Before any database write, so bots never create rows.
+    await this.captchaService.verify(captchaToken, ip);
 
     const cleanName = name.replace(/\s+/g, ' ').trim();
     const passwordHash = await this.hashPassword(password);
@@ -102,7 +160,9 @@ export class StudentAuthService {
     try {
       studentId = await this.insertCredentialWithUniqueId(
         user.id,
+        cleanName,
         passwordHash,
+        school,
       );
     } catch (error) {
       // No transaction (the app shares one DB connection), so undo by hand.
@@ -115,8 +175,14 @@ export class StudentAuthService {
     }
 
     try {
-      const session = await this.authService.issueLoginSession(user);
-      return { studentId, ...session };
+      const session = await this.authService.issueLoginSession(user, {
+        method: 'student_id',
+        ip,
+        userAgent,
+        udiseCode: school.udiseCode,
+        unlistedSchool: !school.udiseCode,
+      });
+      return { studentId, school, ...session };
     } catch (error) {
       // The account exists at this point, so never lose the Student ID.
       this.logger.error(`Session after signup failed: ${error?.message}`);
@@ -126,7 +192,11 @@ export class StudentAuthService {
     }
   }
 
-  async login(studentId: string, password: string) {
+  async login(
+    studentId: string,
+    password: string,
+    client: LoginClientInfo = {},
+  ) {
     const [credential] = await db
       .select()
       .from(zuvyStudentCredentials)
@@ -175,8 +245,27 @@ export class StudentAuthService {
       .where(eq(users.id, user.id));
     user.lastLoginAt = now;
 
-    const session = await this.authService.issueLoginSession(user);
-    return { studentId: credential.studentId, ...session };
+    // A school name without a code = a school typed in at sign-up.
+    const unlistedSchool = !credential.udiseCode && !!credential.schoolName;
+    const session = await this.authService.issueLoginSession(user, {
+      method: 'student_id',
+      ...client,
+      udiseCode: credential.udiseCode,
+      unlistedSchool,
+    });
+    return {
+      studentId: credential.studentId,
+      // Null for accounts created before school was asked at sign-up.
+      school: credential.schoolName
+        ? {
+            state: credential.state,
+            city: credential.city,
+            schoolName: credential.schoolName,
+            udiseCode: credential.udiseCode ?? null,
+          }
+        : null,
+      ...session,
+    };
   }
 
   async resetPassword(
@@ -232,6 +321,10 @@ export class StudentAuthService {
         userId: users.id,
         studentId: zuvyStudentCredentials.studentId,
         name: users.name,
+        state: zuvyStudentCredentials.state,
+        city: zuvyStudentCredentials.city,
+        schoolName: zuvyStudentCredentials.schoolName,
+        udiseCode: zuvyStudentCredentials.udiseCode,
         createdAt: zuvyStudentCredentials.createdAt,
         lastLoginAt: users.lastLoginAt,
         lockedUntil: zuvyStudentCredentials.lockedUntil,
@@ -396,26 +489,115 @@ export class StudentAuthService {
     }
   }
 
+  /**
+   * The school given at sign-up. Either picked from our school list
+   * (udiseCode; its state and city must match, so a stale or tampered
+   * dropdown cannot save a mismatched address), or, when the school is not
+   * listed, typed in by the student (schoolName; saved as typed, with no
+   * UDISE code). A picked school wins over a typed name. The state and city
+   * always come from the list.
+   */
+  private async resolveSchool(input: {
+    state: string;
+    city: string;
+    udiseCode?: string | null;
+    schoolName?: string | null;
+  }): Promise<StudentSchool> {
+    const { state, city, udiseCode } = input;
+    if (!udiseCode) {
+      const typedName = cleanText(input.schoolName ?? '');
+      if (!typedName) {
+        throw new BadRequestException(
+          'Please pick your school from the list, or type its name if it is not listed.',
+        );
+      }
+      const place = await this.schoolsService.findPlace(state, city);
+      if (!place) {
+        throw new BadRequestException(
+          'Please choose your state and city from the list.',
+        );
+      }
+      return {
+        state: place.state,
+        city: place.city,
+        schoolName: typedName,
+        udiseCode: null,
+      };
+    }
+
+    const school = await this.schoolsService.findActiveByUdise(udiseCode);
+    if (!school) {
+      throw new BadRequestException(
+        'School not found. Please pick your school from the list.',
+      );
+    }
+    if (
+      placeKey(state) !== placeKey(school.state) ||
+      placeKey(city) !== placeKey(school.district)
+    ) {
+      throw new BadRequestException(
+        'This school is not in the selected state and city. Please pick it again.',
+      );
+    }
+    return {
+      state: school.state,
+      city: school.district,
+      schoolName: school.schoolName,
+      udiseCode: school.udiseCode,
+    };
+  }
+
   private async insertCredentialWithUniqueId(
     userId: bigint,
+    name: string,
     passwordHash: string,
+    school: StudentSchool,
   ): Promise<string> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const studentId = this.generateStudentId();
+    const base = studentIdBaseFromName(name);
+    for (let attempt = 0; attempt < STUDENT_ID_ATTEMPTS; attempt++) {
+      const studentId = formatStudentId(base, await this.nextNumberFor(base));
       try {
         await db.insert(zuvyStudentCredentials).values({
           userId,
           studentId,
           passwordHash,
-        });
+          state: school.state,
+          city: school.city,
+          schoolName: school.schoolName,
+          udiseCode: school.udiseCode,
+        } as any);
         return studentId;
       } catch (error) {
-        // 23505 = unique violation; only the random Student ID can collide.
+        // 23505 = unique violation. The counter makes this practically
+        // impossible; it can only happen if an ID was created outside this
+        // code. Take the next number and try again.
         const code = error?.code ?? error?.cause?.code;
         if (code !== '23505') throw error;
       }
     }
     throw new Error('Could not generate a unique Student ID');
+  }
+
+  /**
+   * Hands out the next number for a name in one atomic statement: the
+   * first call for "aruneshdhar" returns 1, the next 2, and so on. Two
+   * students with the same name signing up at the same moment get
+   * different numbers, because Postgres locks the counter row while it
+   * updates it. Numbers are never reused, even if an account is deleted.
+   */
+  private async nextNumberFor(base: string): Promise<number> {
+    const [row] = await db
+      .insert(zuvyStudentIdCounters)
+      .values({ base, lastNumber: 1 })
+      .onConflictDoUpdate({
+        target: zuvyStudentIdCounters.base,
+        set: {
+          lastNumber: sql`${zuvyStudentIdCounters.lastNumber} + 1`,
+          updatedAt: sql`now()`,
+        } as any,
+      })
+      .returning({ lastNumber: zuvyStudentIdCounters.lastNumber });
+    return Number(row.lastNumber);
   }
 
   private async getStudentOrThrow(studentId: string) {
@@ -502,14 +684,6 @@ export class StudentAuthService {
     return (
       actual.length === expected.length && timingSafeEqual(actual, expected)
     );
-  }
-
-  private generateStudentId(): string {
-    let id = STUDENT_ID_PREFIX;
-    for (let i = 0; i < STUDENT_ID_RANDOM_LENGTH; i++) {
-      id += STUDENT_ID_ALPHABET[randomInt(STUDENT_ID_ALPHABET.length)];
-    }
-    return id;
   }
 
   private generatePassword(): string {

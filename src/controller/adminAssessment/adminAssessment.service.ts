@@ -46,8 +46,10 @@ import {
   zuvyLearnersCompleteProfile,
   zuvyBootcamps,
   zuvyMentorSlotBooking,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { helperVariable } from 'src/constants/helper';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
@@ -1571,6 +1573,8 @@ Team Zuvy`;
           id: true,
           title: true,
           description: true,
+          topicId: true,
+          videoDurationSeconds: true,
         },
         with: {
           courseModulesData: {
@@ -1667,12 +1671,17 @@ Team Zuvy`;
                   db
                     .select({ _: users.id })
                     .from(users)
+                    .leftJoin(
+                      zuvyStudentCredentials,
+                      eq(zuvyStudentCredentials.userId, users.id),
+                    )
                     .where(
                       and(
                         eq(users.id, track.userId),
                         or(
                           ilike(users.name, pattern),
                           ilike(users.email, pattern),
+                          ilike(zuvyStudentCredentials.studentId, pattern),
                         ),
                       ),
                     ),
@@ -1728,6 +1737,14 @@ Team Zuvy`;
 
         enrollmentMap = new Map(enrollments.map((e) => [Number(e.userId), e]));
       }
+      const studentIdMap = await getStudentIdsByUserId(userIds);
+
+      // Per-student watch time uses the same rule as totalwatchedtime: a tracked
+      // video chapter credits the full video duration to that student.
+      const perStudentWatchedTime =
+        chapterDetails.topicId === 1
+          ? (chapterDetails.videoDurationSeconds ?? 0)
+          : 0;
 
       const submittedStudents = chapterTrackingDetails
         .filter((tracking) => tracking['user'] != null)
@@ -1738,8 +1755,10 @@ Team Zuvy`;
             id: uid,
             name: tracking['user'].name,
             email: tracking['user'].email,
+            studentId: studentIdMap.get(String(uid)) ?? null,
             profilePicture: tracking['user'].profilePicture ?? null,
             completedAt: tracking.completedAt,
+            watchedTime: perStudentWatchedTime,
             batchId: enrollment ? Number(enrollment.batchId) : null,
             batchName:
               enrollment && enrollment.batchInfo
@@ -1796,6 +1815,11 @@ Team Zuvy`;
           description: chapterDetails.description,
           totalStudentsCount,
           totalSubmittedStudents,
+          totalwatchedtime:
+            chapterDetails.topicId === 1
+              ? totalSubmittedStudents *
+                (chapterDetails.videoDurationSeconds ?? 0)
+              : 0,
         },
         totalRows,
         totalPages,
@@ -2219,6 +2243,7 @@ Team Zuvy`;
       }
 
       const enrolledUserIds = enrollments.map((e) => Number(e.userId));
+      const studentIdMap = await getStudentIdsByUserId(enrolledUserIds);
 
       // 3. Fetch all assessments for this bootcamp ordered by 'order'
       const assessments = await db
@@ -2355,7 +2380,12 @@ Team Zuvy`;
               )
             : null;
 
+        // userId is exposed at the top level, so drop it from the profile
+        const { userId: _profileUserId, ...profile } = profileMap[userId] || {};
+
         return {
+          studentId: studentIdMap.get(String(userId)) ?? null,
+          userId,
           name: enrollment.name,
           email: enrollment.email,
           overAllAttendance: enrollment.attendance ?? null,
@@ -2363,7 +2393,7 @@ Team Zuvy`;
           averageAssessmentPercentage,
           assessments: assessmentScores,
           oneOnOneSessionsCompleted: sessionCountMap[userId] ?? 0,
-          profile: profileMap[userId] || null,
+          profile: profileMap[userId] ? profile : null,
         };
       });
 

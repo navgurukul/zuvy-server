@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -29,6 +30,8 @@ import { AttendanceDto } from './dto/attendance.dto';
 import { UpdateMentorProfileDto } from './dto/update-mentor-profile.dto';
 import { RecurrenceDto } from './recurrence/dto/recurrence.dto';
 import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @ApiTags('Instructor Mentor APIs')
 @ApiBearerAuth('JWT-auth')
@@ -43,7 +46,18 @@ export class InstructorMentorSlotController {
   ) {}
 
   @Post('mentor-slots/create')
-  @ApiOperation({ summary: 'Create a mentor availability slot as instructor' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_slot',
+    resourceType: 'mentor_dashboard',
+    displayType: 'mentor slot',
+    permissionName: 'createMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Create a mentor availability slot',
+    description:
+      'Creates an availability slot for the authenticated instructor and records the action in the tracking log.',
+  })
   async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
     return this.mentorSlotService.createSlot(
       Number(req.user[0].id),
@@ -53,7 +67,18 @@ export class InstructorMentorSlotController {
   }
 
   @Delete('mentor-slots/:slotId')
-  @ApiOperation({ summary: 'Delete an instructor-owned mentor slot' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_slot',
+    resourceType: 'mentor_dashboard',
+    displayType: 'mentor slot',
+    permissionName: 'deleteMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Delete an instructor-owned mentor slot',
+    description:
+      'Deletes the specified availability slot owned by the authenticated instructor and records the action in the tracking log.',
+  })
   async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
     return this.mentorSlotService.removeSlot(
       Number(req.user[0].id),
@@ -96,8 +121,17 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/reschedule/accept')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'accept_reschedule',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the mentor booking reschedule',
+    permissionName: 'editMentorDashboard',
+  })
   @ApiOperation({
     summary: 'Accept a pending booking reschedule as instructor',
+    description:
+      'Accepts the student’s pending reschedule request for this booking and records the decision in the tracking log.',
   })
   async acceptReschedule(
     @Req() req,
@@ -111,8 +145,17 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/reschedule/decline')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'decline_reschedule',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the mentor booking reschedule',
+    permissionName: 'editMentorDashboard',
+  })
   @ApiOperation({
     summary: 'Decline a pending booking reschedule as instructor',
+    description:
+      'Declines the student’s pending reschedule request for this booking and records the decision in the tracking log.',
   })
   async declineReschedule(
     @Req() req,
@@ -126,7 +169,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/feedback')
-  @ApiOperation({ summary: 'Submit mentor feedback for an instructor session' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'submit_feedback',
+    resourceType: 'mentor_dashboard',
+    displayType: 'mentor session feedback',
+    permissionName: 'createMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Submit mentor feedback for an instructor session',
+    description:
+      'Submits the instructor’s feedback and rating for the specified session and records the action in the tracking log.',
+  })
   async submitMentorFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -173,7 +227,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/attendance')
-  @ApiOperation({ summary: 'Mark attendance for an instructor session' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'mark_attendance',
+    resourceType: 'mentor_dashboard',
+    displayType: 'mentor session attendance',
+    permissionName: 'editMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Mark attendance for an instructor session',
+    description:
+      'Stores the instructor’s join and leave times for the specified session and records the attendance update in the tracking log.',
+  })
   async markAttendance(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -188,7 +253,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/complete')
-  @ApiOperation({ summary: 'Mark an instructor mentor session as completed' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'complete_session',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the mentor session',
+    permissionName: 'editMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Mark an instructor mentor session as completed',
+    description:
+      'Marks the specified instructor session as completed and records the status change in the tracking log.',
+  })
   async completeSession(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -200,7 +276,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/bookings/:bookingId/cancel')
-  @ApiOperation({ summary: 'Cancel an instructor mentor booking' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'cancel_booking',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the mentor booking',
+    permissionName: 'deleteMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Cancel an instructor mentor booking',
+    description:
+      'Cancels the specified booking using the supplied reason and cancellation actor, then records the action in the tracking log.',
+  })
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -227,7 +314,18 @@ export class InstructorMentorSlotController {
   }
 
   @Patch('mentor-slots/profile')
-  @ApiOperation({ summary: 'Update the instructor mentor profile' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'update_profile',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the instructor mentor profile',
+    permissionName: 'editMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Update the instructor mentor profile',
+    description:
+      'Updates the authenticated instructor’s mentor profile with the supplied fields and records the update in the tracking log.',
+  })
   async updateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
     return this.mentorSlotService.updateMentorProfile(
       Number(req.user[0].id),
@@ -246,7 +344,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/profile')
-  @ApiOperation({ summary: 'Create or update the instructor mentor profile' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_or_update_profile',
+    resourceType: 'mentor_dashboard',
+    displayType: 'the instructor mentor profile',
+    permissionName: 'createMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Create or update the instructor mentor profile',
+    description:
+      'Creates the authenticated instructor’s mentor profile when none exists, or updates the existing profile, and records the action in the tracking log.',
+  })
   async createOrUpdateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
     return this.mentorSlotService.createOrUpdateMentorProfile(
       Number(req.user[0].id),
@@ -273,7 +382,18 @@ export class InstructorMentorSlotController {
   }
 
   @Post('mentor-slots/recurrence')
-  @ApiOperation({ summary: 'Generate recurring mentor slots as instructor' })
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_recurrence',
+    resourceType: 'mentor_dashboard',
+    displayType: 'recurring mentor slots',
+    permissionName: 'createMentorDashboard',
+  })
+  @ApiOperation({
+    summary: 'Generate recurring mentor slots',
+    description:
+      'Generates mentor availability slots from the supplied recurrence rule for the authenticated instructor and records the request in the tracking log.',
+  })
   async generateRecurringSlots(@Req() req, @Body() dto: RecurrenceDto) {
     return this.recurrenceService.generateRecurringSlots(
       {

@@ -16,6 +16,7 @@ import {
   boolean,
   bigint,
   index,
+  smallint,
   char,
   json,
   uniqueIndex,
@@ -34,6 +35,15 @@ export const courseEnrolmentsCourseStatus = pgEnum(
 export const coursesType = pgEnum('courses_type', ['html', 'js', 'python']);
 export const difficulty = pgEnum('difficulty', ['Easy', 'Medium', 'Hard']);
 export const currentState = pgEnum('current_state', ['DRAFT', 'PUBLISHED', 'ACTIVE', 'CLOSED']);
+export const assessmentScopeEnum = pgEnum('assessment_scope', [
+  'bootcamp',
+  'domain',
+]);
+export const assessmentStatusEnum = pgEnum('assessment_status', [
+  'draft',
+  'scheduled',
+  'published',
+]);
 export const exercisesReviewType = pgEnum('exercises_review_type', [
   'manual',
   'peer',
@@ -900,7 +910,9 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  version: varchar('version', { length: 10 })
+  version: varchar('version', { length: 10 }),
+  certificateUrl: text("certificate_url"),
+
 }, (table) => ({
   // perf: module progress is read/updated by userId+moduleId; bootcamp-wide
   // progress rollups filter by bootcampId.
@@ -928,6 +940,8 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
     withTimezone: true,
     mode: 'string',
   }),
+  // Video length in seconds; only applicable to video chapters (topicId 1).
+  videoDurationSeconds: integer('video_duration_seconds'),
   order: integer('order'),
   // Admin-set manual lock for this chapter, independent of Module/Chapter Lock.
   isLock: boolean('is_lock').default(false),
@@ -2386,6 +2400,284 @@ export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ on
 }));
 
 //llm related tables
+export const aiAssessment = main.table("ai_assessment", {
+  id: serial("id").primaryKey().notNull(),
+  bootcampId: integer("bootcamp_id")
+    .notNull()
+    .references(() => zuvyBootcamps.id),
+  chapterId: integer('chapter_id')
+    .notNull()
+    .references(() => zuvyModuleChapter.id),
+  scope: assessmentScopeEnum('scope').notNull().default('bootcamp'),
+  status: assessmentStatusEnum('status').notNull().default('draft'),
+  moduleId: integer('domain_id').references(() => zuvyCourseModules.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  objective: varchar("objective", { length: 255 }).notNull(),
+  expectedOutcomes: varchar("expected_outcomes", { length: 255 }),
+  audience: jsonb("audience").default(null),
+  chapterIds: jsonb("chapter_ids").$type<number[]>().default([]),
+  poolTopics: jsonb("pool_topics").$type<Array<{ id: number; name: string }>>().default([]),
+  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
+  totalQuestionsWithBuffer: integer("total_questions_with_buffer").notNull(),
+  startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
+  endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
+  publishedAt: timestamp('published_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+
+export const aiAssessmentQuestionSets = main.table(
+  'ai_assessment_question_sets',
+  {
+    id: serial('id').primaryKey().notNull(),
+    aiAssessmentId: integer('ai_assessment_id')
+      .notNull()
+      .references(() => aiAssessment.id, { onDelete: 'cascade' }),
+    setIndex: integer('set_index').notNull(),
+    label: varchar('label', { length: 32 }).notNull(),
+    levelCode: varchar('level_code', { length: 8 }),
+    status: varchar('status', { length: 32 }).notNull().default('draft'),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqAssessmentSetIndex: unique('uniq_ai_assessment_set_index').on(
+      table.aiAssessmentId,
+      table.setIndex,
+    ),
+  }),
+);
+
+export const zuvyQuestions = main.table('zuvy_questions', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('orgId').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  domainName: varchar('domain_name', { length: 255 }),
+  topicName: varchar('topic_name', { length: 255 }).notNull(),
+  topicDescription: text('topic_description').notNull(),
+  subtopics: jsonb('subtopics'),
+  learningObjectives: text('learning_objectives'),
+  targetAudience: varchar('target_audience', { length: 255 }),
+  focusAreas: text('focus_areas'),
+  bloomsLevel: varchar('blooms_level', { length: 50 }),
+  questionStyle: varchar('question_style', { length: 50 }),
+  question: text('question').notNull(),
+  difficulty: varchar('difficulty', { length: 50 }),
+  language: varchar('language', { length: 255 }),
+  options: jsonb('options').notNull(),
+  correctOption: integer('correct_option').notNull(),
+  difficultyDistribution: jsonb('difficulty_distribution'),
+  questionCounts: jsonb('question_counts'),
+  levelId: varchar('level_id', { length: 8 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyQuestionExplanations = main.table('zuvy_question_explanations', {
+  id: serial('id').primaryKey().notNull(),
+  questionId: integer('question_id').notNull().unique().references(() => zuvyQuestions.id, { onDelete: 'cascade' }),
+  explanation: text('explanation').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const aiAssessmentQuestions = main.table(
+  'ai_assessment_questions',
+  {
+    id: serial('id').primaryKey().notNull(),
+    questionSetId: integer('question_set_id')
+      .notNull()
+      .references(() => aiAssessmentQuestionSets.id, { onDelete: 'cascade' }),
+    questionId: integer('question_id')
+      .notNull()
+      .references(() => zuvyQuestions.id, { onDelete: 'cascade' }),
+    isCommon: boolean('is_common').notNull().default(false),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqSetQuestion: unique('uniq_ai_assessment_set_question').on(
+      table.questionSetId,
+      table.questionId,
+    ),
+    uniqSetPosition: unique('uniq_ai_assessment_set_position').on(
+      table.questionSetId,
+      table.position,
+    ),
+  }),
+);
+
+export const questionIndexOutbox = main.table('question_index_outbox', {
+  id: serial('id').primaryKey().notNull(),
+  questionId: integer('question_id').notNull(),
+  requestedByUserId: varchar('requested_by_user_id', { length: 255 }),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const topic = main.table('topic', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  subtopic: jsonb('subtopic'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const questionsByLLM = main.table("questions_by_llm", {
+  id: serial("id").primaryKey().notNull(),
+  topic: varchar("topic", { length: 100 }),
+  difficulty: varchar("difficulty", { length: 50 }),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
+  question: text("question").notNull(),
+  language: varchar("language", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const mcqQuestionOptions = main.table("mcq_question_options", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  optionNumber: integer("option_number").notNull(), // e.g., 1,2,3,4
+});
+
+export const correctAnswers = main.table("correct_answers", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  correctOptionId: integer("correct_option_id").notNull().references(() => mcqQuestionOptions.id, { onDelete: "cascade" }),
+});
+
+export const questionLevelRelation = main.table("question_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique("uniq_student_question").on(table.levelId, table.questionId),
+}));
+
+export const questionStudentAnswerRelation = main.table("question_student_answer_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  answer: integer("answer").notNull().references(() => correctAnswers.id),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestionAnswer: unique("uniq_student_question_answer").on(table.studentId, table.questionId),
+}));
+
+export const levels = main.table("levels", {
+  id: serial("id").primaryKey().notNull(),
+  grade: varchar("grade", { length: 5 }).notNull(), // e.g. A+, A, B...
+  scoreRange: varchar("score_range", { length: 50 }).notNull(), // e.g. ">= 90", "80-89"
+  scoreMin: integer("score_min"), // optional numeric range start
+  scoreMax: integer("score_max"), // optional numeric range end
+  hardship: varchar("hardship", { length: 20 }), // "+20%", etc.
+  meaning: text("meaning"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqGrade: unique("uniq_level_grade").on(table.grade),
+}));
+
+export const studentLevelRelation = main.table("student_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
+  assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId, table.bootcampId),
+}));
+
+export const studentAnswers = main.table('student_answers', {
+  id: serial('id').primaryKey().notNull(),
+  studentId: integer('student_id').notNull().references(() => users.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: 'cascade' }),
+  questionId: integer('question_id').notNull().references(() => zuvyQuestions.id, { onDelete: 'cascade' }),
+  selectedOption: integer('selected_option'),
+  isCorrect: integer('is_correct').notNull().default(0),
+  answeredAt: timestamp('answered_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique('uniq_student_answer').on(table.studentId, table.aiAssessmentId, table.questionId),
+}));
+
+
+export const llmUsage = main.table("llm_usage", {
+  id: serial("id").primaryKey(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  prompt: text("prompt").notNull(),
+  responseText: text("response_text").notNull(),
+  latencyMs: integer("latency_ms").notNull(),
+  usage: jsonb("usage"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type LLMUsage = typeof llmUsage.$inferSelect;
+export type InsertLLMUsage = typeof llmUsage.$inferInsert;
+
+export const questionEvaluation = main.table('question_evaluation', {
+  id: serial('id').primaryKey().notNull(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  question: text('question').notNull(),
+  topic: varchar('topic', { length: 255 }),
+  difficulty: varchar('difficulty', { length: 50 }),
+  options: jsonb('options').notNull(), // { "1": "A", "2": "B", "3": "C", "4": "D" }
+  // correctOption: integer('correct_option').notNull(),
+  selectedAnswerByStudent: integer('selected_answer_by_student').notNull(),
+  language: varchar('language', { length: 50 }),
+  status: varchar('status', { length: 50 }).default(null), // e.g., 'correct' or 'incorrect'
+  explanation: text('explanation'),
+  summary: text('summary'),
+  recommendations: text('recommendations'),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const studentAssessment = main.table('student_assessment', {
+  id: serial('id').primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: "cascade" }),
+  questionSetId: integer('question_set_id')
+    .references(() => aiAssessmentQuestionSets.id, { onDelete: "set null" }),
+  status: integer('status').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+}));
+
+
+
+// Zoom Session Recordings Tracking
+
 export const zuvySessionRecordings = main.table(
   'zuvy_session_recordings',
   {
@@ -3227,8 +3519,9 @@ export const zuvySubscriptionPlans = main.table('zuvy_subscription_plans', {
 });
 
 // Student ID + password credential for learners without an email address
-// (migration 0043). The learner itself is a normal "users" row with
-// email = NULL; Google-login users never have a row here.
+// (migrations 0043, 0044). The learner itself is a normal "users" row with
+// email = NULL; Google-login users never have a row here. Student IDs are
+// first + last name in lowercase, "ct" and a number, e.g. aruneshdharct1.
 export const zuvyStudentCredentials = main.table(
   'zuvy_student_credentials',
   {
@@ -3236,7 +3529,7 @@ export const zuvyStudentCredentials = main.table(
     userId: bigint('user_id', { mode: 'bigint' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    studentId: varchar('student_id', { length: 16 }).notNull(),
+    studentId: varchar('student_id', { length: 40 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     failedAttempts: integer('failed_attempts').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
@@ -3254,14 +3547,125 @@ export const zuvyStudentCredentials = main.table(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
       .notNull()
       .defaultNow(),
+    // School chosen at sign-up (migration 0045), copied from zuvy_schools so
+    // the record keeps what the student picked even if the list changes.
+    // Empty for accounts created before these fields existed.
+    state: varchar('state', { length: 100 }),
+    city: varchar('city', { length: 100 }), // UDISE district
+    schoolName: varchar('school_name', { length: 255 }),
+    udiseCode: varchar('udise_code', { length: 11 }),
   },
   (table) => ({
     uniqUserId: unique('zuvy_student_credentials_user_id_unique').on(table.userId),
     uniqStudentId: unique('zuvy_student_credentials_student_id_unique').on(
       table.studentId,
     ),
+    udiseCodeIdx: index('zuvy_student_credentials_udise_code_idx').on(
+      table.udiseCode,
+    ),
   }),
 );
+
+// School list for the sign-up dropdowns (migration 0045), loaded by a super
+// admin from a CSV. State and district are stored in UPPERCASE, as in UDISE.
+export const zuvySchools = main.table(
+  'zuvy_schools',
+  {
+    id: serial('id').primaryKey().notNull(),
+    udiseCode: varchar('udise_code', { length: 11 }).notNull(),
+    schoolName: varchar('school_name', { length: 255 }).notNull(),
+    state: varchar('state', { length: 100 }).notNull(),
+    district: varchar('district', { length: 100 }).notNull(),
+    block: varchar('block', { length: 100 }),
+    village: varchar('village', { length: 100 }),
+    pincode: varchar('pincode', { length: 6 }),
+    management: varchar('management', { length: 100 }),
+    classFrom: smallint('class_from'),
+    classTo: smallint('class_to'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUdiseCode: unique('zuvy_schools_udise_code_unique').on(table.udiseCode),
+    // Cities of a state, and a city's schools sorted by name.
+    stateDistrictNameIdx: index('zuvy_schools_state_district_name_idx').on(
+      table.state,
+      table.district,
+      table.schoolName,
+    ),
+  }),
+);
+
+// One row per login (migrations 0045, 0046). The id is the session ID
+// carried in the JWT as "sid"; it stays the same across token refresh and
+// org switch. A student with a school gets a Career Tours ID,
+// CT_IN_<YYYYMMDD>_<UDISE>_<7-digit number>; other logins a random UUID.
+export const zuvyUserSessions = main.table(
+  'zuvy_user_sessions',
+  {
+    id: varchar('id', { length: 100 }).primaryKey().notNull(),
+    udiseCode: varchar('udise_code', { length: 11 }),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    loginMethod: varchar('login_method', { length: 20 }).notNull(),
+    orgId: integer('org_id'),
+    ip: varchar('ip', { length: 64 }),
+    userAgent: varchar('user_agent', { length: 512 }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+    lastRefreshedAt: timestamp('last_refreshed_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    endedAt: timestamp('ended_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => ({
+    userIdIdx: index('zuvy_user_sessions_user_id_idx').on(table.userId),
+    udiseCodeIdx: index('zuvy_user_sessions_udise_code_idx').on(
+      table.udiseCode,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Last Career Tours session number per school per day (migration 0046):
+// date 20261028 + school 36070700101 with lastNumber 25 means sessions
+// ..._0000001 to ..._0000025 exist. One atomic upsert per login.
+export const zuvySessionCounters = main.table(
+  'zuvy_session_counters',
+  {
+    sessionDate: varchar('session_date', { length: 8 }).notNull(), // YYYYMMDD, Indian date
+    udiseCode: varchar('udise_code', { length: 11 }).notNull(),
+    lastNumber: integer('last_number').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'zuvy_session_counters_pk',
+      columns: [table.sessionDate, table.udiseCode],
+    }),
+  }),
+);
+
+// Last number given out per name (migration 0044): base "aruneshdhar" with
+// lastNumber 2 means aruneshdharct1 and aruneshdharct2 exist. Incremented
+// with one atomic upsert, so simultaneous same-name sign-ups never collide.
+export const zuvyStudentIdCounters = main.table('zuvy_student_id_counters', {
+  base: varchar('base', { length: 40 }).primaryKey().notNull(),
+  lastNumber: integer('last_number').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .notNull()
+    .defaultNow(),
+});
 
 export const zuvyStudentCredentialsRelations = relations(
   zuvyStudentCredentials,

@@ -9,9 +9,10 @@ import { PermissionsGuard } from './guards/permissions.guard';
 import { PermissionsModule } from 'src/permissions/permissions.module';
 import { RbacService } from './rbac.service';
 import { UserTokensModule } from 'src/user-tokens/user-tokens.module';
+import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, PermissionsModule, UserTokensModule],
+  imports: [AuthModule, PermissionsModule, UserTokensModule, TrackinglogModule],
   controllers: [RbacController],
   providers: [
     RbacPermissionService,

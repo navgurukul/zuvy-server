@@ -12,6 +12,9 @@ import {
   asc,
   ne,
   isNull,
+  ilike,
+  arrayContains,
+  isNotNull,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -34,10 +37,13 @@ import {
   zuvyUserRolesAssigned,
   zuvyOrganizations,
   zuvyTrackingLogs,
+  zuvyLearnersCompleteProfile,
+  zuvyStudentCredentials,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
+import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -45,6 +51,52 @@ import { RbacService } from 'src/rbac/rbac.service';
 import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+
+type BootcampStudentDropdownRow = {
+  careerStatus?: string[] | string | null;
+  skills?: string[] | string | null;
+  openToRemote?: boolean | null;
+  education?: string | number | null;
+};
+
+type BootcampStudentDropdownOptions = {
+  careerStatus: string[];
+  skills: string[];
+  openToRemote: boolean[];
+  education: string[];
+};
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function formatGraduationDate(
+  month?: number | string | null,
+  year?: number | string | null,
+): string | null {
+  if (year == null || year === '') return null;
+  const parsedYear = Number(year);
+  if (Number.isNaN(parsedYear) || parsedYear <= 0) return null;
+
+  if (month == null || month === '') return null;
+  const parsedMonth = Number(month);
+  if (Number.isNaN(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+    return null;
+  }
+
+  return `${MONTH_NAMES[parsedMonth - 1]} ${parsedYear}`;
+}
 
 @Injectable()
 export class BootcampService {
@@ -54,6 +106,111 @@ export class BootcampService {
     private rbacService: RbacService,
     private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
+
+  private buildDropdownOptions(
+    rows: BootcampStudentDropdownRow[],
+  ): BootcampStudentDropdownOptions {
+    const careerStatusSet = new Set<string>();
+    const skillsMap = new Map<string, string>();
+    const openToRemoteSet = new Set<boolean>();
+    const educationSet = new Set<string>();
+
+    for (const row of rows) {
+      const careerStatusValues = Array.isArray(row.careerStatus)
+        ? row.careerStatus
+        : typeof row.careerStatus === 'string' && row.careerStatus.trim()
+          ? [row.careerStatus]
+          : [];
+      for (const value of careerStatusValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          careerStatusSet.add(normalized);
+        }
+      }
+
+      const skillValues = Array.isArray(row.skills)
+        ? row.skills
+        : typeof row.skills === 'string' && row.skills.trim()
+          ? [row.skills]
+          : [];
+      for (const value of skillValues) {
+        const normalized = String(value).trim();
+        if (normalized) {
+          const key = normalized.toLowerCase();
+          if (!skillsMap.has(key)) {
+            skillsMap.set(key, normalized);
+          }
+        }
+      }
+
+      if (typeof row.openToRemote === 'boolean') {
+        openToRemoteSet.add(row.openToRemote);
+      }
+
+      if (row.education != null) {
+        const year = String(row.education).trim();
+        if (year !== '') {
+          educationSet.add(year);
+        }
+      }
+    }
+
+    return {
+      careerStatus: Array.from(careerStatusSet).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+      skills: Array.from(skillsMap.values()).sort((a, b) => a.localeCompare(b)),
+      openToRemote: Array.from(openToRemoteSet).sort(
+        (a, b) => Number(a) - Number(b),
+      ),
+      education: Array.from(educationSet).sort((a, b) => a.localeCompare(b)),
+    };
+  }
+
+  private async getStudentDropdownOptions(
+    bootcampId: number,
+    batchId: number,
+    roleName: string[],
+    instructorId?: number,
+  ): Promise<BootcampStudentDropdownOptions> {
+    const batchIdNum = Number.isFinite(Number(batchId))
+      ? Number(batchId)
+      : undefined;
+    const normalizedRoleName =
+      typeof roleName?.[0] === 'string' ? roleName[0].toLowerCase().trim() : '';
+    const isInstructor = normalizedRoleName === 'instructor';
+
+    const dropdownConditions = [
+      eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+    ];
+
+    if (batchIdNum !== undefined) {
+      dropdownConditions.push(eq(zuvyBatchEnrollments.batchId, batchIdNum));
+    }
+
+    if (isInstructor && instructorId) {
+      dropdownConditions.push(eq(zuvyBatches.instructorId, instructorId));
+    }
+
+    const dropdownRows = await db
+      .select({
+        careerStatus: zuvyLearnersCompleteProfile.currentStatus,
+        skills: zuvyLearnersCompleteProfile.technicalSkills,
+        openToRemote: zuvyLearnersCompleteProfile.openToRemote,
+        education: zuvyLearnersCompleteProfile.graduationYear,
+      })
+      .from(zuvyBatchEnrollments)
+      .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+      .leftJoin(
+        zuvyLearnersCompleteProfile,
+        eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+      )
+      .where(and(...dropdownConditions));
+
+    return this.buildDropdownOptions(
+      dropdownRows as BootcampStudentDropdownRow[],
+    );
+  }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -1042,7 +1199,8 @@ export class BootcampService {
       var a = 0,
         b = 0,
         c = 0,
-        d = 0;
+        d = 0,
+        e = 0;
       let enrollments = [];
       let bootcampData = await db
         .select()
@@ -1098,23 +1256,26 @@ export class BootcampService {
       }
 
       if (users_data.length == 1) {
-        let userData = await db
-          .select()
-          .from(users)
-          .where(sql`${users.email} = ${users_data[0].email}`);
+        const resolved = await this.findStudentForEnrollment(users_data[0]);
+        if (resolved.error) {
+          return [
+            { status: 'error', message: resolved.error, code: 400 },
+            null,
+          ];
+        }
+        let userData = resolved.user ? [resolved.user] : [];
         if (userData.length >= 1) {
           // Update name if different
-          if (userData[0].name !== users_data[0].name) {
+          if (users_data[0].name && userData[0].name !== users_data[0].name) {
             await db
               .update(users)
               // .set({ name: users_data[0].name })
               .set({
-                name: users_data[0]['name']
-                  ? users_data[0]['name'].charAt(0).toUpperCase() +
-                    users_data[0]['name'].slice(1)
-                  : users_data[0]['name'],
+                name:
+                  users_data[0]['name'].charAt(0).toUpperCase() +
+                  users_data[0]['name'].slice(1),
               })
-              .where(sql`${users.email} = ${users_data[0].email}`);
+              .where(eq(users.id, userData[0].id));
           }
         }
         if (userData.length >= 1 && batchId) {
@@ -1171,24 +1332,33 @@ export class BootcampService {
           : users_data[i]['name'];
 
         let enroling;
-        let userInfo = await db
-          .select()
-          .from(users)
-          .where(sql`${users.email} = ${users_data[i]['email']}`);
+        const resolved = await this.findStudentForEnrollment(users_data[i]);
+        if (resolved.error) {
+          e += 1;
+          userReport.push({
+            email: users_data[i]['email'] ?? null,
+            studentId: users_data[i]['studentId'] ?? null,
+            message: resolved.error,
+          });
+          continue;
+        }
+        let userInfo = resolved.user ? [resolved.user] : [];
+        const studentId = resolved.studentId;
         if (userInfo.length > 0) {
           // Update name if different
-          if (userInfo[0].name !== users_data[i]['name']) {
+          if (
+            users_data[i]['name'] &&
+            userInfo[0].name !== users_data[i]['name']
+          ) {
             await db
               .update(users)
               // .set({ name: users_data[i]['name'] })
               .set({
-                name: users_data[i]['name']
-                  ? users_data[i]['name'].charAt(0).toUpperCase() +
-                    users_data[i]['name'].slice(1)
-                  : users_data[i]['name'],
+                name:
+                  users_data[i]['name'].charAt(0).toUpperCase() +
+                  users_data[i]['name'].slice(1),
               })
-
-              .where(sql`${users.email} = ${users_data[i]['email']}`);
+              .where(eq(users.id, userInfo[0].id));
           }
         }
         if (userInfo.length === 0) {
@@ -1207,6 +1377,7 @@ export class BootcampService {
           }
           userReport.push({
             email: userInfo[0].email,
+            studentId,
             message: `enrolled successfully`,
           });
           enrollments.push(enroling);
@@ -1242,6 +1413,7 @@ export class BootcampService {
               a += 1;
               userReport.push({
                 email: userInfo[0].email,
+                studentId,
                 message: `The student has been assigned to ${batch[0].name}`,
               });
               continue;
@@ -1255,12 +1427,14 @@ export class BootcampService {
             d += 1;
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `The student has been already assigned to ${batch[0].name}`,
             });
           } else if (userEnrolled.length > 0 && isNaN(batchId)) {
             b += 1;
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `The students have been already enrolled!!!`,
             });
           } else if (userEnrolled.length == 0) {
@@ -1278,6 +1452,7 @@ export class BootcampService {
             }
             userReport.push({
               email: userInfo[0].email,
+              studentId,
               message: `enrolled successfully`,
             });
             enrollments.push(enroling);
@@ -1318,6 +1493,10 @@ export class BootcampService {
         );
       }
 
+      if (e > 0) {
+        messageParts.push(`${e} students could not be enrolled`);
+      }
+
       let message = messageParts.join(' & ');
       const targetePermission = [
         ResourceList.student.read,
@@ -1347,6 +1526,101 @@ export class BootcampService {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
+  }
+
+  /**
+   * Finds the existing account for an enrolment row. A row may carry an
+   * email, a Student ID, or both:
+   * - email only: matched by email (user is null if it doesn't exist yet,
+   *   so the caller creates one, as before).
+   * - Student ID only: matched by Student ID; it must exist, since a
+   *   Student ID account can't be created without a password.
+   * - both: each is looked up, and they must not point at two different
+   *   accounts, so the same student never ends up with two records. If
+   *   the email is new and the Student ID account has no email yet, the
+   *   email is saved on that account (so it is found by email from then
+   *   on, and gets class invites). Its current session ends, because the
+   *   JWT middleware matches tokens on email; Student ID login still works.
+   */
+  private async findStudentForEnrollment(student: {
+    email?: string;
+    studentId?: string;
+  }): Promise<{
+    user: typeof users.$inferSelect | null;
+    studentId: string | null;
+    error?: string;
+  }> {
+    const email = student.email?.trim() || null;
+    const studentId = student.studentId?.trim() || null;
+    if (!email && !studentId) {
+      return {
+        user: null,
+        studentId: null,
+        error: 'Either email or studentId is required',
+      };
+    }
+
+    const [byEmail] = email
+      ? await db.select().from(users).where(eq(users.email, email)).limit(1)
+      : [];
+
+    let byStudentId: typeof users.$inferSelect | undefined;
+    if (studentId) {
+      [byStudentId] = (
+        await db
+          .select({ user: users })
+          .from(zuvyStudentCredentials)
+          .innerJoin(users, eq(users.id, zuvyStudentCredentials.userId))
+          .where(eq(zuvyStudentCredentials.studentId, studentId))
+          .limit(1)
+      ).map((r) => r.user);
+      if (!byStudentId) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} not found`,
+        };
+      }
+    }
+
+    if (byEmail && byStudentId && byEmail.id !== byStudentId.id) {
+      return {
+        user: null,
+        studentId: null,
+        error: `Email ${email} and Student ID ${studentId} belong to different students`,
+      };
+    }
+
+    if (email && !byEmail && byStudentId) {
+      if (byStudentId.email) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} is registered with a different email`,
+        };
+      }
+      const [updated] = await db
+        .update(users)
+        .set({ email })
+        .where(and(eq(users.id, byStudentId.id), isNull(users.email)))
+        .returning();
+      // Null only if another request set an email in the meantime.
+      if (!updated) {
+        return {
+          user: null,
+          studentId: null,
+          error: `Student ID ${studentId} is registered with a different email`,
+        };
+      }
+      return { user: updated, studentId };
+    }
+
+    const user = byEmail ?? byStudentId ?? null;
+    if (!user) return { user: null, studentId: null };
+    if (studentId) return { user, studentId };
+    // Matched by email: report its Student ID too, if it has one.
+    const ids = await getStudentIdsByUserId([user.id]);
+    return { user, studentId: ids.get(String(user.id)) ?? null };
   }
 
   async BootcampOrBatchEnrollments(
@@ -1381,6 +1655,10 @@ export class BootcampService {
     orderDirection?: string,
     instructorId?: number, // Add instructor ID parameter
     orgId?: number,
+    careerStatus?: string,
+    skills?: string,
+    education?: string,
+    openToRemote?: boolean,
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1422,7 +1700,7 @@ export class BootcampService {
           : undefined;
       const searchFilter =
         searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== ''
-          ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`
+          ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${zuvyStudentCredentials.studentId}) LIKE ${searchTerm.toLowerCase()} || '%')`
           : undefined;
       const enrolledDateFilter = enrolledDate
         ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}`
@@ -1430,9 +1708,29 @@ export class BootcampService {
       const lastActiveDateFilter = lastActiveDate
         ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}`
         : undefined;
+
       const statusFilter = status
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
+      const careerStatusFilter = careerStatus?.trim()
+        ? ilike(zuvyLearnersCompleteProfile.currentStatus, careerStatus.trim())
+        : undefined;
+
+      const skillsTrimmed = skills?.trim();
+      const skillsFilter = skillsTrimmed
+        ? arrayContains(zuvyLearnersCompleteProfile.technicalSkills, [
+            skillsTrimmed,
+          ])
+        : undefined;
+      const parsedYear = parseInt(education?.trim() || '', 10);
+      const educationFilter =
+        !isNaN(parsedYear) && parsedYear >= 1000 && parsedYear <= 9999
+          ? eq(zuvyLearnersCompleteProfile.graduationYear, parsedYear)
+          : undefined;
+      const openToRemoteFilter =
+        openToRemote === undefined
+          ? undefined
+          : eq(zuvyLearnersCompleteProfile.openToRemote, openToRemote);
 
       // Normalize roleName for comparison (handle case sensitivity and whitespace)
       const normalizedRoleName =
@@ -1477,6 +1775,10 @@ export class BootcampService {
         statusFilter,
         attendanceFilter,
         instructorBatchFilter, // Add instructor filter to WHERE clause
+        careerStatusFilter,
+        skillsFilter,
+        educationFilter,
+        openToRemoteFilter,
       );
 
       const hasPagination =
@@ -1492,6 +1794,14 @@ export class BootcampService {
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
+        .leftJoin(
+          zuvyStudentCredentials,
+          eq(zuvyBatchEnrollments.userId, zuvyStudentCredentials.userId),
+        )
         .where(whereClause);
       const totalNumberOfStudents = countResult[0]?.count ?? 0;
 
@@ -1500,6 +1810,7 @@ export class BootcampService {
           userId: users.id,
           name: users.name,
           email: users.email,
+          studentId: zuvyStudentCredentials.studentId,
           profilePicture: users.profilePicture,
           bootcampId: zuvyBatchEnrollments.bootcampId,
           attendance: zuvyBatchEnrollments.attendance,
@@ -1511,10 +1822,27 @@ export class BootcampService {
           progress: zuvyBootcampTracking.progress,
           zuvyBootcampTrackingId: zuvyBootcampTracking.id,
           zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
+          careerStatus: zuvyLearnersCompleteProfile.currentStatus,
+          skills: zuvyLearnersCompleteProfile.technicalSkills,
+          education: zuvyLearnersCompleteProfile.graduationYear,
+          graduationMonth: zuvyLearnersCompleteProfile.graduationMonth,
+          graduationYear: zuvyLearnersCompleteProfile.graduationYear,
+          openToRemote: zuvyLearnersCompleteProfile.openToRemote,
         })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        // Complete profile has a unique user_id, and skills are filtered with
+        // EXISTS above; neither can multiply the enrolled-student rows.
+        .leftJoin(
+          zuvyLearnersCompleteProfile,
+          eq(zuvyBatchEnrollments.userId, zuvyLearnersCompleteProfile.userId),
+        )
+        // user_id is unique on credentials, so this can't multiply rows either.
+        .leftJoin(
+          zuvyStudentCredentials,
+          eq(zuvyBatchEnrollments.userId, zuvyStudentCredentials.userId),
+        )
         .leftJoin(
           zuvyBootcampTracking,
           and(
@@ -1590,6 +1918,7 @@ export class BootcampService {
           return {
             ...item,
             userId: Number(item.userId),
+            studentId: item.studentId ?? null,
             attendance: liveAttendance,
             batchName: item.batchId != null ? item.batchName : 'unassigned',
             progress: item.progress != null ? item.progress : 0,
@@ -1602,8 +1931,22 @@ export class BootcampService {
             status: item.status || null,
             zuvyBatchEnrollmentsId: item.zuvyBatchEnrollmentsId || null,
             zuvyBootcampTrackingId: item.zuvyBootcampTrackingId || null,
+            careerStatus: item.careerStatus ?? [],
+            skills: item.skills ?? [],
+            education: item.education != null ? String(item.education) : null,
+            graduationDate: formatGraduationDate(
+              item.graduationMonth,
+              item.graduationYear,
+            ),
+            openToRemote: item.openToRemote ?? false,
           };
         }),
+      );
+      const dropdownOptions = await this.getStudentDropdownOptions(
+        bootcampId,
+        batchId,
+        roleName,
+        instructorId,
       );
       const currentPage = hasPagination
         ? Math.floor(offsetNum / limitNum) + 1
@@ -1630,6 +1973,7 @@ export class BootcampService {
         status: 'success',
         code: 200,
         modifiedStudentInfo,
+        dropdownOptions,
         totalNumberOfStudents,
         currentPage,
         totalPages,
