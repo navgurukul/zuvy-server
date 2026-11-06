@@ -201,6 +201,7 @@ export class ContentService {
           id: zuvyModuleChapter.id,
           moduleId: zuvyModuleChapter.moduleId,
           topicId: zuvyModuleChapter.topicId,
+          title: zuvyModuleChapter.title,
         })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, resolvedChapterId))
@@ -253,6 +254,7 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Certificate uploaded successfully',
+        chapterTitle: chapter[0].title,
         chapterId: updatedChapter.id,
         certificateUrl,
       };
