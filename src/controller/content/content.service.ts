@@ -612,7 +612,12 @@ export class ContentService {
       font: dateFont,
       color: textColor,
     });
-
+    pdfDoc.setTitle(
+      'Student Participation Certificate - AWS Data Center Tour',
+      {
+        showInWindowTitleBar: true,
+      },
+    );
     return Buffer.from(await pdfDoc.save());
   }
 
