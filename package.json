@@ -28,7 +28,7 @@
     "migration:drop": "drizzle-kit drop --config=./src/drizzle.config.ts",
     "migration:down": "drizzle-kit down --config=./src/drizzle.config.ts",
     "migration:seed": "drizzle-kit seed --config=./src/drizzle.config.ts",
-    "migration": "npm run migration:generate && npm run migration:push",
+    "migration": "ts-node src/db/migrate.ts",
     "format:check": "prettier --check .",
     "prepare": "husky",
     "lint-staged": "lint-staged",
