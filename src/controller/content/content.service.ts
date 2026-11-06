@@ -201,6 +201,7 @@ export class ContentService {
           id: zuvyModuleChapter.id,
           moduleId: zuvyModuleChapter.moduleId,
           topicId: zuvyModuleChapter.topicId,
+          title: zuvyModuleChapter.title,
         })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, resolvedChapterId))
@@ -254,6 +255,7 @@ export class ContentService {
         code: 200,
         message: 'Certificate uploaded successfully',
         chapterId: updatedChapter.id,
+        chapterTitle: chapter[0].title,
         certificateUrl,
       };
     } catch (error) {
@@ -611,6 +613,10 @@ export class ContentService {
       size: dateSize,
       font: dateFont,
       color: textColor,
+    });
+
+    pdfDoc.setTitle(`Certificate - ${studentName}`, {
+      showInWindowTitleBar: true,
     });
 
     return Buffer.from(await pdfDoc.save());
