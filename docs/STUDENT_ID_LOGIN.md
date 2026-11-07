@@ -222,6 +222,7 @@ This lets us count logins per day, per school and per student. It does **not** y
 - **Courses:** Public courses enrol the student automatically when they open one, exactly as for Google students. For **private** courses, a **super admin**, or an **admin / ops** of the course's organisation, enrols them into a batch by Student ID (Part F5). The usual "add students" API can't be used, because it works by email. Moving a student between batches (`PATCH /batch/reassign/...`) and the "unassigned students" list work unchanged, because they use the user id.
 - **Same session as Google:** login returns the same `access_token` and `refresh_token`, made by the same code as Google login. `/auth/refresh` and `/auth/logout` work unchanged.
 - **School at sign-up (required):** sign-up needs `state` and `city` from the dropdowns (Part F7), plus the school in one of two ways:
+
   - **From the list:** `udiseCode`. The backend checks that the UDISE code is in our school list, that the school is active, and that it really is in the chosen state and city (any letter case is accepted). It then saves the **school list's own spelling** of the state, city (district) and school name, plus the UDISE code.
   - **Not in the list:** no `udiseCode`, and `schoolName` as the student typed it (3–255 characters, with letters; extra spaces removed). The state and city must still exist in our list (saved with the list's spelling); the school name is saved as typed and the UDISE code stays empty. These students' session IDs have `NUDISE` in place of the code (Part A7).
   - If both are sent, `udiseCode` is used and the typed name is ignored. If neither is sent, sign-up is refused.
@@ -383,6 +384,7 @@ Do these once per environment (dev first, then stage and production).
    SET search_path TO main;            -- or: SET search_path TO stage_template;
    ```
 3. Run these whole files, **in this order**:
+
    1. `drizzle/migrations/0043_create_zuvy_student_credentials.sql`
    2. `drizzle/migrations/0044_student_id_from_name.sql`
    3. `drizzle/migrations/0045_schools_and_sessions.sql`
@@ -1177,6 +1179,7 @@ Creates the account and logs the student in straight away.
   }
   ```
 - **Rules:**
+
   - `name`: 2–100 characters. Spaces at the start and end are removed, and repeated spaces become one.
   - `password`: 6–64 characters.
   - `state`: required, from `GET /schools/states`. Any letter case.

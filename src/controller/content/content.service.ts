@@ -1683,8 +1683,10 @@ export class ContentService {
             session.s3link !== null &&
             session.s3link !== '' &&
             session.status === 'completed' &&
-            session.isZoomMeet === true &&
-            !session.s3link.includes('www.youtube.com')
+            !session.s3link.includes('www.youtube.com') &&
+            !session.s3link.includes('amazonaws.com') &&
+            (!process.env.S3_CLOUDFRONT_DOMAIN ||
+              !session.s3link.includes(process.env.S3_CLOUDFRONT_DOMAIN))
           ) {
             const updatedRecordingLink =
               await this.zoomService.getMeetingRecordingLink(

@@ -1,23 +1,61 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { ZoomService } from '../zoom/zoom.service';
 import { OnModuleInit } from '@nestjs/common';
 import { RecordingWorkerTriggerService } from './recording-worker-trigger.service';
+import { YoutubeHealthCheckTriggerService } from './youtube-health-check-trigger.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { google } from 'googleapis';
 import { Subject } from 'rxjs';
 import { resolveDownloadAuth } from './recording-download-auth';
+import { RecordingS3Service } from './recording-s3.service';
 
 const RECORDING_WORKER_ENABLED =
   process.env.RECORDING_WORKER_ENABLED === 'true';
 
 const YOUTUBE_UPLOAD_ENABLED = process.env.YOUTUBE_UPLOAD_ENABLED === 'true';
 
+// S3 durable-storage leg. Off by default — while disabled, jobs skip
+// straight from MERGED to the YouTube upload leg exactly as before.
+const S3_DUAL_UPLOAD_ENABLED = process.env.S3_DUAL_UPLOAD_ENABLED === 'true';
+
+// Deletes Zoom's cloud copy (moves to Zoom's trash) once the S3 copy is
+// checksum-verified. Off by default — a destructive call against an
+// external system, opt in deliberately per environment.
+const ZOOM_DELETE_AFTER_S3_ENABLED =
+  process.env.ZOOM_DELETE_AFTER_S3_ENABLED === 'true';
+
+// Nightly job that checks for YouTube videos that were uploaded fine but
+// later broke (takedown, strike, channel issue) and restores/re-uploads
+// them from the Glacier S3 copy. Off by default. Never touches the primary
+// upload pipeline — only rows already status = 'COMPLETED'.
+const RECORDING_HEALTH_CHECK_ENABLED =
+  process.env.RECORDING_HEALTH_CHECK_ENABLED === 'true';
+
+function isHealthCheckEnabled(): boolean {
+  return process.env.RECORDING_HEALTH_CHECK_ENABLED === 'true';
+}
+
+const GLACIER_RESTORE_DAYS = Number(process.env.GLACIER_RESTORE_DAYS) || 7;
+
 const MAX_RETRIES = 5;
+
+// download/merge/upload steps read and write local temp-recordings/ files —
+// they only work on the machine that produced them. pickJob() pins a job to
+// the worker instance (dev machine or deployed container) that first claims
+// it via worker_instance_id, so a second instance polling the same shared
+// DB can't steal a job mid-pipeline and fail with "file not found" (confirmed
+// live: the same job's merged_file_path pointed at three different
+// filesystems across its own retry history). Stale after this many minutes
+// with no activity, so a closed laptop / crashed instance doesn't strand a
+// job forever — any instance may then reclaim it.
+const WORKER_AFFINITY_STALE_MINUTES = 20;
 
 type RecordingJob = {
   id: number;
@@ -57,13 +95,64 @@ export class RecordingWorkerService implements OnModuleInit {
   private youtube: any;
   private isWorkerRunning = false;
 
+  // Identifies this process for worker_instance_id affinity (see
+  // WORKER_AFFINITY_STALE_MINUTES) — stable for the process's lifetime,
+  // distinct across restarts and across different machines.
+  private readonly instanceId = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
+
   onModuleInit() {
+    // Flags below are read into module-level consts once, at process start —
+    // NOT re-read per job. Editing .env has no effect on an already-running
+    // process; this line exists so that fact is visible in startup logs
+    // instead of silently causing a job to skip a step with no error (see
+    // the durability-strategy doc's investigation of session 2215 / job
+    // 2094, where exactly this caused the S3 leg to be silently skipped).
+    this.logger.log(
+      `Recording worker config: instanceId=${this.instanceId} RECORDING_WORKER_ENABLED=${RECORDING_WORKER_ENABLED} YOUTUBE_UPLOAD_ENABLED=${YOUTUBE_UPLOAD_ENABLED} S3_DUAL_UPLOAD_ENABLED=${S3_DUAL_UPLOAD_ENABLED} ZOOM_DELETE_AFTER_S3_ENABLED=${ZOOM_DELETE_AFTER_S3_ENABLED} RECORDING_HEALTH_CHECK_ENABLED=${RECORDING_HEALTH_CHECK_ENABLED}`,
+    );
     this.trigger.onTrigger().subscribe(async () => {
       try {
         this.logger.log('⚡ Immediate worker execution triggered by webhook');
         await this.runWorkerOnce(); // reuse existing logic
       } catch (err) {
         this.logger.error('Triggered worker execution failed', err);
+      }
+    });
+
+    // Gmail-monitor detected a candidate YouTube violation email — run the
+    // exact same deterministic, YouTube-API-truth-based check the 2 AM cron
+    // runs, right now instead of waiting up to 24h. The email itself never
+    // decides anything (it's a heuristic, header-only match — see
+    // gmail-monitor.service.ts); it only decides WHEN to check. The nightly
+    // cron below keeps running unchanged as the backup net for a missed or
+    // unsent notification.
+    this.youtubeHealthCheckTrigger.onTrigger().subscribe(async (reason) => {
+      if (!isHealthCheckEnabled()) {
+        this.logger.log(
+          `[YOUTUBE_HEALTH] Gmail-triggered health check skipped (RECORDING_HEALTH_CHECK_ENABLED is false): ${reason}`,
+        );
+        return;
+      }
+      try {
+        await this.runYoutubeHealthCheckRotation();
+      } catch (err: any) {
+        this.logger.error(
+          `[YOUTUBE_HEALTH] Gmail-triggered health check failed: ${err?.message ?? err}`,
+        );
+      }
+
+      // Also check for any already-IN_PROGRESS restore that's finished since
+      // the last nightly run — cheap even when nothing's ready yet
+      // (getRestoreStatus() is a lightweight check, not a download) and
+      // mirrors the rotation call above: same trigger, same "wake up early
+      // instead of waiting for 2 AM" rationale, just the other half of the
+      // same recovery flow.
+      try {
+        await this.pollAndCompleteRestores();
+      } catch (err: any) {
+        this.logger.error(
+          `[YOUTUBE_HEALTH] Gmail-triggered restore-completion check failed: ${err?.message ?? err}`,
+        );
       }
     });
 
@@ -75,12 +164,39 @@ export class RecordingWorkerService implements OnModuleInit {
           this.logger.error('Scheduled recording worker execution failed', err);
         }
       }, 5000);
+
+      setInterval(
+        async () => {
+          try {
+            await this.auditS3Coverage();
+          } catch (err) {
+            this.logger.error('S3 coverage audit failed', err);
+          }
+        },
+        60 * 60 * 1000,
+      );
+
+      // Periodically poll for in-progress Glacier restores (every 1 minute)
+      // so recovered videos are re-uploaded as soon as Glacier makes them available,
+      // rather than waiting up to 24 hours for the 2 AM nightly cron.
+      setInterval(async () => {
+        if (!isHealthCheckEnabled()) return;
+        try {
+          await this.pollAndCompleteRestores();
+        } catch (err: any) {
+          this.logger.error(
+            `[YOUTUBE_HEALTH] Periodic restore polling failed: ${err?.message ?? err}`,
+          );
+        }
+      }, 60 * 1000);
     }
   }
 
   constructor(
     private readonly zoomService: ZoomService,
     private readonly trigger: RecordingWorkerTriggerService,
+    private readonly youtubeHealthCheckTrigger: YoutubeHealthCheckTriggerService,
+    private readonly recordingS3: RecordingS3Service,
   ) {
     const oAuth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -145,6 +261,72 @@ export class RecordingWorkerService implements OnModuleInit {
     // merged file left over from the earlier, incomplete segment set.
     const segmentsCount = job.segments_count || 0;
     return `${this.getRecordingPrefix(job)}-merged-${segmentsCount}.mp4`;
+  }
+
+  // Shared by uploadToS3 and uploadToYoutube — both need the local merged
+  // file, preferring the DB-recorded path and falling back to the
+  // deterministic temp-recordings path if that's missing/stale.
+  private resolveMergedFilePath(job: any, freshRow: any): string {
+    const mergedPath = freshRow?.merged_file_path as string | null;
+    const fallbackMerged = path.join(
+      process.cwd(),
+      'temp-recordings',
+      this.getMergedFileName(job),
+    );
+
+    let filePath = mergedPath;
+    if (!filePath || !fs.existsSync(filePath)) {
+      filePath = fallbackMerged;
+    }
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Merged file not found: ${filePath}`);
+    }
+
+    return filePath;
+  }
+
+  // Mirrors the LMS's Bootcamp -> Module -> Chapter hierarchy so a chapter
+  // ID maps straight to its recording(s) for restoration. Mentor-session
+  // recordings have no bootcamp/module/chapter link (zuvyMentorSlotBooking
+  // only ties to organizationId), so they get their own namespace instead.
+  // The filename reuses getYoutubeUploadTitle() — the exact same title the
+  // YouTube upload uses — so the S3/Glacier console shows a human-readable
+  // name instead of a bare job ID. The ID is kept as a bracketed suffix: a
+  // session title is free text (creators routinely include "/" via dates,
+  // e.g. "20/09/2026", plus quotes/colons/etc.) and isn't guaranteed unique,
+  // so it's cosmetic only — the ID remains the actual uniqueness guarantee
+  // this key structure depends on.
+  private async buildRecordingS3Key(job: any): Promise<string> {
+    const title = await this.getYoutubeUploadTitle(job);
+    const fileName = `${this.sanitizeForS3FileName(title)} [${job.id}].mp4`;
+
+    if (job.table === 'session') {
+      const sessionRow = await db.execute(sql`
+        SELECT bootcamp_id, module_id, chapter_id FROM zuvy_sessions WHERE id = ${job.session_id}
+      `);
+      const { bootcamp_id, module_id, chapter_id } = sessionRow.rows[0] as any;
+      return `bootcamps/${bootcamp_id}/modules/${module_id}/chapters/${chapter_id}/recordings/${fileName}`;
+    }
+
+    const bookingRow = await db.execute(sql`
+      SELECT organization_id FROM zuvy_mentor_slot_booking WHERE id = ${job.mentor_booking_id}
+    `);
+    const { organization_id } = bookingRow.rows[0] as any;
+    return `mentor-sessions/${organization_id}/${job.mentor_booking_id}/recordings/${fileName}`;
+  }
+
+  // S3 keys technically accept almost any UTF-8 character, but a title is
+  // free text — replace filesystem-unsafe characters (notably "/", which
+  // would otherwise silently create unintended nested prefixes) with "-",
+  // collapse whitespace, and cap the length well under S3's 1024-byte key
+  // limit so the full path (bucket + prefixes + filename) can never approach it.
+  private sanitizeForS3FileName(title: string): string {
+    const cleaned = title
+      .replace(/[/\\:*?"<>|]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned.slice(0, 150).trim() || 'recording';
   }
 
   private getTypePriority(type = ''): number {
@@ -364,6 +546,13 @@ export class RecordingWorkerService implements OnModuleInit {
             previous_drive_file_id = ${row.drive_file_id ?? row.previous_drive_file_id ?? null},
             drive_file_id = NULL,
             drive_link = NULL,
+            s3_bucket = NULL,
+            s3_key = NULL,
+            s3_checksum_sha256 = NULL,
+            s3_uploaded_at = NULL,
+            s3_verified = FALSE,
+            s3_multipart_upload_id = NULL,
+            s3_uploaded_parts = '[]'::jsonb,
             updated_at = NOW()
           WHERE id = ${row.id}
         `);
@@ -387,6 +576,13 @@ export class RecordingWorkerService implements OnModuleInit {
             status = 'METADATA_READY',
             retry_count = 0,
             last_error = NULL,
+            s3_bucket = NULL,
+            s3_key = NULL,
+            s3_checksum_sha256 = NULL,
+            s3_uploaded_at = NULL,
+            s3_verified = FALSE,
+            s3_multipart_upload_id = NULL,
+            s3_uploaded_parts = '[]'::jsonb,
             updated_at = NOW()
           WHERE id = ${row.id}
         `);
@@ -395,7 +591,16 @@ export class RecordingWorkerService implements OnModuleInit {
 
       // Still mid-pipeline / not yet processed — just fold the new segments in.
       // mergeRecording() re-reads the row fresh before merging, so an in-flight
-      // job naturally picks up the fuller manifest on its current or next pass.
+      // job naturally picks up the fuller manifest on its current or next pass —
+      // true only while status is still at or before MERGING. If status is
+      // already S3_UPLOADED/PROCESSING_YOUTUBE_UPLOAD/YOUTUBE_PROCESSING, this
+      // branch does NOT re-trigger a merge (status isn't reset), so the new
+      // segment would silently never be included in either the S3 copy or the
+      // YouTube upload. Clearing the S3 fields here is a safety net for that
+      // case, not a full fix — deliberately not resetting `status` here since
+      // that's a real design decision (whether/how to reopen a job already
+      // past merge) worth making on purpose, not as a side effect of this bug
+      // fix. Flagged in the durability-strategy doc; unresolved.
       await tx.execute(sql`
         UPDATE ${sql.raw(tableName)}
         SET
@@ -408,6 +613,13 @@ export class RecordingWorkerService implements OnModuleInit {
           segments_count = ${combinedManifest.length},
           recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
           recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+          s3_bucket = NULL,
+          s3_key = NULL,
+          s3_checksum_sha256 = NULL,
+          s3_uploaded_at = NULL,
+          s3_verified = FALSE,
+          s3_multipart_upload_id = NULL,
+          s3_uploaded_parts = '[]'::jsonb,
           updated_at = NOW()
         WHERE id = ${row.id}
       `);
@@ -470,7 +682,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
     // First try session recordings
-    console.log('pickJob:-Picking a recording job');
+    // console.log('pickJob:-Picking a recording job');
     let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
@@ -479,19 +691,26 @@ export class RecordingWorkerService implements OnModuleInit {
         WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
         WHEN status = 'DOWNLOADING' THEN 'DOWNLOADED'
         WHEN status = 'DOWNLOADED' THEN 'MERGING'
-        WHEN status = 'MERGED' THEN 'PROCESSING_UPLOAD'
+        WHEN status = 'MERGED' THEN 'PROCESSING_S3_UPLOAD'
+        WHEN status = 'S3_UPLOADED' THEN 'PROCESSING_YOUTUBE_UPLOAD'
         ELSE status
       END,
+      worker_instance_id = ${this.instanceId},
       updated_at = NOW()
     WHERE id = (
       SELECT id
       FROM zuvy_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED', 'S3_UPLOADED', 'YOUTUBE_PROCESSING')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
-        AND drive_link IS NULL
+        AND (drive_link IS NULL OR status = 'YOUTUBE_PROCESSING')
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        AND (
+          worker_instance_id IS NULL
+          OR worker_instance_id = ${this.instanceId}
+          OR updated_at < NOW() - (${WORKER_AFFINITY_STALE_MINUTES} || ' minutes')::interval
+        )
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -512,19 +731,26 @@ export class RecordingWorkerService implements OnModuleInit {
         WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
         WHEN status = 'DOWNLOADING' THEN 'DOWNLOADED'
         WHEN status = 'DOWNLOADED' THEN 'MERGING'
-        WHEN status = 'MERGED' THEN 'PROCESSING_UPLOAD'
+        WHEN status = 'MERGED' THEN 'PROCESSING_S3_UPLOAD'
+        WHEN status = 'S3_UPLOADED' THEN 'PROCESSING_YOUTUBE_UPLOAD'
         ELSE status
       END,
+      worker_instance_id = ${this.instanceId},
       updated_at = NOW()
     WHERE id = (
       SELECT id
       FROM zuvy_mentor_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED', 'S3_UPLOADED', 'YOUTUBE_PROCESSING')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
-        AND drive_link IS NULL
+        AND (drive_link IS NULL OR status = 'YOUTUBE_PROCESSING')
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        AND (
+          worker_instance_id IS NULL
+          OR worker_instance_id = ${this.instanceId}
+          OR updated_at < NOW() - (${WORKER_AFFINITY_STALE_MINUTES} || ' minutes')::interval
+        )
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -551,6 +777,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
       this.logJob('log', job, 'Processing recording job');
 
+      console.log(`Status: ${status}`);
       switch (status) {
         case 'PROCESSING_METADATA':
           await this.fetchZoomMetadata(job);
@@ -566,11 +793,29 @@ export class RecordingWorkerService implements OnModuleInit {
           break;
 
         case 'MERGED':
+        // pickJob always converts MERGED away before dispatch; kept as a
+        // defensive fallback so a stale/manually-set row still progresses.
+        case 'PROCESSING_S3_UPLOAD':
+          await this.uploadToS3(job);
+          break;
+
+        case 'S3_UPLOADED':
+        case 'PROCESSING_YOUTUBE_UPLOAD':
           await this.uploadToYoutube(job);
           break;
 
         case 'PROCESSING_UPLOAD':
+          // Legacy: a job already mid-flight in this state at deploy time
+          // skips straight to YouTube, bypassing the new S3 leg for that one
+          // job. One-time, acceptable edge case for in-flight jobs only.
+          this.logger.warn(
+            `Job ${job.id} is in legacy PROCESSING_UPLOAD state, skipping S3 leg`,
+          );
           await this.uploadToYoutube(job);
+          break;
+
+        case 'YOUTUBE_PROCESSING':
+          await this.verifyYoutubeProcessing(job);
           break;
 
         case 'PERMANENT_FAILED':
@@ -1232,7 +1477,28 @@ export class RecordingWorkerService implements OnModuleInit {
       (inputPath) => !fs.existsSync(inputPath),
     );
     if (missingPath) {
-      throw new Error(`Recording segment missing for merge: ${missingPath}`);
+      // Most likely this job's download step ran on a different worker
+      // instance (another dev machine, or the deployed container) than the
+      // one now picking up the merge step — its local disk simply doesn't
+      // have this segment. pickJob()'s instance-affinity pinning stops this
+      // going forward, but for a job that already changed hands, hard-
+      // failing wastes a retry for no reason: fall back to redoing the
+      // download here instead. PROCESSING_DOWNLOAD is idempotent (only
+      // fetches segments not already present on disk), so this self-heals
+      // in one extra pass rather than burning through MAX_RETRIES.
+      this.logJob(
+        'warn',
+        job,
+        'Recording segment missing for merge; forcing a fresh download pass on this instance',
+        { missingPath },
+      );
+
+      await db.execute(sql`
+        UPDATE ${table}
+        SET status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+      return;
     }
 
     const mergedPath = path.join(tempDir, this.getMergedFileName(job));
@@ -1523,6 +1789,191 @@ export class RecordingWorkerService implements OnModuleInit {
     return { eligible: true };
   }
 
+  // =====================================================
+  // S3 DURABLE STORAGE (runs before the YouTube upload)
+  // =====================================================
+  private async uploadToS3(job: any) {
+    if (!S3_DUAL_UPLOAD_ENABLED) {
+      // Feature not turned on for this environment — behave exactly as
+      // before and go straight to the YouTube leg. Must land on a status
+      // pickJob() can still select ('S3_UPLOADED', not
+      // 'PROCESSING_YOUTUBE_UPLOAD' directly) — pickJob()'s WHERE only
+      // matches its allowlisted non-PROCESSING_* statuses and atomically
+      // advances them, so a row written straight into a PROCESSING_*
+      // status here would never be picked up again and would stall forever.
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET status = 'S3_UPLOADED', updated_at = NOW()
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
+
+    const rec = await db.execute(sql`
+      SELECT *
+      FROM ${sql.raw(this.getTableName(job))}
+      WHERE id = ${job.id}
+    `);
+    const freshRow = rec.rows?.[0] as any;
+    job = { ...job, ...freshRow };
+
+    // Idempotency guard
+    if (job.s3_verified === true) {
+      this.logJob(
+        'log',
+        job,
+        'S3 upload already verified, advancing to YouTube leg',
+      );
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET status = 'S3_UPLOADED', updated_at = NOW()
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
+
+    const currentStatus = String(job.status || '').toUpperCase();
+    if (
+      currentStatus !== 'MERGED' &&
+      currentStatus !== 'PROCESSING_S3_UPLOAD'
+    ) {
+      throw new Error(
+        `Cannot upload job ${job.id} to S3 until recordings are merged into 1 video (current status: ${job.status})`,
+      );
+    }
+    if (job.is_final_merged !== true) {
+      throw new Error(
+        `Cannot upload job ${job.id} to S3 until all recordings are merged into a single video file`,
+      );
+    }
+
+    // Same eligibility gate uploadToYoutube() already applies (session end
+    // time + 5min buffer, not currently live, not still processing on Zoom's
+    // side) — applied here too so the S3 leg can't start while a segment
+    // might still be coming (a host reconnect mid-class would otherwise let
+    // an incomplete first segment finish uploading to S3, get marked
+    // s3_verified, and race against ingestRecordingCompleted()'s reopen
+    // logic for the eventual second segment). Deferring here, before any
+    // upload starts, is the actual fix for that race — the reopen-logic
+    // field clearing added alongside this is only a safety net for the
+    // window where a fix like this doesn't already exist.
+    const s3Eligibility = await this.checkPreUploadEligibility(job);
+    if (!s3Eligibility.eligible) {
+      this.logJob('warn', job, `Deferring S3 upload: ${s3Eligibility.reason}`);
+
+      const deferTime = new Date(Date.now() + 3 * 60 * 1000);
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET
+          status = 'MERGED',
+          next_retry_at = ${deferTime}
+        WHERE id = ${job.id}
+      `);
+      return;
+    }
+
+    const filePath = this.resolveMergedFilePath(job, freshRow);
+    const fileSize = fs.statSync(filePath).size;
+    const tableName = this.getTableName(job);
+
+    const key = job.s3_key || (await this.buildRecordingS3Key(job));
+
+    this.logJob('log', job, 'Starting S3 upload', { key, fileSize });
+
+    if (this.recordingS3.isMultipartRequired(fileSize)) {
+      const { etag, uploadId } = await this.recordingS3.uploadMultipart(
+        key,
+        filePath,
+        fileSize,
+        job.s3_multipart_upload_id,
+        async (currentUploadId, parts) => {
+          // Persist progress after every part so a crash/restart resumes
+          // from the last completed part instead of starting over.
+          await db.execute(sql`
+            UPDATE ${sql.raw(tableName)}
+            SET
+              s3_key = ${key},
+              s3_multipart_upload_id = ${currentUploadId},
+              s3_uploaded_parts = ${JSON.stringify(parts)}
+            WHERE id = ${job.id}
+          `);
+        },
+      );
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          status = 'S3_UPLOADED',
+          s3_bucket = ${this.recordingS3.getBucket()},
+          s3_key = ${key},
+          s3_uploaded_at = NOW(),
+          s3_verified = TRUE,
+          s3_multipart_upload_id = NULL,
+          s3_uploaded_parts = '[]'::jsonb
+        WHERE id = ${job.id}
+      `);
+      this.logJob('log', job, 'S3 multipart upload verified', { key, etag });
+    } else {
+      const checksum = await this.recordingS3.computeSha256(filePath);
+      const { etag, checksumSha256 } = await this.recordingS3.uploadSinglePart(
+        key,
+        filePath,
+        checksum.base64,
+      );
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          status = 'S3_UPLOADED',
+          s3_bucket = ${this.recordingS3.getBucket()},
+          s3_key = ${key},
+          s3_checksum_sha256 = ${checksumSha256},
+          s3_uploaded_at = NOW(),
+          s3_verified = TRUE
+        WHERE id = ${job.id}
+      `);
+      this.logJob('log', job, 'S3 upload verified', {
+        key,
+        etag,
+        checksum: checksumSha256,
+      });
+    }
+
+    if (job.table === 'session') {
+      await db.execute(sql`
+        UPDATE zuvy_sessions
+        SET
+          recording_s3_bucket = ${this.recordingS3.getBucket()},
+          recording_s3_key = ${key}
+        WHERE id = ${job.session_id}
+      `);
+    }
+
+    if (ZOOM_DELETE_AFTER_S3_ENABLED) {
+      // Best-effort — never let Zoom-side cleanup block the pipeline.
+      try {
+        await this.zoomService.deleteFromZoomCloud(
+          job.zoom_meeting_uuid || job.zoom_meeting_id,
+          job.zoom_recording_id,
+        );
+        await db.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET zoom_deleted_at = NOW()
+          WHERE id = ${job.id}
+        `);
+        this.logJob(
+          'log',
+          job,
+          'Deleted Zoom cloud recording after S3 verification',
+        );
+      } catch (zoomDelErr: any) {
+        this.logJob('warn', job, 'Failed to delete Zoom cloud recording', {
+          error: zoomDelErr?.message ?? String(zoomDelErr),
+        });
+      }
+    }
+  }
+
   private async uploadToYoutube(job: any) {
     console.log(`Uploading recording for job ${job.id} to YouTube...`);
     if (!YOUTUBE_UPLOAD_ENABLED) {
@@ -1532,7 +1983,21 @@ export class RecordingWorkerService implements OnModuleInit {
 
     // Idempotency guard
     if (job.drive_link) {
-      await this.updateYoutubeTitleIfNeeded(job);
+      // Best-effort, matching the superseded-video-delete pattern below —
+      // videos.update needs the broader `youtube`/`youtube.force-ssl` OAuth
+      // scope, not just `youtube.upload`. Confirmed live: with only upload
+      // scope granted, this throws "Insufficient Permission" on every retry
+      // of an already-uploaded job, which — uncaught — permanently failed
+      // jobs 2110/2111/2117 despite each already having a working YouTube
+      // video. A cosmetic title-sync failure must never fail a job whose
+      // actual deliverable (the video) already exists.
+      try {
+        await this.updateYoutubeTitleIfNeeded(job);
+      } catch (titleErr: any) {
+        this.logJob('warn', job, 'Failed to sync YouTube video title', {
+          error: titleErr?.message ?? String(titleErr),
+        });
+      }
       this.logger.log(`Job ${job.id} already uploaded, skipping`);
       return;
     }
@@ -1549,7 +2014,13 @@ export class RecordingWorkerService implements OnModuleInit {
 
     // Strict Guard: Until recordings are merged into 1 video, upload to YouTube is blocked
     const currentStatus = String(job.status || '').toUpperCase();
-    if (currentStatus !== 'MERGED' && currentStatus !== 'PROCESSING_UPLOAD') {
+    const youtubeEligibleStatuses = [
+      'MERGED',
+      'PROCESSING_UPLOAD', // legacy
+      'S3_UPLOADED',
+      'PROCESSING_YOUTUBE_UPLOAD',
+    ];
+    if (!youtubeEligibleStatuses.includes(currentStatus)) {
       throw new Error(
         `Cannot upload job ${job.id} to YouTube until recordings are merged into 1 video (current status: ${job.status})`,
       );
@@ -1646,26 +2117,26 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
-
-    const fallbackMerged = path.join(
-      process.cwd(),
-      'temp-recordings',
-      this.getMergedFileName(job),
-    );
-
-    let filePath = mergedPath;
-
-    if (!filePath || !fs.existsSync(filePath)) {
-      filePath = fallbackMerged;
-    }
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`Merged file not found: ${filePath}`);
-    }
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error('Merged file not found for upload');
+    let filePath: string;
+    try {
+      filePath = this.resolveMergedFilePath(job, rec.rows?.[0]);
+    } catch (err: any) {
+      // Same cross-instance hand-off as mergeRecording()'s missing-segment
+      // case: the merge most likely ran on a different worker instance, so
+      // this instance's disk never had the file. Fall back to re-merging
+      // here instead of hard-failing the YouTube leg.
+      this.logJob(
+        'warn',
+        job,
+        'Merged file missing for YouTube upload; forcing a re-merge on this instance',
+        { error: err?.message ?? String(err) },
+      );
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET status = 'DOWNLOADED', is_final_merged = FALSE, merged_file_path = NULL
+        WHERE id = ${job.id}
+      `);
+      return;
     }
 
     const fileSize = fs.statSync(filePath).size;
@@ -1695,10 +2166,83 @@ export class RecordingWorkerService implements OnModuleInit {
       );
     }
 
-    this.logJob('log', job, 'Starting YouTube upload', {
-      fileSize: fileSize,
-      filePath: filePath,
-    });
+    const { videoId, videoUrl } = await this.insertYoutubeVideo(
+      job,
+      filePath,
+      fileSize,
+    );
+
+    // Best-effort cleanup of a superseded video — this job was reopened
+    // because a later recording instance arrived after a prior upload.
+    // Never let a cleanup failure block recording the new upload as done.
+    const previousDriveFileId = job.previous_drive_file_id as
+      | string
+      | null
+      | undefined;
+    if (previousDriveFileId) {
+      try {
+        await this.youtube.videos.delete({ id: previousDriveFileId });
+        this.logJob('log', job, 'Deleted superseded YouTube video', {
+          previousDriveFileId,
+        });
+      } catch (delErr: any) {
+        this.logJob('warn', job, 'Failed to delete superseded YouTube video', {
+          previousDriveFileId,
+          error: delErr?.message ?? String(delErr),
+        });
+      }
+    }
+
+    // Status goes to YOUTUBE_PROCESSING, not COMPLETED, and the local file
+    // is NOT deleted yet — videos.insert() returning an id only means the
+    // upload was accepted, not that YouTube's async review/transcoding
+    // succeeded. Deleting the last local copy here (as this used to do)
+    // meant a later takedown or processing failure left nothing
+    // recoverable anywhere. verifyYoutubeProcessing() confirms
+    // `processingStatus === 'succeeded'` before marking COMPLETED and
+    // deleting the file.
+    if (job.table === 'mentor') {
+      await db.execute(sql`
+        UPDATE zuvy_mentor_session_recordings
+        SET
+          status = 'YOUTUBE_PROCESSING',
+          drive_file_id = ${videoId},
+          drive_link = ${videoUrl},
+          previous_drive_file_id = NULL
+        WHERE id = ${job.id}
+      `);
+    } else {
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          status = 'YOUTUBE_PROCESSING',
+          drive_file_id = ${videoId},
+          drive_link = ${videoUrl},
+          previous_drive_file_id = NULL
+        WHERE id = ${job.id}
+      `);
+
+      await db.execute(sql`
+        UPDATE zuvy_sessions
+        SET
+          youtube_video_id = ${videoId},
+          s3link = ${videoUrl},
+          final_uploaded = TRUE
+        WHERE id = ${job.session_id}
+      `);
+    }
+  }
+
+  // Shared by uploadToYoutube() and the Glacier-restore re-upload flow
+  // (pollAndCompleteRestores()) — the actual videos.insert() call, title
+  // resolution, and YouTube-specific error translation, with nothing about
+  // *why* the upload is happening (fresh upload vs. restore re-upload).
+  private async insertYoutubeVideo(
+    job: any,
+    filePath: string,
+    fileSize: number,
+  ): Promise<{ videoId: string; videoUrl: string }> {
+    this.logJob('log', job, 'Starting YouTube upload', { fileSize, filePath });
 
     try {
       const videoTitle = await this.getYoutubeUploadTitle(job);
@@ -1735,69 +2279,7 @@ export class RecordingWorkerService implements OnModuleInit {
         videoUrl: videoUrl,
       });
 
-      // Best-effort cleanup of a superseded video — this job was reopened
-      // because a later recording instance arrived after a prior upload.
-      // Never let a cleanup failure block recording the new upload as done.
-      const previousDriveFileId = job.previous_drive_file_id as
-        | string
-        | null
-        | undefined;
-      if (previousDriveFileId) {
-        try {
-          await this.youtube.videos.delete({ id: previousDriveFileId });
-          this.logJob('log', job, 'Deleted superseded YouTube video', {
-            previousDriveFileId,
-          });
-        } catch (delErr: any) {
-          this.logJob(
-            'warn',
-            job,
-            'Failed to delete superseded YouTube video',
-            {
-              previousDriveFileId,
-              error: delErr?.message ?? String(delErr),
-            },
-          );
-        }
-      }
-
-      if (job.table === 'mentor') {
-        await db.execute(sql`
-          UPDATE zuvy_mentor_session_recordings
-          SET
-            status = 'COMPLETED',
-            drive_file_id = ${videoId},
-            drive_link = ${videoUrl},
-            previous_drive_file_id = NULL
-          WHERE id = ${job.id}
-        `);
-      } else {
-        await db.execute(sql`
-          UPDATE zuvy_session_recordings
-          SET
-            status = 'COMPLETED',
-            drive_file_id = ${videoId},
-            drive_link = ${videoUrl},
-            previous_drive_file_id = NULL
-          WHERE id = ${job.id}
-        `);
-
-        await db.execute(sql`
-          UPDATE zuvy_sessions
-          SET
-            youtube_video_id = ${videoId},
-            s3link = ${videoUrl},
-            final_uploaded = TRUE
-          WHERE id = ${job.session_id}
-        `);
-      }
-      try {
-        fs.unlinkSync(filePath);
-      } catch (err: any) {
-        this.logger.warn(
-          `Unable to delete merged file ${filePath}: ${err?.message ?? String(err)}`,
-        );
-      } // cleanup
+      return { videoId, videoUrl };
     } catch (error: any) {
       this.logJob('error', job, '[YOUTUBE_UPLOAD_FAILED]', {
         message: error.message,
@@ -1828,6 +2310,706 @@ export class RecordingWorkerService implements OnModuleInit {
   }
 
   // =====================================================
+  // VERIFY YOUTUBE ASYNC PROCESSING (not just the insert() response)
+  // =====================================================
+  private async verifyYoutubeProcessing(job: any) {
+    const rec = await db.execute(sql`
+      SELECT *
+      FROM ${sql.raw(this.getTableName(job))}
+      WHERE id = ${job.id}
+    `);
+    const freshRow = rec.rows?.[0] as any;
+    job = { ...job, ...freshRow };
+
+    if (!job.drive_file_id) {
+      throw new Error(
+        `Job ${job.id} is in YOUTUBE_PROCESSING with no drive_file_id recorded`,
+      );
+    }
+
+    const res = await this.youtube.videos.list({
+      part: ['status', 'processingDetails'],
+      id: [job.drive_file_id],
+    });
+
+    const video = res.data?.items?.[0];
+    if (!video) {
+      throw new Error(
+        `YouTube returned no video for id ${job.drive_file_id} (job ${job.id})`,
+      );
+    }
+
+    const uploadStatus = video.status?.uploadStatus;
+    const processingStatus = video.processingDetails?.processingStatus;
+
+    // A genuine content rejection (copyright/policy/legal — see
+    // status.rejectionReason) is fundamentally different from every other
+    // failure category: the upload itself succeeded, YouTube looked at the
+    // *content* and refused it. Retrying with the identical file (what the
+    // generic markFailed()-driven retry loop below would do) is pointless —
+    // it re-fetches metadata and re-downloads for nothing and produces the
+    // same rejection again, burning all 5 retries before landing on
+    // PERMANENT_FAILED with no distinguishing signal from any other failure.
+    // Handled immediately and terminally instead: never thrown (so it never
+    // touches retry_count), reason captured for a human to act on, and — since
+    // the durable copy already exists — a Glacier restore kicked off right
+    // away so that copy is actually retrievable the moment someone looks,
+    // rather than someone discovering the rejection and only then remembering
+    // to request a restore. This never auto-re-uploads to YouTube — a content
+    // rejection needs a human decision (dispute it, edit the content, accept
+    // the loss), matching the durability doc's own "Act + escalate to a
+    // human, never fully automate" guidance for this exact category.
+    if (uploadStatus === 'rejected') {
+      const rejectionReason = video.status?.rejectionReason || 'unknown';
+      const tableName = this.getTableName(job);
+
+      this.logJob(
+        'error',
+        job,
+        "YouTube rejected this video's content — flagged for human review, not auto-retried",
+        { drive_file_id: job.drive_file_id, rejectionReason },
+      );
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          status = 'PERMANENT_FAILED',
+          youtube_rejection_reason = ${rejectionReason},
+          last_error = ${`YouTube rejected this video (reason: ${rejectionReason}) — needs human review, not auto-retried`}
+        WHERE id = ${job.id}
+      `);
+
+      if (job.s3_verified === true && job.s3_key) {
+        try {
+          await this.recordingS3.initiateRestore(
+            job.s3_key,
+            'Standard',
+            GLACIER_RESTORE_DAYS,
+          );
+          await db.execute(sql`
+            UPDATE ${sql.raw(tableName)}
+            SET restore_status = 'IN_PROGRESS', restore_tier = 'Standard', restore_requested_at = NOW()
+            WHERE id = ${job.id}
+          `);
+        } catch (restoreErr: any) {
+          this.logJob(
+            'warn',
+            job,
+            'Failed to auto-initiate restore for a rejected video',
+            {
+              error: restoreErr?.message ?? String(restoreErr),
+            },
+          );
+        }
+      }
+      return;
+    }
+
+    // Technical processing failures (bad codec, transcode error) are, unlike
+    // a content rejection, at least plausibly worth another look — kept on
+    // the existing retry path for now. Known limitation, not fixed here:
+    // once a job reaches YOUTUBE_PROCESSING, markFailed()'s generic retry
+    // resets status in a way uploadToYoutube()'s idempotency check (job.drive_link
+    // already set) then short-circuits past — so a retry here currently never
+    // actually re-checks verification, it just burns attempts until
+    // PERMANENT_FAILED. Real fix would keep status at YOUTUBE_PROCESSING
+    // across a retry instead of routing through the generic pipeline-restart
+    // path; out of scope for this change.
+    if (processingStatus === 'failed') {
+      throw new Error(
+        `YouTube failed processing video ${job.drive_file_id} for job ${job.id} — needs manual re-upload`,
+      );
+    }
+
+    if (processingStatus === 'succeeded' && uploadStatus === 'processed') {
+      // YouTube has already confirmed the upload — completion no longer
+      // depends on this instance's local disk at all. The merged file
+      // cleanup below is best-effort only: resolveMergedFilePath() can
+      // legitimately fail to find it here (verification can run on a
+      // different worker instance than the one that actually uploaded it —
+      // that's fine, since nothing past this point needs the file), and
+      // must never block marking the job COMPLETED.
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET status = 'COMPLETED'
+        WHERE id = ${job.id}
+      `);
+
+      try {
+        const filePath = this.resolveMergedFilePath(job, freshRow);
+        fs.unlinkSync(filePath);
+      } catch (err: any) {
+        this.logger.warn(
+          `Unable to delete merged file for job ${job.id}: ${err?.message ?? String(err)}`,
+        );
+      }
+
+      this.logJob('log', job, 'YouTube processing verified, job completed');
+      return;
+    }
+
+    // Still processing — recheck later without touching retry_count/status,
+    // so pickJob doesn't immediately re-pick this row and busy-loop within
+    // the same worker tick.
+    await db.execute(sql`
+      UPDATE ${sql.raw(this.getTableName(job))}
+      SET next_retry_at = NOW() + interval '30 seconds'
+      WHERE id = ${job.id}
+    `);
+  }
+
+  // =====================================================
+  // PERIODIC AUDIT: confirm every COMPLETED job has a verified S3 copy
+  // =====================================================
+  private async auditS3Coverage() {
+    // session_id and mentor_booking_id are mutually exclusive between these
+    // two tables (each only has its own owner column) — selecting both
+    // unconditionally on either table fails with "column ... does not
+    // exist" (confirmed live, 2026-09-21). Select only the column that
+    // actually exists on each table.
+    for (const { tableName, ownerColumn } of [
+      { tableName: 'zuvy_session_recordings', ownerColumn: 'session_id' },
+      {
+        tableName: 'zuvy_mentor_session_recordings',
+        ownerColumn: 'mentor_booking_id',
+      },
+    ]) {
+      const missing = await db.execute(sql`
+        SELECT id, ${sql.raw(ownerColumn)} AS owner_id, s3_key
+        FROM ${sql.raw(tableName)}
+        WHERE status = 'COMPLETED' AND (s3_verified IS NOT TRUE)
+        LIMIT 500
+      `);
+
+      if (missing.rows?.length) {
+        this.logger.error(
+          `[S3_AUDIT] ${missing.rows.length} completed row(s) in ${tableName} missing a verified S3 copy (showing up to 500): ${missing.rows
+            .map((r: any) => r.id)
+            .join(', ')}`,
+        );
+      }
+
+      // Rejected videos never become COMPLETED and never lose their
+      // (dead) drive_file_id, so they fall outside both
+      // runYoutubeHealthCheckRotation() (requires COMPLETED) and
+      // checkPermanentlyFailedUploads() (requires drive_file_id IS NULL) —
+      // by design, since re-uploading identical content YouTube already
+      // rejected would just get rejected again. Nothing else surfaces
+      // these, so the hourly audit is where a human finds out at all.
+      const rejected = await db.execute(sql`
+        SELECT id, youtube_rejection_reason, s3_key, restore_status
+        FROM ${sql.raw(tableName)}
+        WHERE youtube_rejection_reason IS NOT NULL
+        LIMIT 500
+      `);
+
+      if (rejected.rows?.length) {
+        this.logger.error(
+          `[S3_AUDIT] ${rejected.rows.length} row(s) in ${tableName} were rejected by YouTube and need human review (id: reason): ${rejected.rows
+            .map((r: any) => `${r.id}: ${r.youtube_rejection_reason}`)
+            .join(', ')}`,
+        );
+      }
+
+      const withKey = await db.execute(sql`
+        SELECT id, s3_key
+        FROM ${sql.raw(tableName)}
+        WHERE status = 'COMPLETED' AND s3_verified IS TRUE AND s3_key IS NOT NULL
+        LIMIT 500
+      `);
+
+      for (const row of (withKey.rows || []) as any[]) {
+        try {
+          const head = await this.recordingS3.headObject(row.s3_key);
+          if (!head.exists) {
+            this.logger.error(
+              `[S3_AUDIT] ${tableName} id=${row.id} has s3_verified=TRUE but object ${row.s3_key} is missing from S3`,
+            );
+          }
+        } catch (err: any) {
+          this.logger.error(
+            `[S3_AUDIT] Failed to check S3 object for ${tableName} id=${row.id}: ${err?.message ?? err}`,
+          );
+        }
+      }
+    }
+  }
+
+  // =====================================================
+  // NIGHTLY: YOUTUBE HEALTH CHECK + GLACIER RESTORE
+  //
+  // Covers two distinct situations with the same underlying mechanism
+  // (YouTube has no working copy of a recording, S3 does — restore from
+  // Glacier and re-upload as a new video):
+  //   1. A row that reached COMPLETED, then YouTube later lost the video
+  //      (takedown, strike, channel issue) — checkYoutubeChannelHealth() /
+  //      runYoutubeHealthCheckRotation().
+  //   2. A row whose FIRST YouTube upload attempt exhausted all retries
+  //      (PERMANENT_FAILED) before ever getting a drive_file_id, even
+  //      though the S3 leg (which always runs first) already succeeded —
+  //      checkPermanentlyFailedUploads(). This never touches the primary
+  //      Zoom -> S3 -> YouTube pipeline; it only picks up rows that
+  //      pipeline has already given up on.
+  // Both funnel into the same initiateRestoreForRow() / pollAndCompleteRestores()
+  // pair. Each phase is independently try/caught so one phase's failure
+  // never blocks the rest.
+  // =====================================================
+  @Cron('0 2 * * *', { timeZone: 'Asia/Kolkata' })
+  async runNightlyRecordingHealthCheck() {
+    if (!isHealthCheckEnabled()) {
+      return;
+    }
+
+    try {
+      await this.checkYoutubeChannelHealth();
+    } catch (err: any) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] Channel health check phase failed: ${err?.message ?? err}`,
+      );
+    }
+
+    try {
+      await this.runYoutubeHealthCheckRotation();
+    } catch (err: any) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] Health-check rotation phase failed: ${err?.message ?? err}`,
+      );
+    }
+
+    try {
+      await this.checkPermanentlyFailedUploads();
+    } catch (err: any) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] Permanently-failed-upload recovery phase failed: ${err?.message ?? err}`,
+      );
+    }
+
+    try {
+      await this.pollAndCompleteRestores();
+    } catch (err: any) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] Restore-polling phase failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  // A job whose first-ever YouTube upload attempt permanently failed (bad
+  // network, quota, transient API error exhausting all 5 retries) never
+  // gets a drive_file_id — so it can never be "lost" in the sense the two
+  // phases above check for (there's nothing on YouTube to compare against).
+  // But the S3 leg always runs before YouTube (see decisions.md §2.4), so a
+  // PERMANENT_FAILED row commonly already has a verified S3 copy sitting
+  // unused in Glacier. No YouTube API call needed to detect this — the
+  // absence of drive_file_id is already conclusive.
+  //
+  // `drive_file_id IS NULL` also deliberately excludes a video YouTube
+  // rejected for content reasons (see verifyYoutubeProcessing()) — those
+  // keep their dead drive_file_id forever and are surfaced separately via
+  // auditS3Coverage(), never auto-restored-and-reuploaded here. Don't
+  // "simplify" this condition away — a rejected video re-uploaded unchanged
+  // just gets rejected again, silently burning a Glacier restore for nothing.
+  private async checkPermanentlyFailedUploads(): Promise<void> {
+    for (const tableName of [
+      'zuvy_session_recordings',
+      'zuvy_mentor_session_recordings',
+    ]) {
+      const result = await db.execute(sql`
+        SELECT *
+        FROM ${sql.raw(tableName)}
+        WHERE status = 'PERMANENT_FAILED'
+          AND drive_file_id IS NULL
+          AND s3_verified IS TRUE
+          AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
+        LIMIT 1000
+      `);
+
+      for (const row of (result.rows || []) as any[]) {
+        this.logger.warn(
+          `[YOUTUBE_HEALTH] ${tableName} id=${row.id} permanently failed its first YouTube upload but has a verified S3 copy — recovering via restore path`,
+        );
+        await this.initiateRestoreForRow(tableName, row);
+      }
+    }
+  }
+
+  // Cheap, single-call check: does the upload channel itself still exist and
+  // accept uploads? Only acts on an unambiguous signal (zero channels
+  // returned, or a 401/403) — a generic/transient error is logged and
+  // skipped, never treated as evidence of channel loss.
+  private async checkYoutubeChannelHealth(): Promise<void> {
+    let channelsFound: number | null = null;
+
+    try {
+      const res = await this.youtube.channels.list({
+        part: ['id'],
+        mine: true,
+      });
+      channelsFound = res.data?.items?.length ?? 0;
+    } catch (err: any) {
+      const status = err?.code || err?.response?.status;
+      if (status === 401 || status === 403) {
+        channelsFound = 0;
+      } else {
+        this.logger.warn(
+          `[YOUTUBE_HEALTH] Channel health check failed with an ambiguous error, skipping this run: ${err?.message ?? err}`,
+        );
+        return;
+      }
+    }
+
+    if (channelsFound > 0) {
+      return;
+    }
+
+    this.logger.error(
+      '[YOUTUBE_HEALTH] YouTube channel is unreachable (no channels returned / credentials revoked) — flagging every completed recording on it for restore',
+    );
+
+    for (const tableName of [
+      'zuvy_session_recordings',
+      'zuvy_mentor_session_recordings',
+    ]) {
+      const flagged = await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET youtube_lost_detected_at = COALESCE(youtube_lost_detected_at, NOW())
+        WHERE status = 'COMPLETED' AND drive_file_id IS NOT NULL AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
+        RETURNING *
+      `);
+
+      for (const row of (flagged.rows || []) as any[]) {
+        await this.initiateRestoreForRow(tableName, row);
+      }
+    }
+  }
+
+  // Rotating, bounded sample so every completed recording eventually gets
+  // checked without spiking YouTube API quota in one run. Flags a video as
+  // lost only on the two unambiguous signals from the durability strategy
+  // doc (missing / rejected) — a Content ID claim, mute, or geo-block is not
+  // a restore trigger, since re-uploading wouldn't fix any of those anyway.
+  private async runYoutubeHealthCheckRotation(): Promise<void> {
+    for (const tableName of [
+      'zuvy_session_recordings',
+      'zuvy_mentor_session_recordings',
+    ]) {
+      const result = await db.execute(sql`
+        SELECT *
+        FROM ${sql.raw(tableName)}
+        WHERE status = 'COMPLETED' AND (restore_status IS NULL OR restore_status != 'IN_PROGRESS')
+        ORDER BY youtube_last_checked_at ASC NULLS FIRST
+        LIMIT 1000
+      `);
+
+      for (const row of (result.rows || []) as any[]) {
+        if (!row.drive_file_id) continue;
+
+        let lost = false;
+        try {
+          const res = await this.youtube.videos.list({
+            part: ['status'],
+            id: [row.drive_file_id],
+          });
+          const item = res.data?.items?.[0];
+          lost = !item || item.status?.uploadStatus === 'rejected';
+        } catch (err: any) {
+          // Don't stamp youtube_last_checked_at on a transient failure —
+          // leave it at the front of the rotation for tomorrow instead of
+          // losing its place for a full cycle.
+          this.logger.warn(
+            `[YOUTUBE_HEALTH] Failed to check video ${row.drive_file_id} (${tableName} id=${row.id}): ${err?.message ?? err}`,
+          );
+          continue;
+        }
+
+        await db.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET youtube_last_checked_at = NOW()
+          WHERE id = ${row.id}
+        `);
+
+        if (lost) {
+          await this.initiateRestoreForRow(tableName, row);
+        }
+      }
+    }
+  }
+
+  // Shared by the channel check and the rotation check.
+  private async initiateRestoreForRow(
+    tableName: string,
+    row: any,
+  ): Promise<void> {
+    if (row.s3_verified !== true) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] ${tableName} id=${row.id} lost its YouTube video but has no verified S3 copy to restore from — needs manual attention`,
+      );
+      return;
+    }
+
+    const tier = await this.computeRestoreTier(tableName, row);
+
+    try {
+      await this.recordingS3.initiateRestore(
+        row.s3_key,
+        tier,
+        GLACIER_RESTORE_DAYS,
+      );
+      await db.execute(sql`
+        UPDATE ${sql.raw(tableName)}
+        SET
+          restore_status = 'IN_PROGRESS',
+          restore_tier = ${tier},
+          restore_requested_at = NOW(),
+          youtube_lost_detected_at = COALESCE(youtube_lost_detected_at, NOW())
+        WHERE id = ${row.id}
+      `);
+      this.logger.warn(
+        `[YOUTUBE_HEALTH] ${tableName} id=${row.id} lost its YouTube video, initiated Glacier restore (tier=${tier})`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `[YOUTUBE_HEALTH] Failed to initiate restore for ${tableName} id=${row.id}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  // Simple, robust heuristic — keys off zuvy_sessions.start_time (unambiguous
+  // timestamp semantics) rather than zuvyBootcamps.duration (unit isn't
+  // specified in the schema). A bootcamp with a recent or future session is
+  // treated as active and gets faster (pricier) retrieval; an archived
+  // bootcamp gets the cheapest tier. Mentor recordings have no bootcamp
+  // concept to key off, so they always get the cheap default.
+  private async computeRestoreTier(
+    tableName: string,
+    row: any,
+  ): Promise<'Expedited' | 'Standard' | 'Bulk'> {
+    const envTier = process.env.GLACIER_RESTORE_TIER as any;
+    if (
+      envTier === 'Expedited' ||
+      envTier === 'Standard' ||
+      envTier === 'Bulk'
+    ) {
+      return envTier;
+    }
+
+    if (tableName !== 'zuvy_session_recordings' || !row.session_id) {
+      return 'Bulk';
+    }
+
+    const sessionRow = await db.execute(sql`
+      SELECT bootcamp_id FROM zuvy_sessions WHERE id = ${row.session_id}
+    `);
+    const bootcampId = (sessionRow.rows?.[0] as any)?.bootcamp_id;
+    if (!bootcampId) return 'Bulk';
+
+    const latest = await db.execute(sql`
+      SELECT MAX(start_time::timestamptz) as latest FROM zuvy_sessions WHERE bootcamp_id = ${bootcampId}
+    `);
+    const latestStart = (latest.rows?.[0] as any)?.latest;
+    if (!latestStart) return 'Bulk';
+
+    const daysSince =
+      (Date.now() - new Date(latestStart).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince <= 7) return 'Expedited';
+    return daysSince <= 45 ? 'Standard' : 'Bulk';
+  }
+
+  // Checks whether a restored video should use S3 Direct Playback instead of re-uploading to YouTube
+  // (e.g. policy violations, YouTube rejections, repeated deletions, or env override)
+  private async shouldFallbackToS3Playback(
+    tableName: string,
+    row: any,
+  ): Promise<boolean> {
+    // 1. Explicit env flag
+    if (process.env.RESTORE_FALLBACK_TO_S3 === 'true') {
+      return true;
+    }
+
+    // 2. YouTube explicitly rejected content (copyright, community guidelines, etc.)
+    if (row.youtube_rejection_reason) {
+      return true;
+    }
+
+    // 3. Repeated deletion: video was already restored once (or previously had a working drive_file_id) and broke again
+    if (
+      row.previous_drive_file_id ||
+      (row.restore_requested_at && row.restore_status === 'AVAILABLE')
+    ) {
+      return true;
+    }
+
+    // 4. Policy violation email received in the last 48 hours
+    try {
+      const recentViolation = await db.execute(sql`
+        SELECT id, classification FROM zuvy_youtube_violation_emails
+        WHERE classification IS NOT NULL
+          AND classification NOT IN ('unclassified_youtube_sender')
+          AND created_at >= NOW() - INTERVAL '48 hours'
+        LIMIT 1
+      `);
+      if (recentViolation.rows && recentViolation.rows.length > 0) {
+        this.logger.log(
+          `[S3_DIRECT_FALLBACK] Found recent policy violation email (id=${(recentViolation.rows[0] as any).id}, classification=${(recentViolation.rows[0] as any).classification}) — routing restore to S3 Direct Playback`,
+        );
+        return true;
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to query violation emails for fallback determination: ${err?.message ?? err}`,
+      );
+    }
+
+    return false;
+  }
+
+  // For rows with restore_status = 'IN_PROGRESS': check if the Glacier
+  // restore has completed, and if so, either re-upload to YouTube (clean case)
+  // or serve via S3 Direct Playback Fallback (policy violations/repeated loss).
+  private async pollAndCompleteRestores(): Promise<void> {
+    for (const tableName of [
+      'zuvy_session_recordings',
+      'zuvy_mentor_session_recordings',
+    ]) {
+      const result = await db.execute(sql`
+        SELECT * FROM ${sql.raw(tableName)} WHERE restore_status = 'IN_PROGRESS'
+      `);
+
+      for (const row of (result.rows || []) as any[]) {
+        const job = {
+          ...row,
+          table:
+            tableName === 'zuvy_mentor_session_recordings'
+              ? 'mentor'
+              : 'session',
+        };
+
+        try {
+          const status = await this.recordingS3.getRestoreStatus(row.s3_key);
+          if (!status.available) {
+            continue; // still restoring — checked again tomorrow night
+          }
+
+          // Check if we should use S3 Direct Playback Fallback instead of re-uploading to YouTube
+          // (policy violations, repeated deletions, or env override)
+          const useS3DirectPlayback = await this.shouldFallbackToS3Playback(
+            tableName,
+            row,
+          );
+
+          if (useS3DirectPlayback) {
+            this.logger.warn(
+              `[S3_DIRECT_FALLBACK] Restoring ${tableName} id=${row.id} via S3 Direct Playback Fallback (avoiding repeated YouTube deletion/policy violation)`,
+            );
+
+            // 1. Promote restored Glacier object to STANDARD storage class so it never expires back to Glacier
+            await this.recordingS3.copyToStandard(row.s3_key);
+
+            // 2. Generate direct S3 playback link (CloudFront if configured, or long-lived presigned URL)
+            const s3PlaybackUrl = await this.recordingS3.getPlaybackUrl(
+              row.s3_key,
+            );
+
+            // 3. Update database records
+            await db.execute(sql`
+              UPDATE ${sql.raw(tableName)}
+              SET
+                drive_file_id = 'S3_DIRECT',
+                drive_link = ${s3PlaybackUrl},
+                restore_status = 'AVAILABLE',
+                status = 'COMPLETED',
+                updated_at = NOW()
+              WHERE id = ${row.id}
+            `);
+
+            if (tableName === 'zuvy_session_recordings') {
+              await db.execute(sql`
+                UPDATE zuvy_sessions
+                SET
+                  youtube_video_id = NULL,
+                  s3link = ${s3PlaybackUrl},
+                  final_uploaded = TRUE,
+                  recording_s3_bucket = ${row.s3_bucket || this.recordingS3.getBucket()},
+                  recording_s3_key = ${row.s3_key}
+                WHERE id = ${row.session_id}
+              `);
+            }
+
+            this.logJob(
+              'log',
+              job,
+              'Recovered recording restored from Glacier to S3 Direct Playback Fallback',
+              { s3PlaybackUrl },
+            );
+            continue;
+          }
+
+          const localPath = path.join(
+            process.cwd(),
+            'temp-recordings',
+            `restored-${row.id}.mp4`,
+          );
+          await this.recordingS3.downloadObject(row.s3_key, localPath);
+          await this.validateVideoFile(localPath);
+
+          const fileSize = fs.statSync(localPath).size;
+          const { videoId, videoUrl } = await this.insertYoutubeVideo(
+            job,
+            localPath,
+            fileSize,
+          );
+
+          await db.execute(sql`
+            UPDATE ${sql.raw(tableName)}
+            SET
+              drive_file_id = ${videoId},
+              drive_link = ${videoUrl},
+              restore_status = 'AVAILABLE',
+              status = 'COMPLETED'
+            WHERE id = ${row.id}
+          `);
+
+          if (tableName === 'zuvy_session_recordings') {
+            await db.execute(sql`
+              UPDATE zuvy_sessions
+              SET
+                youtube_video_id = ${videoId},
+                s3link = ${videoUrl},
+                final_uploaded = TRUE,
+                recording_s3_bucket = ${row.s3_bucket || this.recordingS3.getBucket()},
+                recording_s3_key = ${row.s3_key}
+              WHERE id = ${row.session_id}
+            `);
+          }
+
+          try {
+            fs.unlinkSync(localPath);
+          } catch (err: any) {
+            this.logger.warn(
+              `Unable to delete restored file ${localPath}: ${err?.message ?? err}`,
+            );
+          }
+
+          this.logJob(
+            'log',
+            job,
+            'Recovered recording restored from Glacier and re-uploaded to YouTube',
+            { videoId },
+          );
+        } catch (err: any) {
+          this.logger.error(
+            `[YOUTUBE_HEALTH] Restore/re-upload failed for ${tableName} id=${row.id}: ${err?.message ?? err}`,
+          );
+          await db.execute(sql`
+            UPDATE ${sql.raw(tableName)}
+            SET restore_status = 'FAILED'
+            WHERE id = ${row.id}
+          `);
+        }
+      }
+    }
+  }
+
+  // =====================================================
   // FAILURE HANDLING (RETRY SAFE)
   // =====================================================
   private async markFailed(job: RecordingJob, error: Error) {
@@ -1840,6 +3022,43 @@ export class RecordingWorkerService implements OnModuleInit {
       terminal: isTerminal,
       retryCount: nextRetryCount,
     });
+
+    if (isTerminal) {
+      // Best-effort: don't leave an abandoned multipart upload silently
+      // accruing S3 storage cost once this job gives up for good.
+      try {
+        const rec = await db.execute(sql`
+          SELECT s3_key, s3_multipart_upload_id
+          FROM ${sql.raw(this.getTableName(job))}
+          WHERE id = ${job.id}
+        `);
+        const row = rec.rows?.[0] as any;
+        if (row?.s3_multipart_upload_id) {
+          await this.recordingS3.abortMultipartUpload(
+            row.s3_key,
+            row.s3_multipart_upload_id,
+          );
+        }
+      } catch (abortErr: any) {
+        this.logger.warn(
+          `Failed to check/abort multipart upload for job ${job.id}: ${abortErr?.message ?? abortErr}`,
+        );
+      }
+    }
+
+    // pickJob() only re-selects a 'FAILED' row when drive_link IS NULL (its
+    // WHERE clause is `drive_link IS NULL OR status = 'YOUTUBE_PROCESSING'`,
+    // meant to stop it from re-touching a job that already finished
+    // uploading). A job that fails *after* the YouTube upload already
+    // succeeded (e.g. verifyYoutubeProcessing() hits a transient API error)
+    // already has drive_link set, so collapsing it to plain 'FAILED' here
+    // made it permanently unpickable — stuck forever, never retried, despite
+    // retry_count being nowhere near MAX_RETRIES (confirmed live: jobs 2110/
+    // 2111, "Insufficient Permission" during verification, retry_count 1 and
+    // 3, drive_link populated, orphaned in FAILED). Route it back to
+    // 'YOUTUBE_PROCESSING' instead so pickJob()'s special-case keeps
+    // selecting it for re-verification.
+    const retryStatus = job.drive_link ? 'YOUTUBE_PROCESSING' : 'FAILED';
 
     if (job.table === 'mentor') {
       await db.execute(
@@ -1856,7 +3075,7 @@ export class RecordingWorkerService implements OnModuleInit {
           : sql`
               UPDATE zuvy_mentor_session_recordings
               SET
-                status = 'FAILED',
+                status = ${retryStatus},
                 retry_count = ${nextRetryCount},
                 next_retry_at = ${nextRetry},
                 last_error = ${error.message}
@@ -1878,7 +3097,7 @@ export class RecordingWorkerService implements OnModuleInit {
           : sql`
               UPDATE zuvy_session_recordings
               SET
-                status = 'FAILED',
+                status = ${retryStatus},
                 retry_count = ${nextRetryCount},
                 next_retry_at = ${nextRetry},
                 last_error = ${error.message}

@@ -99,9 +99,6 @@ export class TrackingService {
    */
   async recomputeBatchAttendancePercentages(batchId: number) {
     try {
-      // ensure we have a logger
-      if (!this.logger) this.logger = console;
-
       // 1. Fetch all completed sessions where this batch participated (primary or secondary)
       const sessions =
         await this.attendanceCalc.getCompletedSessionsForBatch(batchId);
@@ -1546,7 +1543,10 @@ export class TrackingService {
           session.s3link !== '' &&
           session.status === 'completed' &&
           session.isZoomMeet &&
-          !session.s3link.includes('www.youtube.com')
+          !session.s3link.includes('www.youtube.com') &&
+          !session.s3link.includes('amazonaws.com') &&
+          (!process.env.S3_CLOUDFRONT_DOMAIN ||
+            !session.s3link.includes(process.env.S3_CLOUDFRONT_DOMAIN))
         ) {
           const updatedRecordingLink =
             await this.zoomService.getMeetingRecordingLink(

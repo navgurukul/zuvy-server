@@ -127,7 +127,7 @@ export function toSchoolRow(
   columns: ColumnMap,
 ): { school: SchoolRow } | { reason: string } {
   const cell = (key: Field) =>
-    columns.has(key) ? (values[columns.get(key)] ?? '') : '';
+    columns.has(key) ? values[columns.get(key)] ?? '' : '';
 
   const status = cleanText(cell('status'));
   if (status && status.toLowerCase() !== 'operational') {
