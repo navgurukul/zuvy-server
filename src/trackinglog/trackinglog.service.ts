@@ -2,6 +2,7 @@ import {
   Injectable,
   ForbiddenException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { CreateTrackinglogDto } from './dto/create-trackinglog.dto';
@@ -22,12 +23,22 @@ import { eq, and, desc, sql, lt, isNull, or } from 'drizzle-orm';
 
 @Injectable()
 export class TrackinglogService {
+  // In-memory cache for permission lookups to avoid repeated DB hits
+  private permissionCache = new Map<
+    string,
+    { permissionId: number | null; resourceId: number | null }
+  >();
+
   /**
    * Returns both permission ID and the resource ID from zuvy_resources table
    */
   private async getPermissionAndResourceId(
     permissionName: string,
   ): Promise<{ permissionId: number | null; resourceId: number | null }> {
+    if (this.permissionCache.has(permissionName)) {
+      return this.permissionCache.get(permissionName)!;
+    }
+
     try {
       // Permission name format: "createCourse", "editBootcamp", "enrollStudent", "createChapter" etc.
       // Extract action and resource from permission name
@@ -35,7 +46,9 @@ export class TrackinglogService {
         /^(create|edit|delete|view|publish|lock|assign|download|reattempt|enroll|unenroll|mark|submit|grade|approve|reject)(.+)$/i,
       );
       if (!match) {
-        return { permissionId: null, resourceId: null };
+        const result = { permissionId: null, resourceId: null };
+        this.permissionCache.set(permissionName, result);
+        return result;
       }
 
       const [, actionRaw, resourceName] = match;
@@ -62,37 +75,51 @@ export class TrackinglogService {
         // Try alternative names
         const alternativeKeys = ['content', 'module', 'topic'];
 
-        for (const altKey of alternativeKeys) {
-          const altResource = await db
-            .select({ id: zuvyResources.id })
-            .from(zuvyResources)
-            .where(sql`LOWER(${zuvyResources.key}) = ${altKey.toLowerCase()}`)
-            .limit(1);
-
-          if (altResource.length > 0) {
-            const resourceId = altResource[0].id;
-
-            // Now find permission with this resource
-            const permission = await db
-              .select()
-              .from(zuvyPermissions)
-              .where(
-                and(
-                  sql`LOWER(${zuvyPermissions.name}) = ${action}`,
-                  eq(zuvyPermissions.resourcesId, resourceId),
-                ),
-              )
+        // Parallelize alternative resource queries and subsequent permission lookups
+        const altLookups = await Promise.all(
+          alternativeKeys.map(async (altKey) => {
+            const altResource = await db
+              .select({ id: zuvyResources.id })
+              .from(zuvyResources)
+              .where(sql`LOWER(${zuvyResources.key}) = ${altKey.toLowerCase()}`)
               .limit(1);
 
-            if (permission.length > 0) {
+            if (altResource.length > 0) {
+              const resourceId = altResource[0].id;
+              const permission = await db
+                .select()
+                .from(zuvyPermissions)
+                .where(
+                  and(
+                    sql`LOWER(${zuvyPermissions.name}) = ${action}`,
+                    eq(zuvyPermissions.resourcesId, resourceId),
+                  ),
+                )
+                .limit(1);
+
               return {
-                permissionId: permission[0].id,
-                resourceId: resourceId,
+                resourceId,
+                permissionId: permission.length > 0 ? permission[0].id : null,
               };
             }
+            return null;
+          }),
+        );
+
+        for (const lookup of altLookups) {
+          if (lookup && lookup.permissionId !== null) {
+            const result = {
+              permissionId: lookup.permissionId,
+              resourceId: lookup.resourceId,
+            };
+            this.permissionCache.set(permissionName, result);
+            return result;
           }
         }
-        return { permissionId: null, resourceId: null };
+
+        const result = { permissionId: null, resourceId: null };
+        this.permissionCache.set(permissionName, result);
+        return result;
       }
 
       const resourceId = resource[0].id;
@@ -109,19 +136,15 @@ export class TrackinglogService {
         )
         .limit(1);
 
-      if (permission.length > 0) {
-        return {
-          permissionId: permission[0].id,
-          resourceId: resourceId,
-        };
-      } else {
-        return {
-          permissionId: null,
-          resourceId: resourceId, // Return resource ID even if permission not found
-        };
-      }
+      const result = {
+        permissionId: permission.length > 0 ? permission[0].id : null,
+        resourceId: resourceId, // Return resource ID even if permission not found
+      };
+
+      this.permissionCache.set(permissionName, result);
+      return result;
     } catch (error) {
-      console.error('[DEBUG] Error in getPermissionAndResourceId:', error);
+      Logger.error('Error in getPermissionAndResourceId:', error);
       return { permissionId: null, resourceId: null };
     }
   }
@@ -167,7 +190,11 @@ export class TrackinglogService {
   /**
    * Find all tracking logs with filtering and pagination
    */
-  async findAll(query: QueryTrackinglogDto, userRole?: string) {
+  async findAll(
+    query: QueryTrackinglogDto,
+    userRoles: string[] = [],
+    userOrgId?: number,
+  ) {
     try {
       let {
         orgId,
@@ -180,6 +207,32 @@ export class TrackinglogService {
         timeRange,
         search,
       } = query;
+
+      // Enforce scoping server-side
+      const isSuperAdmin = userRoles.includes('super_admin');
+      if (!isSuperAdmin) {
+        if (!userRoles.includes('admin')) {
+          throw new ForbiddenException(
+            'Only administrators can view tracking logs',
+          );
+        }
+
+        if (!userOrgId) {
+          throw new ForbiddenException('User organization context is missing');
+        }
+
+        if (
+          orgId !== undefined &&
+          orgId !== null &&
+          Number(orgId) !== userOrgId
+        ) {
+          throw new ForbiddenException(
+            'Forbidden - Cannot access tracking logs of another organization',
+          );
+        }
+
+        orgId = userOrgId as any;
+      }
 
       // Convert to numbers with defaults
       offset = Number(offset) || 0;
@@ -489,7 +542,7 @@ export class TrackinglogService {
 
     // After all retries failed, log but DON'T throw
     // This ensures logging failures never break API responses
-    console.error(
+    Logger.error(
       '[TrackingLog] Failed to save log after retries:',
       lastError?.message || lastError,
     );
@@ -663,9 +716,10 @@ export class TrackinglogService {
         deletedCount,
       };
     } catch (error) {
-      throw new InternalServerErrorException(
+      Logger.error(
         'Failed to delete old tracking logs',
-        (error as Error).message,
+        (error as Error).stack,
+        'TrackingLogService',
       );
     }
   }

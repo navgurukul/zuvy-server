@@ -18,39 +18,41 @@ export class ResourcesService {
 
   async createResource(createResourceDto: CreateResourceDto) {
     try {
-      // Create the resource first
-      const [resource] = await db
-        .insert(zuvyResources)
-        .values(createResourceDto)
-        .returning();
+      return await db.transaction(async (tx) => {
+        // Create the resource first
+        const [resource] = await tx
+          .insert(zuvyResources)
+          .values(createResourceDto)
+          .returning();
 
-      // Create default permissions for this resource
-      const defaultPermissions = [
-        {
-          name: permissions.CREATE,
-          resourcesId: resource.id,
-          description: `Create ${createResourceDto.name}`,
-        },
-        {
-          name: permissions.READ,
-          resourcesId: resource.id,
-          description: `Read ${createResourceDto.name}`,
-        },
-        {
-          name: permissions.EDIT,
-          resourcesId: resource.id,
-          description: `Update ${createResourceDto.name}`,
-        },
-        {
-          name: permissions.DELETE,
-          resourcesId: resource.id,
-          description: `Delete ${createResourceDto.name}`,
-        },
-      ];
+        // Create default permissions for this resource
+        const defaultPermissions = [
+          {
+            name: permissions.CREATE,
+            resourcesId: resource.id,
+            description: `Create ${createResourceDto.name}`,
+          },
+          {
+            name: permissions.READ,
+            resourcesId: resource.id,
+            description: `Read ${createResourceDto.name}`,
+          },
+          {
+            name: permissions.EDIT,
+            resourcesId: resource.id,
+            description: `Update ${createResourceDto.name}`,
+          },
+          {
+            name: permissions.DELETE,
+            resourcesId: resource.id,
+            description: `Delete ${createResourceDto.name}`,
+          },
+        ];
 
-      await db.insert(zuvyPermissions).values(defaultPermissions);
+        await tx.insert(zuvyPermissions).values(defaultPermissions);
 
-      return resource;
+        return resource;
+      });
     } catch (error) {
       this.logger.error('Failed to create resource:', error);
       throw error;
