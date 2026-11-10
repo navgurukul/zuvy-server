@@ -3,9 +3,8 @@ import { z } from 'zod';
 
 const McqItemSchema = z.object({
   question: z.string(),
-  solution: z.string().optional(),
   options: z.record(z.string(), z.string()),
-  correctOption: z.number().int(),
+  correctOption: z.number(),
   difficulty: z.string().optional(),
   topic: z.string().optional(),
   language: z.string().optional(),
@@ -16,12 +15,6 @@ export const LlmMcqSchema = z.object({
 });
 
 export type LlmMcq = z.infer<typeof LlmMcqSchema>;
-
-export class GenerationRefusedError extends Error {
-  constructor(public readonly reason: string) {
-    super(`Model declined to generate: ${reason}`);
-  }
-}
 
 export function stripFencesAndNoise(raw: string) {
   if (!raw) return raw;
@@ -81,17 +74,6 @@ export function parseLlmMcq(raw: string): LlmMcq {
   let candidate: unknown = parsed;
   if (Array.isArray(parsed)) {
     candidate = { evaluations: parsed };
-  }
-
-  if (
-    candidate &&
-    typeof candidate === 'object' &&
-    (candidate as Record<string, unknown>).error === 'GENERATION_FAILED'
-  ) {
-    const reason = (candidate as Record<string, unknown>).reason;
-    throw new GenerationRefusedError(
-      typeof reason === 'string' && reason.trim() ? reason : 'no reason given',
-    );
   }
 
   const result = LlmMcqSchema.safeParse(candidate);
