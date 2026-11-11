@@ -10,7 +10,7 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, lt, gt } from 'drizzle-orm';
 import { ZoomLicenseService } from '../../zoom-license/zoom-license.service';
 
 @Injectable()
@@ -85,37 +85,97 @@ export class MentorRecurrenceService {
       return generatedSlots;
     }
 
-    await db.transaction(async (trx) => {
-      /* Conflict Detection */
-      for (const slot of generatedSlots) {
-        const conflicts = await trx
-          .select({ id: zuvyMentorSlotAvailability.id })
-          .from(zuvyMentorSlotAvailability)
-          .innerJoin(
-            zuvyMentorSlotManagement,
-            eq(
-              zuvyMentorSlotAvailability.mentorSlotManagementId,
-              zuvyMentorSlotManagement.id,
-            ),
-          )
-          .where(
-            and(
-              eq(
-                zuvyMentorSlotManagement.mentorUserId,
-                mentorProfile.mentorUserId,
-              ),
-              sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${slot.slotEndDateTime}`,
-              sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${slot.slotStartDateTime}`,
-            ),
-          );
+    // Two ranges [aStart,aEnd) and [bStart,bEnd) overlap iff aStart < bEnd
+    // AND aEnd > bStart.
+    const overlaps = (
+      aStart: Date,
+      aEnd: Date,
+      bStart: Date,
+      bEnd: Date,
+    ): boolean => aStart < bEnd && aEnd > bStart;
 
-        if (conflicts.length > 0) {
+    // Occurrences generated in THIS call were never checked against each
+    // other before — only against rows already in the DB — so a cadence
+    // shorter than the slot duration (e.g. a daily RRULE with 2h slots and
+    // <2h between occurrences) could self-overlap undetected. See MDA-17.
+    for (let i = 0; i < generatedSlots.length; i += 1) {
+      for (let j = i + 1; j < generatedSlots.length; j += 1) {
+        if (
+          overlaps(
+            generatedSlots[i].slotStartDateTime,
+            generatedSlots[i].slotEndDateTime,
+            generatedSlots[j].slotStartDateTime,
+            generatedSlots[j].slotEndDateTime,
+          )
+        ) {
           throw new BadRequestException(
-            'Recurring slot conflicts with existing mentor availability.',
+            'Recurring slots overlap each other — check the recurrence cadence against the slot duration.',
           );
         }
       }
+    }
 
+    await db.transaction(async (trx) => {
+      /* Conflict Detection — one query covering the whole affected window
+         instead of one query per occurrence (up to 200 round trips before
+         this fix). See MDA-16. */
+      const windowStart = new Date(
+        Math.min(...generatedSlots.map((s) => s.slotStartDateTime.getTime())),
+      );
+      const windowEnd = new Date(
+        Math.max(...generatedSlots.map((s) => s.slotEndDateTime.getTime())),
+      );
+
+      const existingSlotsInWindow = await trx
+        .select({
+          slotStartDateTime: zuvyMentorSlotAvailability.slotStartDateTime,
+          slotEndDateTime: zuvyMentorSlotAvailability.slotEndDateTime,
+        })
+        .from(zuvyMentorSlotAvailability)
+        .innerJoin(
+          zuvyMentorSlotManagement,
+          eq(
+            zuvyMentorSlotAvailability.mentorSlotManagementId,
+            zuvyMentorSlotManagement.id,
+          ),
+        )
+        .where(
+          and(
+            eq(
+              zuvyMentorSlotManagement.mentorUserId,
+              mentorProfile.mentorUserId,
+            ),
+            lt(zuvyMentorSlotAvailability.slotStartDateTime, windowEnd),
+            gt(zuvyMentorSlotAvailability.slotEndDateTime, windowStart),
+          ),
+        );
+
+      const hasConflict = generatedSlots.some((slot) =>
+        existingSlotsInWindow.some((existing) =>
+          overlaps(
+            new Date(existing.slotStartDateTime),
+            new Date(existing.slotEndDateTime),
+            slot.slotStartDateTime,
+            slot.slotEndDateTime,
+          ),
+        ),
+      );
+
+      if (hasConflict) {
+        throw new BadRequestException(
+          'Recurring slot conflicts with existing mentor availability.',
+        );
+      }
+
+      // NOTE: the license-assignment loop below is deliberately left
+      // sequential, not parallelized. assignLicense can perform a real,
+      // stateful Zoom-side license transfer (downgrading a different
+      // mentor's account to free a seat) when the host isn't already
+      // licensed for a window — running several of those concurrently risks
+      // two calls racing to claim the same donor. That's a correctness risk
+      // in a subsystem with a long history of its own bugfix branches, not
+      // something to parallelize as a drive-by performance change. See the
+      // note on MDA-10 for the same reasoning.
       const licenseIds: number[] = [];
 
       for (const slot of generatedSlots) {

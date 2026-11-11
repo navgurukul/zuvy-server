@@ -7,7 +7,7 @@ import {
   zuvyStudentBookingMetrics,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, gte } from 'drizzle-orm';
+import { and, eq, lt, gte, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class MentorSlotJob {
@@ -19,6 +19,9 @@ export class MentorSlotJob {
   async handleSessionTransitions() {
     const now = new Date();
 
+    // Only SCHEDULED/IN_PROGRESS bookings can transition at all — every other
+    // state (COMPLETED/CANCELLED/MISSED/RESCHEDULE_PENDING) is a dead end for
+    // this job, so there's no reason to ever load them.
     const bookings = await db
       .select({
         bookingId: zuvyMentorSlotBooking.id,
@@ -34,42 +37,62 @@ export class MentorSlotJob {
           zuvyMentorSlotBooking.slotAvailabilityId,
           zuvyMentorSlotAvailability.id,
         ),
+      )
+      .where(
+        inArray(zuvyMentorSlotBooking.sessionLifecycleState, [
+          'SCHEDULED',
+          'IN_PROGRESS',
+        ]),
       );
+
+    // The three transitions below are mutually exclusive per row (gated by
+    // lifecycle state plus now-vs-start/end, which can't both hold at once),
+    // so grouping ids by target state and issuing one bulk UPDATE per group
+    // is equivalent to the old one-UPDATE-per-row loop, just O(3) queries
+    // instead of O(bookings.length).
+    const toInProgress: number[] = [];
+    const toCompleted: number[] = [];
+    const toMissed: number[] = [];
 
     for (const b of bookings) {
       const start = new Date(b.slotStart);
       const end = new Date(b.slotEnd);
 
-      // SCHEDULED → IN_PROGRESS
       if (b.lifecycle === 'SCHEDULED' && now >= start && now < end) {
-        await db
-          .update(zuvyMentorSlotBooking)
-          .set({
-            sessionLifecycleState: 'IN_PROGRESS',
-          } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-          .where(eq(zuvyMentorSlotBooking.id, b.bookingId));
+        toInProgress.push(b.bookingId);
+      } else if (b.lifecycle === 'IN_PROGRESS' && now >= end) {
+        toCompleted.push(b.bookingId);
+      } else if (b.lifecycle === 'SCHEDULED' && now >= end && !b.joinedAt) {
+        toMissed.push(b.bookingId);
       }
+    }
 
-      // IN_PROGRESS → COMPLETED
-      if (b.lifecycle === 'IN_PROGRESS' && now >= end) {
-        await db
-          .update(zuvyMentorSlotBooking)
-          .set({
-            sessionLifecycleState: 'COMPLETED',
-            completedAt: now,
-          } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-          .where(eq(zuvyMentorSlotBooking.id, b.bookingId));
-      }
+    if (toInProgress.length > 0) {
+      await db
+        .update(zuvyMentorSlotBooking)
+        .set({
+          sessionLifecycleState: 'IN_PROGRESS',
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(inArray(zuvyMentorSlotBooking.id, toInProgress));
+    }
 
-      // SCHEDULED → MISSED
-      if (b.lifecycle === 'SCHEDULED' && now >= end && !b.joinedAt) {
-        await db
-          .update(zuvyMentorSlotBooking)
-          .set({
-            sessionLifecycleState: 'MISSED',
-          } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-          .where(eq(zuvyMentorSlotBooking.id, b.bookingId));
-      }
+    if (toCompleted.length > 0) {
+      await db
+        .update(zuvyMentorSlotBooking)
+        .set({
+          sessionLifecycleState: 'COMPLETED',
+          completedAt: now,
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(inArray(zuvyMentorSlotBooking.id, toCompleted));
+    }
+
+    if (toMissed.length > 0) {
+      await db
+        .update(zuvyMentorSlotBooking)
+        .set({
+          sessionLifecycleState: 'MISSED',
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(inArray(zuvyMentorSlotBooking.id, toMissed));
     }
   }
 

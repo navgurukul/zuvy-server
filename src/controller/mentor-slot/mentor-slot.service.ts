@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
@@ -47,6 +48,8 @@ import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 
 @Injectable()
 export class MentorSlotService {
+  private readonly logger = new Logger(MentorSlotService.name);
+
   constructor(
     private readonly googleCalendarService: GoogleCalendarService,
     private readonly notificationService: NotificationService,
@@ -268,6 +271,30 @@ export class MentorSlotService {
     return booking;
   }
 
+  // Shared by markAttendance/completeSession: both need the booking row
+  // either way (to check it isn't cancelled), but only need the ownership
+  // check when a mentorUserId was actually supplied.
+  private async loadBookingForOwnedAction(
+    bookingId: number,
+    mentorUserId?: number,
+  ) {
+    if (mentorUserId) {
+      return this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    return booking;
+  }
+
   private async ensureUserOwnsBooking(userId: number, bookingId: number) {
     const [booking] = await db
       .select()
@@ -288,88 +315,6 @@ export class MentorSlotService {
     }
 
     return booking;
-  }
-
-  private async ensureMentorZoomVerified(
-    userId: number,
-    organizationId?: number,
-  ) {
-    const mentorProfile = await this.getOrCreateMentorProfile(
-      userId,
-      organizationId,
-    );
-    console.log(
-      `Mentor profile for user ${userId}: isVerified=${mentorProfile?.isVerified}`,
-    );
-
-    const [userRow] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, BigInt(userId)))
-      .limit(1);
-
-    if (!userRow) {
-      throw new NotFoundException('Mentor user not found');
-    }
-
-    console.log(`Checking Zoom user for email: ${userRow.email}`);
-
-    const zoomResponse = await this.zoomService.getUser(userRow.email);
-    console.log(
-      `Zoom getUser response: success=${zoomResponse.success}, error=${zoomResponse.error}`,
-    );
-
-    if (!zoomResponse.success) {
-      await db
-        .update(zuvyMentorSlotManagement)
-        .set({
-          isVerified: false,
-          updatedAt: new Date(),
-        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
-
-      console.error(
-        `Zoom user check failed for ${userRow.email}: ${zoomResponse.error}`,
-      );
-      throw new BadRequestException(
-        'Mentor Zoom account is not available or not licensed',
-      );
-    }
-
-    const userType = zoomResponse.data.type;
-    const userStatus = zoomResponse.data.status;
-    console.log(`Zoom user type=${userType}, status=${userStatus}`);
-
-    if (userType !== 2 || userStatus !== 'active') {
-      await db
-        .update(zuvyMentorSlotManagement)
-        .set({
-          isVerified: false,
-          updatedAt: new Date(),
-        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
-
-      console.error(
-        `Zoom user not licensed/active: type=${userType}, status=${userStatus}`,
-      );
-      throw new BadRequestException(
-        'Mentor Zoom account must be an active licensed Zoom user',
-      );
-    }
-
-    console.log(
-      `Zoom verification successful for user ${userId}, updating profile`,
-    );
-
-    await db
-      .update(zuvyMentorSlotManagement)
-      .set({
-        isVerified: true,
-        updatedAt: new Date(),
-      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-      .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
-
-    return true;
   }
 
   private async ensureMentorZoomAccountActive(
@@ -779,6 +724,14 @@ export class MentorSlotService {
         throw new BadRequestException('Slot is full.');
       }
 
+      // An unbooked slot's status never auto-expires (it stays 'available'
+      // forever once its start time passes, since nothing ever re-checks
+      // it), so this explicit check is the only thing standing between a
+      // student and booking a slot that's already in the past. See MDA-13.
+      if (new Date(slot.slotStartDateTime) <= new Date()) {
+        throw new BadRequestException('This slot has already passed.');
+      }
+
       // 12-hour booking notice is temporarily disabled for short-notice sessions.
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
@@ -1053,7 +1006,7 @@ export class MentorSlotService {
           uuid: meetingDetails.data.uuid,
         };
       } catch (error) {
-        console.error('Zoom meeting creation failed:', error.message);
+        this.logger.error(`Zoom meeting creation failed: ${error.message}`);
 
         const errMsg = error?.message || '';
 
@@ -1108,7 +1061,7 @@ export class MentorSlotService {
         .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
 
       // Enqueue recording job
-      await this.enqueueMentorRecordingJob({
+      await this.enqueueMentorRecordingJob(trx, {
         id: createdBooking.id,
         zoomMeetingId: meeting?.meetingId ?? null,
         zoomMeetingUuid: meeting?.uuid ?? null,
@@ -1202,7 +1155,7 @@ export class MentorSlotService {
             meetingLink: meeting.joinUrl ?? 'N/A',
           },
         )
-        .catch((err) => console.error(`team email failed: ${err.message}`));
+        .catch((err) => this.logger.error(`team email failed: ${err.message}`));
 
       return bookingResponse;
     });
@@ -1312,6 +1265,19 @@ export class MentorSlotService {
           booking.googleEventId,
           refreshToken,
         );
+      }
+
+      // Best-effort: the booking cancellation itself must succeed even if
+      // Zoom's API is down, so this is deliberately not awaited inside a
+      // path that would roll back the transaction on failure.
+      if (booking.isZoomMeet && booking.zoomMeetingId) {
+        try {
+          await this.zoomService.deleteMeeting(booking.zoomMeetingId);
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to delete Zoom meeting ${booking.zoomMeetingId} for cancelled booking ${bookingId}: ${error.message}`,
+          );
+        }
       }
 
       const { quotaStart, quotaEnd } = this.getQuotaWindow();
@@ -2066,24 +2032,33 @@ export class MentorSlotService {
         referenceType: 'booking',
       });
 
+      /* Move the underlying Zoom meeting to the new slot's time. Best-effort:
+         the reschedule itself must still succeed even if Zoom's API is
+         down, same reasoning as the cancellation cleanup above. */
+      if (booking.isZoomMeet && booking.zoomMeetingId) {
+        try {
+          await this.zoomService.updateMeeting(booking.zoomMeetingId, {
+            start_time: new Date(proposedSlot.slotStartDateTime).toISOString(),
+            duration: proposedSlot.durationMinutes,
+            timezone: 'UTC',
+          });
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to move Zoom meeting ${booking.zoomMeetingId} to its rescheduled time for booking ${bookingId}: ${error.message}`,
+          );
+        }
+      }
+
       /* Update Google meeting time */
 
       if (booking.googleEventId) {
-        const [newSlot] = await trx
-          .select()
-          .from(zuvyMentorSlotAvailability)
-          .where(
-            eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
-          )
-          .limit(1);
-
         const refreshToken = mentorProfile?.googleRefreshToken;
 
-        if (booking.googleEventId && refreshToken) {
+        if (refreshToken) {
           await this.googleCalendarService.updateMeeting(
             booking.googleEventId,
-            newSlot.slotStartDateTime,
-            newSlot.slotEndDateTime,
+            proposedSlot.slotStartDateTime,
+            proposedSlot.slotEndDateTime,
             refreshToken,
           );
         }
@@ -2264,8 +2239,12 @@ export class MentorSlotService {
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
-    await this.ensureMentorZoomAccountActive(userId, organizationId);
 
+    // Listing a mentor's own slots is a read — it shouldn't depend on a live
+    // Zoom API call (ensureMentorZoomAccountActive), which only matters when
+    // actually creating a slot (see createSlot). This used to mean a mentor
+    // couldn't even view their own availability if Zoom was slow or had
+    // briefly marked their account inactive. See MDA-11.
     const now = new Date();
 
     /* ============================
@@ -2652,8 +2631,18 @@ export class MentorSlotService {
   ) {
     await this.syncZoomLicenseState();
 
-    if (mentorUserId) {
-      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    const booking = await this.loadBookingForOwnedAction(
+      bookingId,
+      mentorUserId,
+    );
+
+    // Neither this nor completeSession checked the booking wasn't already
+    // cancelled, so either call could "revive" a cancelled booking. See
+    // MDA-18.
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException(
+        'Cannot record attendance for a cancelled booking.',
+      );
     }
 
     const joinedAt = new Date(joinedAtStr);
@@ -2680,8 +2669,14 @@ export class MentorSlotService {
   async completeSession(bookingId: number, mentorUserId?: number) {
     await this.syncZoomLicenseState();
 
-    if (mentorUserId) {
-      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    const booking = await this.loadBookingForOwnedAction(
+      bookingId,
+      mentorUserId,
+    );
+
+    // See MDA-18.
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException('Cannot complete a cancelled booking.');
     }
 
     return db
@@ -2782,12 +2777,19 @@ export class MentorSlotService {
     return profile;
   }
 
-  private async enqueueMentorRecordingJob(booking: {
-    id: number;
-    zoomMeetingId: string | null;
-    zoomMeetingUuid?: string | null;
-    isZoomMeet: boolean;
-  }) {
+  // `trx` is required (not defaulted to the module-level `db`) because its
+  // one caller runs inside bookSlot's open transaction — writing via a
+  // separate connection there was a reference to a row that connection
+  // can't yet see as committed. See MDA-22.
+  private async enqueueMentorRecordingJob(
+    trx: any,
+    booking: {
+      id: number;
+      zoomMeetingId: string | null;
+      zoomMeetingUuid?: string | null;
+      isZoomMeet: boolean;
+    },
+  ) {
     if (!booking.isZoomMeet || !booking.zoomMeetingId) return;
 
     try {
@@ -2798,16 +2800,16 @@ export class MentorSlotService {
         status: 'DISCOVERED',
       } as const;
 
-      await db
+      await trx
         .insert(zuvyMentorSessionRecordings)
         .values(recordingData)
         .onConflictDoNothing();
 
-      console.log(
+      this.logger.log(
         `Recording job enqueued for mentor booking ${booking.id}, meetingId: ${booking.zoomMeetingId}`,
       );
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
       );
     }

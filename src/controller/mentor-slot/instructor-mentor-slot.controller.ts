@@ -11,6 +11,8 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -181,6 +183,8 @@ export class InstructorMentorSlotController {
     description:
       'Submits the instructor’s feedback and rating for the specified session and records the action in the tracking log.',
   })
+  // Without this, FeedbackDto.rating's @Min/@Max (added in MDA-19) never run.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async submitMentorFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -288,6 +292,9 @@ export class InstructorMentorSlotController {
     description:
       'Cancels the specified booking using the supplied reason and cancellation actor, then records the action in the tracking log.',
   })
+  // See MDA-15: without this, CancelBookingDto.cancelledBy's @IsEnum never
+  // runs, letting an invalid value bypass the service's ownership check.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,

@@ -15,25 +15,6 @@ import { and, eq, desc, sql } from 'drizzle-orm';
 
 @Injectable()
 export class SessionService {
-  /* ==========================================================================
-     BACKGROUND JOB TO AUTO-CLOSE EXPIRED SESSIONS
-  ========================================================================== */
-  async autoCloseExpiredSessions() {
-    await db
-      .update(zuvyMentorSlotBooking)
-      .set({ sessionLifecycleState: 'COMPLETED' } as Partial<
-        typeof zuvyMentorSlotBooking.$inferInsert
-      >)
-      .where(
-        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-      SELECT ${zuvyMentorSlotAvailability.id}
-      FROM ${zuvyMentorSlotAvailability}
-      WHERE ${zuvyMentorSlotAvailability.slotEndDateTime} < NOW()
-    )
-    AND ${zuvyMentorSlotBooking.sessionLifecycleState} = 'SCHEDULED'`,
-      );
-  }
-
   private mapMeetingLink(booking: any, userId: bigint) {
     if (booking.mentorUserId === userId) {
       return booking.zoomStartUrl; // mentor
@@ -52,8 +33,11 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
-
+    // SCHEDULED -> COMPLETED/MISSED transitions are handled exclusively by
+    // MentorSlotJob.handleSessionTransitions (runs every minute, joinedAt-aware).
+    // This used to force-complete expired sessions here too, with no joinedAt
+    // check — racing the cron and mislabeling genuine no-shows as COMPLETED
+    // whenever this read ran first. See MDA-09.
     const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
@@ -129,8 +113,7 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
-
+    // See the note in getStudentSessions above — MDA-09.
     const conditions = [
       eq(zuvyMentorSlotBooking.mentorUserId, userId),
       eq(zuvyMentorSlotBooking.organizationId, organizationId),

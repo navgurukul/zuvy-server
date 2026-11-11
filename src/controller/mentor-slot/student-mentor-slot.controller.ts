@@ -8,6 +8,8 @@ import {
   Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -60,7 +62,7 @@ export class StudentMentorSlotController {
     type: Number,
   })
   getMentorProfile(
-    @Param('mentorUserId') mentorUserId: number,
+    @Param('mentorUserId', ParseIntPipe) mentorUserId: number,
     @Query('organizationId') organizationId?: number,
   ) {
     return this.mentorPublicService.getMentorProfile(
@@ -147,6 +149,9 @@ export class StudentMentorSlotController {
 
   @Post('mentor-slots/bookings/:bookingId/cancel')
   @ApiOperation({ summary: 'Cancel a student mentor booking' })
+  // See MDA-15: without this, CancelBookingDto.cancelledBy's @IsEnum never
+  // runs, letting an invalid value bypass the service's ownership check.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -174,6 +179,8 @@ export class StudentMentorSlotController {
 
   @Post('mentor-slots/bookings/:bookingId/feedback')
   @ApiOperation({ summary: 'Submit student feedback for a mentor session' })
+  // Without this, FeedbackDto.rating's @Min/@Max (added in MDA-19) never run.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async submitStudentFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,

@@ -10,6 +10,8 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
   Query,
   BadRequestException,
 } from '@nestjs/common';
@@ -68,6 +70,10 @@ export class MentorSlotController {
     displayType: 'mentor booking',
     permissionName: 'deleteMentorDashboard',
   })
+  // Without this, CancelBookingDto.cancelledBy's @IsEnum never runs, so an
+  // invalid value (neither 'mentor' nor 'student') matches neither branch of
+  // the service's ownership check and silently bypasses it. See MDA-15.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -166,6 +172,8 @@ export class MentorSlotController {
     displayType: 'mentor session feedback',
     permissionName: 'editMentorDashboard',
   })
+  // Without this, FeedbackDto.rating's @Min/@Max (added in MDA-19) never run.
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async submitMentorFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,

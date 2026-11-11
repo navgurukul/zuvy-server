@@ -1661,11 +1661,28 @@ export class RecordingWorkerService implements OnModuleInit {
     }
 
     if (!fs.existsSync(filePath)) {
-      throw new Error(`Merged file not found: ${filePath}`);
-    }
+      // temp-recordings/ is local, non-persistent disk — if the worker
+      // restarted (or this job got picked up by a different instance)
+      // between the merge step and this upload step, the merged file is
+      // gone for good and this used to permanently fail the job right here.
+      // mergeRecording() already knows how to recover: it re-checks the
+      // local segment files and re-runs ffmpeg if the merged output is
+      // missing, or surfaces a clear, retryable error if the segments
+      // themselves are also gone. Reset to the pre-merge status so the next
+      // pick-up goes through mergeRecording() again instead of failing here
+      // every time. See MDA-21.
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET
+          status = 'DOWNLOADED',
+          merged_file_path = NULL,
+          is_final_merged = FALSE
+        WHERE id = ${job.id}
+      `);
 
-    if (!fs.existsSync(filePath)) {
-      throw new Error('Merged file not found for upload');
+      throw new Error(
+        `Merged file not found (${filePath}) — reset job ${job.id} to re-merge on its next pass.`,
+      );
     }
 
     const fileSize = fs.statSync(filePath).size;
