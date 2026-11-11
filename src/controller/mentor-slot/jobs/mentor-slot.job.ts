@@ -7,7 +7,7 @@ import {
   zuvyStudentBookingMetrics,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, gte, inArray } from 'drizzle-orm';
+import { and, eq, lt, gte, ne, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class MentorSlotJob {
@@ -67,13 +67,23 @@ export class MentorSlotJob {
       }
     }
 
+    // Each bulk UPDATE's WHERE re-checks the exact prior lifecycle state
+    // (not just the id list) so a booking that changed state between the
+    // SELECT above and this UPDATE running (e.g. it was cancelled in the
+    // meantime) can never be stomped back into a transition it no longer
+    // qualifies for.
     if (toInProgress.length > 0) {
       await db
         .update(zuvyMentorSlotBooking)
         .set({
           sessionLifecycleState: 'IN_PROGRESS',
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-        .where(inArray(zuvyMentorSlotBooking.id, toInProgress));
+        .where(
+          and(
+            inArray(zuvyMentorSlotBooking.id, toInProgress),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          ),
+        );
     }
 
     if (toCompleted.length > 0) {
@@ -83,7 +93,12 @@ export class MentorSlotJob {
           sessionLifecycleState: 'COMPLETED',
           completedAt: now,
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-        .where(inArray(zuvyMentorSlotBooking.id, toCompleted));
+        .where(
+          and(
+            inArray(zuvyMentorSlotBooking.id, toCompleted),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'IN_PROGRESS'),
+          ),
+        );
     }
 
     if (toMissed.length > 0) {
@@ -92,7 +107,12 @@ export class MentorSlotJob {
         .set({
           sessionLifecycleState: 'MISSED',
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-        .where(inArray(zuvyMentorSlotBooking.id, toMissed));
+        .where(
+          and(
+            inArray(zuvyMentorSlotBooking.id, toMissed),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          ),
+        );
     }
   }
 
@@ -127,6 +147,11 @@ export class MentorSlotJob {
     const now = new Date();
     const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+    // Excluding cancelled bookings here is defense in depth: cancelBooking
+    // already clears rescheduleStatus to null on cancel, so a cancelled
+    // booking's row shouldn't match `rescheduleStatus = 'pending'` at all —
+    // but re-checking status != 'cancelled' means this job can never revive
+    // a cancelled booking even if that invariant is ever violated elsewhere.
     await db
       .update(zuvyMentorSlotBooking)
       .set({
@@ -137,6 +162,7 @@ export class MentorSlotJob {
         and(
           eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
           lt(zuvyMentorSlotBooking.rescheduleRequestedAt, cutoff),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
         ),
       );
   }

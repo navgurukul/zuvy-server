@@ -27,6 +27,7 @@ import {
 
 import {
   and,
+  or,
   eq,
   lt,
   gt,
@@ -37,6 +38,7 @@ import {
   gte,
   lte,
   inArray,
+  isNull,
 } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
@@ -1225,6 +1227,23 @@ export class MentorSlotService {
         throw new BadRequestException('Booking already cancelled.');
       }
 
+      // A live or finished session must never be cancelled — since
+      // cancelBooking now actually deletes the Zoom meeting and refunds the
+      // student's credit, allowing this on an IN_PROGRESS/COMPLETED/MISSED
+      // booking would kick people out of a live call or delete a meeting
+      // whose recording may still be processing, and wrongly refund a
+      // credit for a session that already happened. Flagged in manager
+      // review, 2026-11-11 (a regression introduced by the Zoom-delete fix).
+      if (
+        booking.sessionLifecycleState === 'IN_PROGRESS' ||
+        booking.sessionLifecycleState === 'COMPLETED' ||
+        booking.sessionLifecycleState === 'MISSED'
+      ) {
+        throw new BadRequestException(
+          'This session has already started or finished and can no longer be cancelled.',
+        );
+      }
+
       /* Release slot capacity */
       await trx
         .update(zuvyMentorSlotAvailability)
@@ -1508,7 +1527,14 @@ export class MentorSlotService {
        UPDATE BOOKING
     ================================= */
 
-    await db
+    // The eligibility checks above (status/rescheduleStatus) only prove
+    // this booking was eligible AT THAT READ — a concurrent cancelBooking
+    // landing after that read and before this write would otherwise still
+    // get silently overwritten into RESCHEDULE_PENDING on an already
+    // cancelled booking. Re-checking both conditions in this UPDATE's own
+    // WHERE clause makes the write itself atomic against that race, the
+    // same discipline applied to acceptReschedule.
+    const proposed = await db
       .update(zuvyMentorSlotBooking)
       .set({
         rescheduleStatus: 'pending',
@@ -1516,7 +1542,27 @@ export class MentorSlotService {
         rescheduleProposedSlotId: newSlotId,
         sessionLifecycleState: 'RESCHEDULE_PENDING',
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.id, bookingId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+          // rescheduleStatus is NULL on every normal booking that's never
+          // had a reschedule proposed — `ne(col, 'pending')` evaluates to
+          // SQL NULL (not true) when col IS NULL, which would wrongly
+          // exclude every such row. isNull(...) covers that case explicitly.
+          or(
+            isNull(zuvyMentorSlotBooking.rescheduleStatus),
+            ne(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+          ),
+        ),
+      )
+      .returning();
+
+    if (proposed.length === 0) {
+      throw new BadRequestException(
+        'This booking is no longer eligible for reschedule — it may have just been cancelled or already has a pending request.',
+      );
+    }
 
     /* ================================
        SEND NOTIFICATION
@@ -1847,27 +1893,6 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
-     AUTO LOCK FEEDBACK (CALLED BY JOB)
-  ========================================================================== */
-
-  async lockExpiredFeedback() {
-    const now = new Date();
-    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    return db
-      .update(zuvyMentorSlotBooking)
-      .set({ mentorFeedbackLocked: true } as Partial<
-        typeof zuvyMentorSlotBooking.$inferInsert
-      >)
-      .where(
-        and(
-          lt(zuvyMentorSlotBooking.mentorFeedbackSubmittedAt, cutoff),
-          eq(zuvyMentorSlotBooking.mentorFeedbackLocked, false),
-        ),
-      );
-  }
-
-  /* ==========================================================================
      DELETE EMPTY UPCOMING SLOT
   ========================================================================== */
 
@@ -2075,7 +2100,14 @@ export class MentorSlotService {
 
       /* Move booking */
 
-      await trx
+      // The initial read above (`booking.rescheduleStatus !== 'pending'` /
+      // `booking.status === 'cancelled'`) only proves the booking was
+      // eligible AT THAT MOMENT — a concurrent cancelBooking landing after
+      // that read and before this write would otherwise still get silently
+      // overwritten back to SCHEDULED. Re-checking both conditions in this
+      // UPDATE's own WHERE clause makes the write itself atomic against
+      // that race, not just the earlier read.
+      const movedBooking = await trx
         .update(zuvyMentorSlotBooking)
         .set({
           slotAvailabilityId: booking.rescheduleProposedSlotId,
@@ -2085,7 +2117,20 @@ export class MentorSlotService {
           sessionLifecycleState: 'SCHEDULED',
           updatedAt: new Date(),
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-        .where(eq(zuvyMentorSlotBooking.id, bookingId));
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.id, bookingId),
+            eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+            ne(zuvyMentorSlotBooking.status, 'cancelled'),
+          ),
+        )
+        .returning();
+
+      if (movedBooking.length === 0) {
+        throw new BadRequestException(
+          'This booking is no longer eligible for reschedule — it may have just been cancelled.',
+        );
+      }
 
       await this.notificationService.createNotification({
         userId: booking.studentUserId,
@@ -2189,7 +2234,10 @@ export class MentorSlotService {
     if (booking.rescheduleStatus !== 'pending')
       throw new BadRequestException('No pending reschedule.');
 
-    await db
+    // Same atomic re-check as acceptReschedule/proposeReschedule: the
+    // read-time guards above only prove eligibility at that moment, so this
+    // write re-verifies it's still true.
+    const declined = await db
       .update(zuvyMentorSlotBooking)
       .set({
         rescheduleStatus: null,
@@ -2197,7 +2245,20 @@ export class MentorSlotService {
         rescheduleProposedSlotId: null,
         sessionLifecycleState: 'SCHEDULED',
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.id, bookingId),
+          eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      )
+      .returning();
+
+    if (declined.length === 0) {
+      throw new BadRequestException(
+        'This booking is no longer eligible for reschedule — it may have just been cancelled.',
+      );
+    }
 
     await this.notificationService.createNotification({
       userId: booking.studentUserId,
@@ -2752,14 +2813,30 @@ export class MentorSlotService {
       (leftAt.getTime() - joinedAt.getTime()) / (1000 * 60),
     );
 
-    return db
+    // Same atomic re-check applied across the reschedule flow: the read
+    // above only proves this wasn't cancelled AT THAT MOMENT.
+    const attendanceMarked = await db
       .update(zuvyMentorSlotBooking)
       .set({
         joinedAt,
         leftAt,
         durationAttended: duration,
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.id, bookingId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      )
+      .returning();
+
+    if (attendanceMarked.length === 0) {
+      throw new BadRequestException(
+        'Cannot record attendance for a cancelled booking.',
+      );
+    }
+
+    return attendanceMarked[0];
   }
 
   async completeSession(bookingId: number, mentorUserId?: number) {
@@ -2775,13 +2852,27 @@ export class MentorSlotService {
       throw new BadRequestException('Cannot complete a cancelled booking.');
     }
 
-    return db
+    // Same atomic re-check as markAttendance above — the read-time guard
+    // only proves this wasn't cancelled at that moment, not at write time.
+    const completed = await db
       .update(zuvyMentorSlotBooking)
       .set({
         completedAt: new Date(),
         sessionLifecycleState: 'COMPLETED',
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.id, bookingId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      )
+      .returning();
+
+    if (completed.length === 0) {
+      throw new BadRequestException('Cannot complete a cancelled booking.');
+    }
+
+    return completed[0];
   }
 
   async updateMentorProfile(userId: number, dto: any, organizationId?: number) {

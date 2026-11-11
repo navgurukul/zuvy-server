@@ -518,7 +518,11 @@ export class RecordingWorkerService implements OnModuleInit {
     // the recordings table only — without it, Postgres would also try to
     // lock the joined booking/availability rows, which bookSlot and
     // acceptReschedule already lock with their own `.for('update')`, risking
-    // a deadlock between this cron and live booking traffic.
+    // a deadlock between this cron and live booking traffic. Also excludes
+    // cancelled bookings (b.status != 'cancelled') — a cancelled booking's
+    // Zoom meeting is already deleted (see cancelBooking), so attempting it
+    // would just poll Zoom for a meeting that no longer exists and mark the
+    // recording falsely failed.
     result = await db.execute(sql`
     UPDATE zuvy_mentor_session_recordings
     SET
@@ -543,6 +547,7 @@ export class RecordingWorkerService implements OnModuleInit {
         AND r.retry_count < ${MAX_RETRIES}
         AND (r.next_retry_at IS NULL OR r.next_retry_at <= NOW())
         AND a.slot_end_date_time <= NOW()
+        AND b.status != 'cancelled'
       ORDER BY r.created_at ASC
       FOR UPDATE OF r SKIP LOCKED
       LIMIT 1

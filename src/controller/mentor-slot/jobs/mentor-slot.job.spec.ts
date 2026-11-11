@@ -23,7 +23,7 @@ jest.mock('../../../db', () => ({
   },
 }));
 
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { zuvyMentorSlotBooking } from '../../../../drizzle/schema';
 import { MentorSlotJob } from './mentor-slot.job';
 
@@ -101,14 +101,26 @@ describe('MentorSlotJob.handleSessionTransitions', () => {
             .sessionLifecycleState === state,
       );
 
+    // Each UPDATE's WHERE now also re-checks the exact prior lifecycle
+    // state (not just the id list), so a booking that changed state between
+    // the SELECT and this UPDATE running can never be stomped over.
     expect(byState('IN_PROGRESS')?.whereArgs[0]).toEqual(
-      inArray(zuvyMentorSlotBooking.id, [1]),
+      and(
+        inArray(zuvyMentorSlotBooking.id, [1]),
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      ),
     );
     expect(byState('COMPLETED')?.whereArgs[0]).toEqual(
-      inArray(zuvyMentorSlotBooking.id, [2]),
+      and(
+        inArray(zuvyMentorSlotBooking.id, [2]),
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'IN_PROGRESS'),
+      ),
     );
     expect(byState('MISSED')?.whereArgs[0]).toEqual(
-      inArray(zuvyMentorSlotBooking.id, [3]),
+      and(
+        inArray(zuvyMentorSlotBooking.id, [3]),
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      ),
     );
     expect(byState('COMPLETED')?.set).toMatchObject({ completedAt: NOW });
   });
