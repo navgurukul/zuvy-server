@@ -2907,7 +2907,9 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  version: varchar('version', { length: 10 })
+  version: varchar('version', { length: 10 }),
+  certificateUrl: text("certificate_url"),
+
 }, (table) => ({
   // perf: module progress is read/updated by userId+moduleId; bootcamp-wide
   // progress rollups filter by bootcampId.

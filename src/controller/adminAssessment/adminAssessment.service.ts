@@ -1739,6 +1739,13 @@ Team Zuvy`;
       }
       const studentIdMap = await getStudentIdsByUserId(userIds);
 
+      // Per-student watch time uses the same rule as totalwatchedtime: a tracked
+      // video chapter credits the full video duration to that student.
+      const perStudentWatchedTime =
+        chapterDetails.topicId === 1
+          ? chapterDetails.videoDurationSeconds ?? 0
+          : 0;
+
       const submittedStudents = chapterTrackingDetails
         .filter((tracking) => tracking['user'] != null)
         .map((tracking) => {
@@ -1751,6 +1758,7 @@ Team Zuvy`;
             studentId: studentIdMap.get(String(uid)) ?? null,
             profilePicture: tracking['user'].profilePicture ?? null,
             completedAt: tracking.completedAt,
+            watchedTime: perStudentWatchedTime,
             batchId: enrollment ? Number(enrollment.batchId) : null,
             batchName:
               enrollment && enrollment.batchInfo
@@ -2372,8 +2380,12 @@ Team Zuvy`;
               )
             : null;
 
+        // userId is exposed at the top level, so drop it from the profile
+        const { userId: _profileUserId, ...profile } = profileMap[userId] || {};
+
         return {
           studentId: studentIdMap.get(String(userId)) ?? null,
+          userId,
           name: enrollment.name,
           email: enrollment.email,
           overAllAttendance: enrollment.attendance ?? null,
@@ -2381,7 +2393,7 @@ Team Zuvy`;
           averageAssessmentPercentage,
           assessments: assessmentScores,
           oneOnOneSessionsCompleted: sessionCountMap[userId] ?? 0,
-          profile: profileMap[userId] || null,
+          profile: profileMap[userId] ? profile : null,
         };
       });
 

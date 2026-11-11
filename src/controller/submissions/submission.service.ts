@@ -42,6 +42,9 @@ import {
   zuvySessionRecordViews,
   zuvyStudentAttendanceRecords,
   zuvyStudentCredentials,
+  zuvyBootcamps,
+  zuvyCourseModules,
+  zuvyModuleQuiz,
 } from '../../../drizzle/schema';
 import {
   InstructorFeedbackDto,
@@ -54,6 +57,21 @@ import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { helperVariable } from 'src/constants/helper';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
+import {
+  QUIZ_TOPIC_ID,
+  QuizTrackingRow,
+  QuizVariantRow,
+  RosterRow,
+  buildQuizStudentStatusRows,
+  buildQuizSummary,
+  buildStudentQuizReport,
+  SUBMITTED,
+  dedupeRoster,
+  filterSortPaginateStudents,
+  getQuizQuestionIds,
+  isQuizChapter,
+  latestAnswersByUser,
+} from './quiz-submission.helpers';
 const DIFFICULTY = {
   EASY: 'Easy',
   MEDIUM: 'Medium',
@@ -3890,18 +3908,18 @@ Zuvy LMS Team
             processedUserIds.add(uId);
 
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? ([session.batchId, session.secondBatchId].find((id: any) =>
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null)
-              : (session.batchId ?? session.secondBatchId ?? null);
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? (batchMap[Number(resolvedBatchId)] ?? null)
+                ? batchMap[Number(resolvedBatchId)] ?? null
                 : null;
 
             const trackingInfo = completedTrackingMap.get(uId);
@@ -3965,9 +3983,7 @@ Zuvy LMS Team
               batchId: cleanBatchId ?? null,
               batchName:
                 batchName ??
-                (cleanBatchId
-                  ? (batchMap[Number(cleanBatchId)] ?? null)
-                  : null),
+                (cleanBatchId ? batchMap[Number(cleanBatchId)] ?? null : null),
             });
           }
         }
@@ -4058,6 +4074,505 @@ Zuvy LMS Team
           totalSubmittedStudents,
           totalStudentsCount,
           totalPages,
+        },
+      ];
+    } catch (err) {
+      return [err, null];
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Admin quiz submissions (counting rules: see quiz-submission.helpers) */
+  /* ------------------------------------------------------------------ */
+
+  private toPositiveInt(value: unknown): number | undefined {
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : undefined;
+  }
+
+  private quizEnrollmentConditions(bootcampId: number, batchId?: number) {
+    return [
+      eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+      batchId
+        ? eq(zuvyBatchEnrollments.batchId, batchId)
+        : isNotNull(zuvyBatchEnrollments.batchId),
+    ];
+  }
+
+  private async getQuizRoster(
+    bootcampId: number,
+    batchId?: number,
+    userIds?: number[],
+  ): Promise<RosterRow[]> {
+    const rows = await db
+      .select({
+        userId: zuvyBatchEnrollments.userId,
+        name: users.name,
+        email: users.email,
+        batchId: zuvyBatchEnrollments.batchId,
+        batchName: zuvyBatches.name,
+      })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+      .leftJoin(zuvyBatches, eq(zuvyBatches.id, zuvyBatchEnrollments.batchId))
+      .where(
+        and(
+          ...this.quizEnrollmentConditions(bootcampId, batchId),
+          ...(userIds
+            ? [inArray(zuvyBatchEnrollments.userId, userIds.map(BigInt))]
+            : []),
+        ),
+      )
+      .orderBy(asc(zuvyBatchEnrollments.id));
+    return dedupeRoster(rows);
+  }
+
+  private async getQuizVariants(quizIds: number[]): Promise<QuizVariantRow[]> {
+    if (quizIds.length === 0) return [];
+    const rows = await db
+      .select({
+        id: zuvyModuleQuizVariants.id,
+        quizId: zuvyModuleQuizVariants.quizId,
+        question: zuvyModuleQuizVariants.question,
+        options: zuvyModuleQuizVariants.options,
+        correctOption: zuvyModuleQuizVariants.correctOption,
+        difficulty: zuvyModuleQuiz.difficulty,
+      })
+      .from(zuvyModuleQuizVariants)
+      .leftJoin(
+        zuvyModuleQuiz,
+        eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+      )
+      .where(inArray(zuvyModuleQuizVariants.quizId, quizIds));
+    return rows as QuizVariantRow[];
+  }
+
+  private quizTrackingColumns() {
+    return {
+      id: zuvyQuizTracking.id,
+      userId: zuvyQuizTracking.userId,
+      chapterId: zuvyQuizTracking.chapterId,
+      mcqId: zuvyQuizTracking.mcqId,
+      chosenOption: zuvyQuizTracking.chosenOption,
+      status: zuvyQuizTracking.status,
+      createdAt: zuvyQuizTracking.createdAt,
+      updatedAt: zuvyQuizTracking.updatedAt,
+    };
+  }
+
+  // API 1: per-module quiz chapter counts for a bootcamp.
+  async getQuizSubmissionSummary(
+    bootcampId: number,
+    batchId?: number,
+    searchQuiz?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<[any, any]> {
+    try {
+      const cleanBootcampId = this.toPositiveInt(bootcampId);
+      if (!cleanBootcampId) {
+        return [{ message: 'Invalid bootcampId', statusCode: 400 }, null];
+      }
+      const cleanBatchId = this.toPositiveInt(batchId);
+
+      const [bootcamp] = await db
+        .select({ id: zuvyBootcamps.id, name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, cleanBootcampId));
+      if (!bootcamp) {
+        return [{ message: 'Bootcamp not found', statusCode: 404 }, null];
+      }
+
+      const modules = await db.query.zuvyCourseModules.findMany({
+        where: (m, { eq }) => eq(m.bootcampId, cleanBootcampId),
+        orderBy: (m, { asc }) => asc(m.order),
+        columns: { id: true, name: true, order: true },
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title: true,
+              order: true,
+              quizQuestions: true,
+            },
+            where: (c, { and, eq, ilike }) =>
+              and(
+                eq(c.topicId, QUIZ_TOPIC_ID),
+                searchQuiz ? ilike(c.title, searchQuiz + '%') : undefined,
+              ),
+            orderBy: (c, { asc }) => asc(c.order),
+          },
+        },
+      });
+
+      const quizChapterIds = modules.flatMap((m: any) =>
+        m.moduleChapterData.filter(isQuizChapter).map((c: any) => c.id),
+      );
+
+      // Distinct submitting students per chapter, restricted to the same
+      // enrolled roster that totalStudents counts.
+      const [studentCountRows, submittedRows] = await Promise.all([
+        db
+          .select({
+            count: sql<number>`count(distinct ${zuvyBatchEnrollments.userId})::int`,
+          })
+          .from(zuvyBatchEnrollments)
+          .where(
+            and(
+              ...this.quizEnrollmentConditions(cleanBootcampId, cleanBatchId),
+            ),
+          ),
+        quizChapterIds.length === 0
+          ? Promise.resolve([])
+          : db
+              .select({
+                chapterId: zuvyQuizTracking.chapterId,
+                submitted: sql<number>`count(distinct ${zuvyQuizTracking.userId})::int`,
+              })
+              .from(zuvyQuizTracking)
+              .where(
+                and(
+                  inArray(zuvyQuizTracking.chapterId, quizChapterIds),
+                  isNotNull(zuvyQuizTracking.chosenOption),
+                  exists(
+                    db
+                      .select({ _: zuvyBatchEnrollments.id })
+                      .from(zuvyBatchEnrollments)
+                      .where(
+                        and(
+                          eq(
+                            zuvyBatchEnrollments.userId,
+                            zuvyQuizTracking.userId,
+                          ),
+                          ...this.quizEnrollmentConditions(
+                            cleanBootcampId,
+                            cleanBatchId,
+                          ),
+                        ),
+                      ),
+                  ),
+                ),
+              )
+              .groupBy(zuvyQuizTracking.chapterId),
+      ]);
+
+      const summary = buildQuizSummary({
+        bootcamp,
+        modules: modules.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          order: m.order,
+          chapters: m.moduleChapterData,
+        })),
+        submittedByChapter: new Map(
+          (submittedRows as any[]).map((r) => [
+            Number(r.chapterId),
+            Number(r.submitted),
+          ]),
+        ),
+        totalStudents: Number(studentCountRows[0]?.count ?? 0),
+      });
+
+      // Pagination applies to the module list; the bootcamp-level totals
+      // always cover every module.
+      const limitNum = this.toPositiveInt(limit);
+      const offsetNum = Number(offset) > 0 ? Number(offset) : 0;
+      const totalModules = summary.modules.length;
+      if (limitNum) {
+        summary.modules = summary.modules.slice(
+          offsetNum,
+          offsetNum + limitNum,
+        );
+      }
+
+      return [
+        null,
+        {
+          ...summary,
+          totalModules,
+          totalPages: limitNum ? Math.ceil(totalModules / limitNum) : 1,
+          currentPage: limitNum ? Math.floor(offsetNum / limitNum) + 1 : 1,
+        },
+      ];
+    } catch (err) {
+      return [err, null];
+    }
+  }
+
+  // Loads one quiz chapter and the enrolled students it applies to, with
+  // their latest answers. Shared by the status list and the quiz report.
+  private async loadQuizChapterStudents(params: {
+    bootcampId?: number;
+    moduleId?: number;
+    chapterId: number;
+    batchId?: number;
+    userId?: number;
+  }): Promise<[any, any]> {
+    const { bootcampId, moduleId, chapterId, batchId, userId } = params;
+
+    const [chapter] = await db
+      .select({
+        id: zuvyModuleChapter.id,
+        title: zuvyModuleChapter.title,
+        topicId: zuvyModuleChapter.topicId,
+        quizQuestions: zuvyModuleChapter.quizQuestions,
+        moduleId: zuvyCourseModules.id,
+        moduleName: zuvyCourseModules.name,
+        bootcampId: zuvyCourseModules.bootcampId,
+      })
+      .from(zuvyModuleChapter)
+      .innerJoin(
+        zuvyCourseModules,
+        eq(zuvyCourseModules.id, zuvyModuleChapter.moduleId),
+      )
+      .where(
+        and(
+          eq(zuvyModuleChapter.id, chapterId),
+          ...(moduleId ? [eq(zuvyModuleChapter.moduleId, moduleId)] : []),
+          ...(bootcampId ? [eq(zuvyCourseModules.bootcampId, bootcampId)] : []),
+        ),
+      );
+    if (!chapter || chapter.topicId !== QUIZ_TOPIC_ID) {
+      return [{ message: 'Quiz chapter not found', statusCode: 404 }, null];
+    }
+
+    const quizIds = getQuizQuestionIds(chapter.quizQuestions);
+    const [roster, trackingRows, variants] = await Promise.all([
+      this.getQuizRoster(
+        chapter.bootcampId,
+        batchId,
+        userId ? [userId] : undefined,
+      ),
+      db
+        .select(this.quizTrackingColumns())
+        .from(zuvyQuizTracking)
+        .where(
+          and(
+            eq(zuvyQuizTracking.chapterId, chapterId),
+            isNotNull(zuvyQuizTracking.chosenOption),
+            ...(userId ? [eq(zuvyQuizTracking.userId, userId)] : []),
+          ),
+        ),
+      this.getQuizVariants(quizIds),
+    ]);
+
+    const studentIdMap = await getStudentIdsByUserId(
+      roster.map((r) => r.userId),
+    );
+    const answers = latestAnswersByUser(trackingRows as QuizTrackingRow[]);
+    const variantsById = new Map(variants.map((v) => [v.id, v]));
+
+    const rows = buildQuizStudentStatusRows({
+      roster,
+      chapterId,
+      quizIds,
+      answers,
+      variantsById,
+      studentIdMap,
+    });
+    const submittedCount = rows.filter((r) => r.status === SUBMITTED).length;
+
+    return [
+      null,
+      {
+        chapter,
+        quizIds,
+        answers,
+        variantsById,
+        rows,
+        counts: {
+          totalStudents: rows.length,
+          submittedCount,
+          pendingCount: rows.length - submittedCount,
+        },
+      },
+    ];
+  }
+
+  // API 2: every enrolled student with Submitted / Not Submitted for one quiz.
+  async getQuizStudentStatus(
+    bootcampId: number,
+    moduleId: number,
+    chapterId: number,
+    batchId?: number,
+    status?: string,
+    searchStudent?: string,
+    orderBy?: string,
+    orderDirection?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<[any, any]> {
+    try {
+      const cleanBootcampId = this.toPositiveInt(bootcampId);
+      const cleanModuleId = this.toPositiveInt(moduleId);
+      const cleanChapterId = this.toPositiveInt(chapterId);
+      if (!cleanBootcampId || !cleanModuleId || !cleanChapterId) {
+        return [
+          {
+            message: 'bootcampId, moduleId and chapterId are required',
+            statusCode: 400,
+          },
+          null,
+        ];
+      }
+
+      const [err, loaded] = await this.loadQuizChapterStudents({
+        bootcampId: cleanBootcampId,
+        moduleId: cleanModuleId,
+        chapterId: cleanChapterId,
+        batchId: this.toPositiveInt(batchId),
+      });
+      if (err) return [err, null];
+      const { chapter, quizIds, rows, counts } = loaded;
+
+      const page = filterSortPaginateStudents(rows, {
+        searchStudent,
+        status,
+        orderBy,
+        orderDirection,
+        limit,
+        offset,
+      });
+
+      return [
+        null,
+        {
+          bootcampId: cleanBootcampId,
+          moduleId: chapter.moduleId,
+          moduleName: chapter.moduleName,
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+          totalQuestions: quizIds.length,
+          ...counts,
+          filteredCount: page.filteredCount,
+          totalPages: page.totalPages,
+          currentPage: page.currentPage,
+          students: page.rows,
+        },
+      ];
+    } catch (err) {
+      return [err, null];
+    }
+  }
+
+  // API 3: quiz report of one chapter, for one student (user_id /
+  // student_id) or every enrolled student. Pending students are included
+  // with `quiz: null`.
+  async getQuizReport(params: {
+    chapterId: number;
+    bootcampId?: number;
+    moduleId?: number;
+    batchId?: number;
+    userId?: string;
+    studentId?: string;
+    page?: number;
+    pageSize?: number;
+    orderBy?: string;
+    orderDirection?: string;
+  }): Promise<[any, any]> {
+    try {
+      const DEFAULT_PAGE_SIZE = 20;
+      const MAX_PAGE_SIZE = 100;
+
+      const chapterId = this.toPositiveInt(params.chapterId);
+      if (!chapterId) {
+        return [{ message: 'chapter_id is required', statusCode: 400 }, null];
+      }
+
+      const hasUserId = params.userId !== undefined && params.userId !== '';
+      let userId = hasUserId ? this.toPositiveInt(params.userId) : undefined;
+      if (hasUserId && !userId) {
+        return [
+          { message: 'user_id must be a positive integer', statusCode: 400 },
+          null,
+        ];
+      }
+
+      const studentId = params.studentId?.trim();
+      if (studentId) {
+        const [credential] = await db
+          .select({ userId: zuvyStudentCredentials.userId })
+          .from(zuvyStudentCredentials)
+          .where(eq(zuvyStudentCredentials.studentId, studentId));
+        if (!credential) {
+          return [{ message: 'Student not found', statusCode: 404 }, null];
+        }
+        const credentialUserId = Number(credential.userId);
+        if (userId && userId !== credentialUserId) {
+          return [
+            {
+              message: 'student_id and user_id belong to different students',
+              statusCode: 400,
+            },
+            null,
+          ];
+        }
+        userId = credentialUserId;
+      }
+
+      const [err, loaded] = await this.loadQuizChapterStudents({
+        bootcampId: this.toPositiveInt(params.bootcampId),
+        moduleId: this.toPositiveInt(params.moduleId),
+        chapterId,
+        batchId: this.toPositiveInt(params.batchId),
+        userId,
+      });
+      if (err) return [err, null];
+      const { chapter, quizIds, answers, variantsById, rows, counts } = loaded;
+
+      if (userId && rows.length === 0) {
+        return [
+          {
+            message: 'Student is not enrolled in this bootcamp or batch',
+            statusCode: 404,
+          },
+          null,
+        ];
+      }
+
+      const page = this.toPositiveInt(params.page) ?? 1;
+      const pageSize = Math.min(
+        this.toPositiveInt(params.pageSize) ?? DEFAULT_PAGE_SIZE,
+        MAX_PAGE_SIZE,
+      );
+      const paged = filterSortPaginateStudents(rows, {
+        orderBy: params.orderBy,
+        orderDirection: params.orderDirection,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+
+      // Question-level details are built only for the returned page.
+      const students = paged.rows.map((r) => ({
+        userId: r.userId,
+        studentId: r.studentId,
+        name: r.name,
+        email: r.email,
+        batchId: r.batchId,
+        batchName: r.batchName,
+        submissionStatus: r.status,
+        submittedAt: r.submittedAt,
+        quiz: buildStudentQuizReport({
+          chapter,
+          answers: answers.get(r.userId)?.get(chapterId),
+          variantsById,
+        }),
+      }));
+
+      return [
+        null,
+        {
+          bootcampId: chapter.bootcampId,
+          moduleId: chapter.moduleId,
+          moduleName: chapter.moduleName,
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+          totalQuestions: quizIds.length,
+          ...counts,
+          page,
+          pageSize,
+          totalPages: paged.totalPages,
+          students,
         },
       ];
     } catch (err) {
