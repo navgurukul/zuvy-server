@@ -503,7 +503,22 @@ export class RecordingWorkerService implements OnModuleInit {
       return { ...result.rows[0], table: 'session' } as RecordingJob;
     }
 
-    // Then try mentor recordings
+    // Then try mentor recordings.
+    //
+    // Mentor recording jobs are enqueued at BOOKING time (bookSlot), which
+    // can be days or weeks before the session actually happens — unlike
+    // zuvy_session_recordings' jobs, which are only discovered once a real
+    // Zoom recording exists. Without this join+filter, a job sitting in
+    // DISCOVERED since booking time gets picked up immediately, tries to
+    // fetch Zoom recording metadata that can't exist yet, and burns through
+    // all 5 retries (exponential backoff capped at 15m) to PERMANENT_FAILED
+    // long before the session starts. Gating on the slot's own end time
+    // means the first real attempt only happens once the session could
+    // plausibly have a recording. `FOR UPDATE OF r` scopes the row lock to
+    // the recordings table only — without it, Postgres would also try to
+    // lock the joined booking/availability rows, which bookSlot and
+    // acceptReschedule already lock with their own `.for('update')`, risking
+    // a deadlock between this cron and live booking traffic.
     result = await db.execute(sql`
     UPDATE zuvy_mentor_session_recordings
     SET
@@ -517,16 +532,19 @@ export class RecordingWorkerService implements OnModuleInit {
       END,
       updated_at = NOW()
     WHERE id = (
-      SELECT id
-      FROM zuvy_mentor_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
-        AND status NOT LIKE 'PROCESSING_%'
-        AND status != 'PERMANENT_FAILED'
-        AND drive_link IS NULL
-        AND retry_count < ${MAX_RETRIES}
-        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-      ORDER BY created_at ASC
-      FOR UPDATE SKIP LOCKED
+      SELECT r.id
+      FROM zuvy_mentor_session_recordings r
+      JOIN zuvy_mentor_slot_booking b ON b.id = r.mentor_booking_id
+      JOIN zuvy_mentor_slot_availability a ON a.id = b.slot_availability_id
+      WHERE r.status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+        AND r.status NOT LIKE 'PROCESSING_%'
+        AND r.status != 'PERMANENT_FAILED'
+        AND r.drive_link IS NULL
+        AND r.retry_count < ${MAX_RETRIES}
+        AND (r.next_retry_at IS NULL OR r.next_retry_at <= NOW())
+        AND a.slot_end_date_time <= NOW()
+      ORDER BY r.created_at ASC
+      FOR UPDATE OF r SKIP LOCKED
       LIMIT 1
     )
     RETURNING *, 'mentor' as table

@@ -1195,7 +1195,20 @@ export class MentorSlotService {
       }
     }
 
-    return db.transaction(async (trx) => {
+    // Captured inside the transaction so the external Zoom/Google calls can
+    // run strictly AFTER the DB transaction has durably committed — doing
+    // these before commit meant a later failure inside the same transaction
+    // (e.g. the quota/metrics upsert below) rolled the booking back to
+    // 'scheduled' while the Zoom meeting stayed deleted, an unrecoverable
+    // DB/Zoom split-brain.
+    let externalCleanup: {
+      googleEventId: string | null;
+      googleRefreshToken: string | null;
+      isZoomMeet: boolean;
+      zoomMeetingId: string | null;
+    } | null = null;
+
+    const result = await db.transaction(async (trx) => {
       const [booking] = await trx
         .select()
         .from(zuvyMentorSlotBooking)
@@ -1223,6 +1236,11 @@ export class MentorSlotService {
 
       /* Cancel booking */
 
+      // A cancelled booking must never be revivable, so any pending
+      // reschedule is cleared here too — otherwise a later
+      // acceptReschedule/declineReschedule call (or the reschedule-expiry
+      // job, once built) could flip sessionLifecycleState back to
+      // 'SCHEDULED' on a booking the student/mentor already cancelled.
       await trx
         .update(zuvyMentorSlotBooking)
         .set({
@@ -1231,6 +1249,9 @@ export class MentorSlotService {
           cancellationReason: reason,
           cancelledBy,
           cancelledAt: new Date(),
+          rescheduleStatus: null,
+          rescheduleRequestedAt: null,
+          rescheduleProposedSlotId: null,
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
@@ -1258,27 +1279,12 @@ export class MentorSlotService {
         .where(eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId))
         .limit(1);
 
-      const refreshToken = mentorProfile?.googleRefreshToken;
-
-      if (booking.googleEventId && refreshToken) {
-        await this.googleCalendarService.deleteMeeting(
-          booking.googleEventId,
-          refreshToken,
-        );
-      }
-
-      // Best-effort: the booking cancellation itself must succeed even if
-      // Zoom's API is down, so this is deliberately not awaited inside a
-      // path that would roll back the transaction on failure.
-      if (booking.isZoomMeet && booking.zoomMeetingId) {
-        try {
-          await this.zoomService.deleteMeeting(booking.zoomMeetingId);
-        } catch (error: any) {
-          this.logger.error(
-            `Failed to delete Zoom meeting ${booking.zoomMeetingId} for cancelled booking ${bookingId}: ${error.message}`,
-          );
-        }
-      }
+      externalCleanup = {
+        googleEventId: booking.googleEventId,
+        googleRefreshToken: mentorProfile?.googleRefreshToken ?? null,
+        isZoomMeet: booking.isZoomMeet,
+        zoomMeetingId: booking.zoomMeetingId,
+      };
 
       const { quotaStart, quotaEnd } = this.getQuotaWindow();
 
@@ -1354,6 +1360,40 @@ export class MentorSlotService {
         message: 'Booking cancelled successfully.',
       };
     });
+
+    // Best-effort, run only after the cancellation has durably committed:
+    // the booking itself must stay cancelled even if Zoom/Google's API is
+    // down right now, and the DB can never again roll back underneath an
+    // already-applied Zoom/Google change.
+    if (externalCleanup) {
+      const { googleEventId, googleRefreshToken, isZoomMeet, zoomMeetingId } =
+        externalCleanup;
+
+      if (googleEventId && googleRefreshToken) {
+        try {
+          await this.googleCalendarService.deleteMeeting(
+            googleEventId,
+            googleRefreshToken,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to delete Google Calendar event ${googleEventId} for cancelled booking ${bookingId}: ${error.message}`,
+          );
+        }
+      }
+
+      if (isZoomMeet && zoomMeetingId) {
+        try {
+          await this.zoomService.deleteMeeting(zoomMeetingId);
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to delete Zoom meeting ${zoomMeetingId} for cancelled booking ${bookingId}: ${error.message}`,
+          );
+        }
+      }
+    }
+
+    return result;
   }
 
   /* ==========================================================================
@@ -1912,7 +1952,20 @@ export class MentorSlotService {
       );
     }
 
-    return db.transaction(async (trx) => {
+    // Captured inside the transaction so the external Zoom/Google calls run
+    // strictly AFTER the DB transaction has durably committed — see the
+    // identical note in cancelBooking.
+    let externalUpdate: {
+      isZoomMeet: boolean;
+      zoomMeetingId: string | null;
+      googleEventId: string | null;
+      googleRefreshToken: string | null;
+      proposedSlotStart: Date;
+      proposedSlotEnd: Date;
+      proposedDurationMinutes: number;
+    } | null = null;
+
+    const result = await db.transaction(async (trx) => {
       const [booking] = await trx
         .select()
         .from(zuvyMentorSlotBooking)
@@ -1921,6 +1974,17 @@ export class MentorSlotService {
 
       if (!booking) {
         throw new NotFoundException('Booking not found.');
+      }
+
+      // A cancelled booking must never be revivable through reschedule
+      // accept, even though cancelBooking already clears rescheduleStatus
+      // on cancel — this is defense in depth for any booking cancelled
+      // before that fix was in place, and for the future reschedule-expiry
+      // job.
+      if (booking.status === 'cancelled') {
+        throw new BadRequestException(
+          'Cannot accept a reschedule on a cancelled booking.',
+        );
       }
 
       if (booking.rescheduleStatus !== 'pending') {
@@ -2032,39 +2096,63 @@ export class MentorSlotService {
         referenceType: 'booking',
       });
 
-      /* Move the underlying Zoom meeting to the new slot's time. Best-effort:
-         the reschedule itself must still succeed even if Zoom's API is
-         down, same reasoning as the cancellation cleanup above. */
-      if (booking.isZoomMeet && booking.zoomMeetingId) {
+      externalUpdate = {
+        isZoomMeet: booking.isZoomMeet,
+        zoomMeetingId: booking.zoomMeetingId,
+        googleEventId: booking.googleEventId,
+        googleRefreshToken: mentorProfile?.googleRefreshToken ?? null,
+        proposedSlotStart: proposedSlot.slotStartDateTime,
+        proposedSlotEnd: proposedSlot.slotEndDateTime,
+        proposedDurationMinutes: proposedSlot.durationMinutes,
+      };
+
+      return { message: 'Reschedule accepted successfully.' };
+    });
+
+    // Best-effort, run only after the reschedule has durably committed —
+    // see the identical note in cancelBooking.
+    if (externalUpdate) {
+      const {
+        isZoomMeet,
+        zoomMeetingId,
+        googleEventId,
+        googleRefreshToken,
+        proposedSlotStart,
+        proposedSlotEnd,
+        proposedDurationMinutes,
+      } = externalUpdate;
+
+      if (isZoomMeet && zoomMeetingId) {
         try {
-          await this.zoomService.updateMeeting(booking.zoomMeetingId, {
-            start_time: new Date(proposedSlot.slotStartDateTime).toISOString(),
-            duration: proposedSlot.durationMinutes,
+          await this.zoomService.updateMeeting(zoomMeetingId, {
+            start_time: new Date(proposedSlotStart).toISOString(),
+            duration: proposedDurationMinutes,
             timezone: 'UTC',
           });
         } catch (error: any) {
           this.logger.error(
-            `Failed to move Zoom meeting ${booking.zoomMeetingId} to its rescheduled time for booking ${bookingId}: ${error.message}`,
+            `Failed to move Zoom meeting ${zoomMeetingId} to its rescheduled time for booking ${bookingId}: ${error.message}`,
           );
         }
       }
 
-      /* Update Google meeting time */
-
-      if (booking.googleEventId) {
-        const refreshToken = mentorProfile?.googleRefreshToken;
-
-        if (refreshToken) {
+      if (googleEventId && googleRefreshToken) {
+        try {
           await this.googleCalendarService.updateMeeting(
-            booking.googleEventId,
-            proposedSlot.slotStartDateTime,
-            proposedSlot.slotEndDateTime,
-            refreshToken,
+            googleEventId,
+            proposedSlotStart,
+            proposedSlotEnd,
+            googleRefreshToken,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to move Google Calendar event ${googleEventId} to its rescheduled time for booking ${bookingId}: ${error.message}`,
           );
         }
       }
-      return { message: 'Reschedule accepted successfully.' };
-    });
+    }
+
+    return result;
   }
 
   async declineReschedule(
@@ -2089,6 +2177,14 @@ export class MentorSlotService {
       .limit(1);
 
     if (!booking) throw new NotFoundException('Booking not found.');
+
+    // See the identical check in acceptReschedule — a cancelled booking
+    // must never be revivable through the reschedule flow.
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException(
+        'Cannot decline a reschedule on a cancelled booking.',
+      );
+    }
 
     if (booking.rescheduleStatus !== 'pending')
       throw new BadRequestException('No pending reschedule.');
