@@ -21,6 +21,7 @@ import {
   InternalServerErrorException,
   BadGatewayException,
   UploadedFiles,
+  NotFoundException,
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -265,6 +266,7 @@ export class ContentController {
       chapterData.moduleId,
       chapterData.topicId,
       chapterData.bootcampId,
+      chapterData.videoDurationSeconds,
     );
   }
 
@@ -1592,6 +1594,88 @@ export class ContentController {
       chapterId,
     );
     return res;
+  }
+
+  @Post('curriculum/upload-certificate')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Upload a certificate PDF for a Download Certificate chapter',
+  })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapterId',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UpdateChapterDto })
+  @UseInterceptors(FileInterceptor('pdf'))
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: () => 'Certificate chapter',
+    getTrackingContext: (result, params) => ({
+      chapterId: result?.chapterId ?? Number(params?.chapterId) ?? null,
+      moduleId: Number(params?.moduleId) ?? null,
+    }),
+  })
+  async uploadCertificate(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    if (!file) {
+      throw new BadRequestException('A PDF file is required');
+    }
+
+    try {
+      return await this.contentService.uploadCertificateToChapter(
+        moduleId,
+        chapterId,
+        file.buffer,
+        file.originalname,
+      );
+    } catch (err) {
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException ||
+        err instanceof InternalServerErrorException
+      ) {
+        throw err;
+      }
+      throw new BadGatewayException('Failed to upload certificate PDF to S3', {
+        cause: err as Error,
+      });
+    }
+  }
+
+  @Get('curriculum/download-certificate/:moduleId')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      "Get a download URL for the logged-in student's module certificate, generating it on first request",
+  })
+  @ApiParam({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'Module ID',
+  })
+  async downloadCertificate(
+    @Param('moduleId', ParseIntPipe) moduleId: number,
+    @Req() req,
+  ) {
+    return this.contentService.getCertificateForModule(
+      moduleId,
+      req.user?.[0] || req.user,
+    );
   }
 
   @Post('curriculum/upload-images')

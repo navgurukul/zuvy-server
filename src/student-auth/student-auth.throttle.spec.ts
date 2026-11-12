@@ -14,7 +14,13 @@ import { studentAuthThrottlerOptions } from './student-auth.throttle';
 
 describe('Student ID rate limits behind nginx', () => {
   let app: INestApplication;
-  const signupBody = { name: 'Test Student', password: 'test@123' };
+  const signupBody = {
+    name: 'Test Student',
+    password: 'test@123',
+    state: 'TELANGANA',
+    city: 'HYDERABAD',
+    udiseCode: '36070700101',
+  };
   const loginBody = { studentId: 'aruneshdhar01', password: 'test@123' };
   const service = {
     signup: jest.fn().mockResolvedValue({ studentId: 'aruneshdhar01' }),
@@ -74,10 +80,14 @@ describe('Student ID rate limits behind nginx', () => {
       'Too many requests from this network',
     );
     expect(service.signup).toHaveBeenLastCalledWith(
-      'Test Student',
-      'test@123',
-      undefined,
-      '203.0.113.10',
+      expect.objectContaining({
+        name: 'Test Student',
+        state: 'TELANGANA',
+        city: 'HYDERABAD',
+        udiseCode: '36070700101',
+        captchaToken: undefined,
+        ip: '203.0.113.10',
+      }),
     );
   });
 

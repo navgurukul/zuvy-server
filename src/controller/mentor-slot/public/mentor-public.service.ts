@@ -11,7 +11,7 @@ import {
   zuvyOrganizations,
 } from '../../../../drizzle/schema';
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 @Injectable()
 export class MentorPublicService {
@@ -61,6 +61,17 @@ export class MentorPublicService {
       );
     }
 
+    // Reused in both SELECT and ORDER BY so the sort is guaranteed to agree
+    // with the availabilityStatus computed from this same number below —
+    // and so mentors with open slots deterministically sort to the front of
+    // page 1 instead of landing wherever Postgres happens to put them.
+    const availableSlotsExpr = sql<number>`
+      COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
+      WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
+      )
+    `;
+
     const mentors = await db
       .select({
         userId: users.id,
@@ -73,12 +84,7 @@ export class MentorPublicService {
         expertise: zuvyMentorProfile.expertise,
         title: zuvyMentorProfile.title,
 
-        availableSlots: sql<number>`
-          COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
-          WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-          AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
-          )
-        `,
+        availableSlots: availableSlotsExpr,
 
         fullSlots: sql<number>`
           COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
@@ -151,6 +157,12 @@ export class MentorPublicService {
         zuvyMentorProfile.title,
       )
 
+      // Deterministic order: without this, LIMIT/OFFSET returns an
+      // arbitrary slice of the org's mentors, so a small default page can
+      // miss mentors who do have open slots — they'd only show up once a
+      // caller fetches a large enough page to cover everyone.
+      .orderBy(desc(availableSlotsExpr), asc(users.name))
+
       .limit(limit)
       .offset(offset);
 
@@ -216,10 +228,63 @@ export class MentorPublicService {
 
     const total = Number(totalCount[0].count);
 
+    /*
+    ==========================================
+    TOTAL AVAILABLE (org-wide, not just this page)
+    ==========================================
+    */
+
+    const availabilityRows = await db
+      .select({
+        managementId: zuvyMentorSlotManagement.id,
+        availableSlots: availableSlotsExpr,
+      })
+      .from(users)
+      .innerJoin(
+        zuvyMentorSlotManagement,
+        eq(zuvyMentorSlotManagement.mentorUserId, users.id),
+      )
+      .innerJoin(
+        zuvyMentorProfile,
+        eq(zuvyMentorProfile.mentorUserId, users.id),
+      )
+      .innerJoin(
+        zuvyOrganizations,
+        eq(zuvyOrganizations.id, zuvyMentorSlotManagement.organizationId),
+      )
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+          zuvyMentorSlotManagement.id,
+        ),
+      )
+      .leftJoin(
+        zuvyUserRolesAssigned,
+        and(
+          eq(zuvyUserRolesAssigned.userId, users.id),
+          eq(
+            zuvyUserRolesAssigned.organizationId,
+            zuvyMentorSlotManagement.organizationId,
+          ),
+        ),
+      )
+      .leftJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+      )
+      .where(filters.length ? and(...filters) : undefined)
+      .groupBy(zuvyMentorSlotManagement.id);
+
+    const totalAvailable = availabilityRows.filter(
+      (r) => Number(r.availableSlots) > 0,
+    ).length;
+
     return {
       limit,
       offset,
       total,
+      totalAvailable,
       hasMore: offset + limit < total,
       data: mentorsWithStatus,
     };

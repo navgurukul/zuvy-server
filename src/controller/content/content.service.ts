@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -38,7 +40,12 @@ import {
   zuvyBatches,
   zuvyLearnerLeaderboardChapterPoints,
   zuvyLearnerLeaderboard,
+  zuvyBatchEnrollments,
+  // zuvyBootcamps,
+  zuvyUserRolesAssigned,
+  users,
 } from '../../../drizzle/schema';
+import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 
 import { error, log } from 'console';
 import {
@@ -53,6 +60,7 @@ import {
   gt,
   SQL,
   desc,
+  isNull,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -87,7 +95,9 @@ import {
   S3Client,
   GetObjectCommand,
   PutObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
@@ -159,6 +169,561 @@ export class ContentService {
       return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
     } catch (err) {
       throw new InternalServerErrorException('Error uploading PDF to S3');
+    }
+  }
+
+  async uploadCertificateToChapter(
+    moduleId: number,
+    chapterId: number,
+    fileBuffer: Buffer,
+    fileName: string,
+  ) {
+    const resolvedModuleId = Number(moduleId);
+    const resolvedChapterId = Number(chapterId);
+
+    if (
+      !Number.isInteger(resolvedModuleId) ||
+      resolvedModuleId <= 0 ||
+      !Number.isInteger(resolvedChapterId) ||
+      resolvedChapterId <= 0
+    ) {
+      throw new BadRequestException('moduleId and chapterId must be valid IDs');
+    }
+
+    const [module, chapter] = await Promise.all([
+      db
+        .select({ id: zuvyCourseModules.id })
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, resolvedModuleId))
+        .limit(1),
+      db
+        .select({
+          id: zuvyModuleChapter.id,
+          moduleId: zuvyModuleChapter.moduleId,
+          topicId: zuvyModuleChapter.topicId,
+          title: zuvyModuleChapter.title,
+        })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, resolvedChapterId))
+        .limit(1),
+    ]);
+
+    if (!module[0]) {
+      throw new NotFoundException('Module not found');
+    }
+    if (!chapter[0]) {
+      throw new NotFoundException('Chapter not found');
+    }
+    if (chapter[0].moduleId !== resolvedModuleId) {
+      throw new BadRequestException(
+        'Chapter does not belong to the provided module',
+      );
+    }
+    if (chapter[0].topicId !== 10) {
+      throw new BadRequestException(
+        'Certificates can only be uploaded to Download Certificate chapters',
+      );
+    }
+
+    const certificateUrl = await this.uploadPdfToS3(fileBuffer, fileName);
+    if (!certificateUrl) {
+      throw new InternalServerErrorException('S3 returned an empty URL');
+    }
+
+    try {
+      const [updatedChapter] = await db
+        .update(zuvyModuleChapter)
+        .set({ links: [certificateUrl] })
+        .where(
+          and(
+            eq(zuvyModuleChapter.id, resolvedChapterId),
+            eq(zuvyModuleChapter.moduleId, resolvedModuleId),
+            eq(zuvyModuleChapter.topicId, 10),
+          ),
+        )
+        .returning({
+          id: zuvyModuleChapter.id,
+          links: zuvyModuleChapter.links,
+        });
+
+      if (!updatedChapter) {
+        throw new NotFoundException('Certificate chapter was not found');
+      }
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Certificate uploaded successfully',
+        chapterId: updatedChapter.id,
+        chapterTitle: chapter[0].title,
+        certificateUrl,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to save certificate link');
+    }
+  }
+
+  async getCertificateForModule(moduleId: number, user: any) {
+    if (!user?.id) {
+      throw new ForbiddenException('User not authenticated');
+    }
+    const userId = Number(user.id);
+
+    const [module] = await db
+      .select({ bootcampId: zuvyCourseModules.bootcampId })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, moduleId))
+      .limit(1);
+    if (!module?.bootcampId) {
+      throw new NotFoundException('Module not found');
+    }
+
+    const [bootcamp] = await db
+      .select({ organizationId: zuvyBootcamps.organizationId })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, module.bootcampId))
+      .limit(1);
+    if (!bootcamp) {
+      throw new NotFoundException('Module not found');
+    }
+
+    await this.ensureCertificateAccess(
+      user,
+      module.bootcampId,
+      bootcamp.organizationId,
+    );
+
+    // user_id + module_id is not unique, so prefer the most complete row
+    const [tracking] = await db
+      .select({
+        id: zuvyModuleTracking.id,
+        progress: zuvyModuleTracking.progress,
+        certificateUrl: zuvyModuleTracking.certificateUrl,
+      })
+      .from(zuvyModuleTracking)
+      .where(
+        and(
+          eq(zuvyModuleTracking.userId, userId),
+          eq(zuvyModuleTracking.moduleId, moduleId),
+          eq(zuvyModuleTracking.bootcampId, module.bootcampId),
+        ),
+      )
+      .orderBy(
+        desc(sql`${zuvyModuleTracking.certificateUrl} is not null`),
+        desc(zuvyModuleTracking.progress),
+        asc(zuvyModuleTracking.id),
+      )
+      .limit(1);
+    if (!tracking) {
+      throw new NotFoundException(
+        'No progress found for this module. Complete the module to download the certificate',
+      );
+    }
+    if (tracking.progress !== 100) {
+      throw new BadRequestException(
+        `Complete the module before downloading the certificate (current progress: ${tracking.progress ?? 0}%)`,
+      );
+    }
+
+    const [student] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, BigInt(user.id)))
+      .limit(1);
+    const studentName = student?.name?.trim();
+    if (!studentName) {
+      throw new NotFoundException('Student name not found');
+    }
+    const safeName = studentName.replace(/[^a-zA-Z0-9]+/g, '_') || 'student';
+    const fileName = `certificate_${safeName}.pdf`;
+
+    const existingKey = tracking.certificateUrl
+      ? this.getS3KeyFromUrl(tracking.certificateUrl)
+      : null;
+    let certificateKey = existingKey;
+    if (!certificateKey) {
+      // Concurrent requests on this instance share one generation
+      let generation = this.certificateGenerations.get(tracking.id);
+      if (!generation) {
+        generation = this.generateModuleCertificate(
+          tracking.id,
+          moduleId,
+          userId,
+          studentName,
+        ).finally(() => this.certificateGenerations.delete(tracking.id));
+        this.certificateGenerations.set(tracking.id, generation);
+      }
+      certificateKey = await generation;
+    }
+
+    return {
+      status: 'success',
+      code: 200,
+      message: existingKey
+        ? 'Certificate already generated'
+        : 'Certificate generated successfully',
+      data: {
+        moduleId,
+        certificateUrl: await this.getCertificateDownloadUrl(
+          certificateKey,
+          fileName,
+        ),
+        fileName,
+      },
+    };
+  }
+
+  private certificateGenerations = new Map<number, Promise<string>>();
+
+  // Personalizes the module's certificate template, uploads it and saves its
+  // S3 key on the tracking row. Returns the key that ends up saved.
+  private async generateModuleCertificate(
+    trackingId: number,
+    moduleId: number,
+    userId: number,
+    studentName: string,
+  ): Promise<string> {
+    const [chapter] = await db
+      .select({ links: zuvyModuleChapter.links })
+      .from(zuvyModuleChapter)
+      .where(
+        and(
+          eq(zuvyModuleChapter.moduleId, moduleId),
+          eq(zuvyModuleChapter.topicId, 10),
+        ),
+      )
+      .orderBy(asc(zuvyModuleChapter.order), asc(zuvyModuleChapter.id))
+      .limit(1);
+    if (!chapter) {
+      throw new NotFoundException(
+        'Certificate chapter not found for this module',
+      );
+    }
+
+    const templateUrl = Array.isArray(chapter.links)
+      ? chapter.links.find(
+          (link): link is string =>
+            typeof link === 'string' && link.trim().length > 0,
+        )
+      : null;
+    if (!templateUrl) {
+      throw new NotFoundException(
+        'Certificate template not found for this module',
+      );
+    }
+
+    const templateBuffer = await this.getCertificateTemplateFromS3(templateUrl);
+    // Formatted as "dd MMMM yyyy", e.g. "03 November 2026"
+    const issuedDate = new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
+    const pdfBuffer = await this.personalizeCertificate(
+      templateBuffer,
+      studentName,
+      issuedDate,
+    );
+
+    const uploadedUrl = await this.uploadPdfToS3(
+      pdfBuffer,
+      `certificate_${moduleId}_${userId}.pdf`,
+    );
+    const key = this.getS3KeyFromUrl(uploadedUrl);
+
+    // Only the first save wins, so other instances can't overwrite it
+    const [saved] = await db
+      .update(zuvyModuleTracking)
+      .set({ certificateUrl: key, updatedAt: sql`NOW()` } as any)
+      .where(
+        and(
+          eq(zuvyModuleTracking.id, trackingId),
+          isNull(zuvyModuleTracking.certificateUrl),
+        ),
+      )
+      .returning({ id: zuvyModuleTracking.id });
+    if (saved) {
+      return key;
+    }
+
+    // Another request saved a certificate first: keep it and drop ours
+    await this.deleteS3Object(key);
+    const [existing] = await db
+      .select({ certificateUrl: zuvyModuleTracking.certificateUrl })
+      .from(zuvyModuleTracking)
+      .where(eq(zuvyModuleTracking.id, trackingId))
+      .limit(1);
+    const existingKey = existing?.certificateUrl
+      ? this.getS3KeyFromUrl(existing.certificateUrl)
+      : null;
+    if (!existingKey) {
+      throw new InternalServerErrorException('Failed to save certificate');
+    }
+    return existingKey;
+  }
+
+  // Accepts either one of our bucket URLs or a bare object key
+  private getS3KeyFromUrl(url: string): string | null {
+    const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
+    if (url.startsWith(bucketPrefix)) {
+      return decodeURIComponent(url.slice(bucketPrefix.length));
+    }
+    return /^https?:\/\//i.test(url) ? null : url;
+  }
+
+  // The bucket is private, so downloads go through a short-lived signed URL
+  private async getCertificateDownloadUrl(
+    key: string,
+    fileName: string,
+  ): Promise<string> {
+    try {
+      return await getSignedUrl(
+        this.s3,
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ResponseContentType: 'application/pdf',
+          ResponseContentDisposition: `attachment; filename="${fileName}"`,
+        }),
+        { expiresIn: 15 * 60 },
+      );
+    } catch (err) {
+      throw new InternalServerErrorException(
+        'Failed to create certificate download URL',
+      );
+    }
+  }
+
+  private async deleteS3Object(key: string): Promise<void> {
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+    } catch (err) {
+      this.logger?.warn?.(`Failed to delete S3 object ${key}: ${err?.message}`);
+    }
+  }
+
+  private async getCertificateTemplateFromS3(
+    certificateUrl: string,
+  ): Promise<Buffer> {
+    const key = this.getS3KeyFromUrl(certificateUrl);
+    if (!key) {
+      throw new NotFoundException('Certificate file not found');
+    }
+
+    try {
+      const response = await this.s3.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return Buffer.from(await response.Body.transformToByteArray());
+    } catch (err) {
+      throw new InternalServerErrorException(
+        'Failed to fetch certificate from S3',
+      );
+    }
+  }
+
+  // Writes the student's name and date onto a copy of the certificate template.
+  // Positions come from the template's own text ("Amazon hereby acknowledges
+  // that", the "____" line and "Date:") when the PDF has a text layer, otherwise
+  // from the certificate layout's proportions (image-only templates).
+  private async personalizeCertificate(
+    templateBuffer: Buffer,
+    studentName: string,
+    issuedDate: string,
+  ): Promise<Buffer> {
+    const isPng = templateBuffer.subarray(0, 4).toString('hex') === '89504e47';
+    const isJpg = templateBuffer.subarray(0, 3).toString('hex') === 'ffd8ff';
+
+    let pdfDoc: PDFDocument;
+    if (isPng || isJpg) {
+      pdfDoc = await PDFDocument.create();
+      const image = isPng
+        ? await pdfDoc.embedPng(templateBuffer)
+        : await pdfDoc.embedJpg(templateBuffer);
+      const page = pdfDoc.addPage([image.width, image.height]);
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: image.width,
+        height: image.height,
+      });
+    } else {
+      try {
+        pdfDoc = await PDFDocument.load(templateBuffer);
+      } catch (err) {
+        throw new InternalServerErrorException(
+          'Certificate template is not a valid PDF',
+        );
+      }
+    }
+
+    const page = pdfDoc.getPage(0);
+    const { width, height } = page.getSize();
+    const anchors =
+      isPng || isJpg ? null : await this.findCertificateAnchors(templateBuffer);
+
+    const nameFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const dateFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const textColor = rgb(0.07, 0.09, 0.13);
+
+    // Name: centered just above the blank line, shrunk to fit long names
+    const name = this.toEncodableText(nameFont, studentName);
+    const nameCenterX = anchors?.line
+      ? anchors.line.x + anchors.line.width / 2
+      : anchors?.heading
+        ? anchors.heading.x + anchors.heading.width / 2
+        : width / 2;
+    const nameMaxWidth = anchors?.line ? anchors.line.width : width * 0.65;
+    const nameY = anchors?.line
+      ? anchors.line.y + anchors.line.fontSize * 0.4
+      : anchors?.heading
+        ? anchors.heading.y - anchors.heading.fontSize * 2.1
+        : height * 0.392;
+    let nameSize = anchors?.heading
+      ? anchors.heading.fontSize * 1.3
+      : height * 0.042;
+    const minNameSize = nameSize * 0.45;
+    while (
+      nameSize > minNameSize &&
+      nameFont.widthOfTextAtSize(name, nameSize) > nameMaxWidth
+    ) {
+      nameSize -= 0.5;
+    }
+    page.drawText(name, {
+      x: nameCenterX - nameFont.widthOfTextAtSize(name, nameSize) / 2,
+      y: nameY,
+      size: nameSize,
+      font: nameFont,
+      color: textColor,
+    });
+
+    // Date: right after the "Date:" label, on the same baseline
+    const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+    page.drawText(issuedDate, {
+      x: anchors?.date
+        ? anchors.date.x + anchors.date.width + dateSize * 0.4
+        : width * 0.7725,
+      y: anchors?.date ? anchors.date.y : height * 0.1429,
+      size: dateSize,
+      font: dateFont,
+      color: textColor,
+    });
+
+    pdfDoc.setTitle(`Certificate - ${studentName}`, {
+      showInWindowTitleBar: true,
+    });
+
+    return Buffer.from(await pdfDoc.save());
+  }
+
+  private async findCertificateAnchors(pdfBuffer: Buffer) {
+    type TextBox = { x: number; y: number; width: number; fontSize: number };
+    const anchors: { heading?: TextBox; line?: TextBox; date?: TextBox } = {};
+
+    try {
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const doc = await pdfjsLib.getDocument({
+        data: new Uint8Array(pdfBuffer),
+        useSystemFonts: true,
+      }).promise;
+      const content = await (await doc.getPage(1)).getTextContent();
+
+      for (const item of content.items) {
+        if (!('str' in item)) continue;
+        const text = item.str.trim();
+        const box: TextBox = {
+          x: item.transform[4],
+          y: item.transform[5],
+          width: item.width,
+          fontSize: Math.abs(item.transform[3]) || Math.abs(item.transform[0]),
+        };
+        if (!anchors.heading && /amazon hereby acknowledges that/i.test(text)) {
+          anchors.heading = box;
+        } else if (!anchors.date && /^date\s*:?$/i.test(text)) {
+          anchors.date = box;
+        } else if (/^_{5,}$/.test(text)) {
+          // The blank name line sits below the heading
+          if (!anchors.line || box.width > anchors.line.width) {
+            anchors.line = box;
+          }
+        }
+      }
+      await doc.destroy();
+    } catch (err) {
+      this.logger?.warn?.(`Certificate text lookup failed: ${err?.message}`);
+    }
+
+    if (
+      anchors.line &&
+      anchors.heading &&
+      anchors.line.y >= anchors.heading.y
+    ) {
+      delete anchors.line;
+    }
+    return anchors;
+  }
+  // Standard PDF fonts only cover WinAnsi characters; drop anything else
+  private toEncodableText(font: PDFFont, text: string): string {
+    const supported = new Set(font.getCharacterSet());
+    return Array.from(text)
+      .filter((char) => supported.has(char.codePointAt(0)))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private async ensureCertificateAccess(
+    user: any,
+    bootcampId: number,
+    organizationId: number,
+  ): Promise<void> {
+    if (!user?.id) {
+      throw new ForbiddenException('User not authenticated');
+    }
+
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    if (roles.includes('super_admin')) {
+      return;
+    }
+
+    const isStudent = roles.includes('student') || roles.length === 0;
+    if (isStudent) {
+      const [enrollment] = await db
+        .select({ id: zuvyBatchEnrollments.id })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
+
+      if (!enrollment) {
+        throw new ForbiddenException('Unauthorized access to certificate');
+      }
+      return;
+    }
+
+    const [membership] = await db
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(user.id)),
+          eq(zuvyUserRolesAssigned.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      throw new ForbiddenException('Unauthorized access to certificate');
     }
   }
 
@@ -413,6 +978,7 @@ export class ContentService {
     moduleId: number,
     topicId: number,
     bootcampId: number,
+    videoDurationSeconds?: number,
   ) {
     try {
       const moduleInfo = await db
@@ -440,6 +1006,9 @@ export class ContentService {
         };
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+      }
+      if (topicId === 1 && videoDurationSeconds !== undefined) {
+        chapterData.videoDurationSeconds = Math.round(videoDurationSeconds);
       }
       const chapter = await db
         .insert(zuvyModuleChapter)
@@ -1546,6 +2115,15 @@ export class ContentService {
       if (moduleInfo.length == 0 || chapterInfo.length == 0) {
         throw new NotFoundException('Module or chapter not found!');
       }
+      // Video duration comes from the frontend's player metadata. Keep it
+      // optional and ignore it for non-video chapter types.
+      if (chapterInfo[0].topicId !== 1) {
+        delete (editData as any).videoDurationSeconds;
+      } else if (editData.videoDurationSeconds !== undefined) {
+        editData.videoDurationSeconds = Math.round(
+          editData.videoDurationSeconds,
+        );
+      }
       if (editData.newOrder != undefined) {
         const { newOrder } = editData;
 
@@ -1604,7 +2182,12 @@ export class ContentService {
 
           await db
             .update(zuvyModuleChapter)
-            .set({ order: newOrder })
+            .set({
+              order: newOrder,
+              ...(editData.videoDurationSeconds !== undefined
+                ? { videoDurationSeconds: editData.videoDurationSeconds }
+                : {}),
+            })
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
@@ -1718,7 +2301,9 @@ export class ContentService {
         }
         await db
           .update(zuvyModuleChapter)
-          .set(editData)
+          .set({
+            ...editData,
+          })
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
       const updatedChapter = await db
