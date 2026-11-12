@@ -23,6 +23,8 @@ import { LearnerProfileService } from './learner.profile.service';
     JwtService,
   ],
 })
+
+// learner module will have jwt middleware applied to all routes
 export class LearnerModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(JwtMiddleware).forRoutes('*');
