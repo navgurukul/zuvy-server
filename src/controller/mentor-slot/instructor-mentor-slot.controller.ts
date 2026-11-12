@@ -11,6 +11,8 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -33,9 +35,12 @@ import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
+// Class-level validation for every DTO in this controller — see the note on
+// MentorSlotController for why `transform` is off and what `whitelist` needs.
 @ApiTags('Instructor Mentor APIs')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 @Controller('instructor')
 export class InstructorMentorSlotController {
   constructor(

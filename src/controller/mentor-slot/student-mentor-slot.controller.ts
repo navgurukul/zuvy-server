@@ -8,6 +8,8 @@ import {
   Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -26,9 +28,12 @@ import { MentorSearchDto } from './public/dto/mentor-search.dto';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 import { FeedbackDto } from './dto/feedback.dto';
 
+// Class-level validation for every DTO in this controller — see the note on
+// MentorSlotController for why `transform` is off and what `whitelist` needs.
 @ApiTags('Student Mentor APIs')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 @SkipOrgCheck()
 @Controller('student')
 export class StudentMentorSlotController {
@@ -60,7 +65,7 @@ export class StudentMentorSlotController {
     type: Number,
   })
   getMentorProfile(
-    @Param('mentorUserId') mentorUserId: number,
+    @Param('mentorUserId', ParseIntPipe) mentorUserId: number,
     @Query('organizationId') organizationId?: number,
   ) {
     return this.mentorPublicService.getMentorProfile(

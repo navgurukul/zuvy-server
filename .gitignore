@@ -5,6 +5,8 @@
 # env
 .env
 /src/service-account.json
+# local on/off switches (template: src/constants/global.constants.example.ts)
+/src/constants/global.constants.ts
 # Logs
 logs
 *.log

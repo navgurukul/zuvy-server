@@ -3100,6 +3100,52 @@ export const zuvyMentorSlotBooking = main.table(
 );
 
 /* ============================================================================
+   SESSION ATTENDANCE (from the Zoom participant report)
+   One row per booking, written by MentorAttendanceJob after the session ends.
+   Kept out of zuvy_mentor_slot_booking so reading bookings doesn't depend on
+   it. The credit recount (cancelBooking, the attendance job) and
+   completeSession DO read it, so migration
+   0047_mentor_session_attendance.sql must be applied before deploying.
+============================================================================ */
+
+export const zuvyMentorSessionAttendance = main.table(
+  'zuvy_mentor_session_attendance',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorBookingId: integer('mentor_booking_id')
+      .notNull()
+      .references(() => zuvyMentorSlotBooking.id, { onDelete: 'cascade' }),
+
+    // PENDING (report not available yet, will retry) | RECORDED |
+    // UNAVAILABLE (gave up; booking left as it was)
+    status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+
+    // BOTH_JOINED | STUDENT_NO_SHOW | MENTOR_NO_SHOW | NOBODY_JOINED
+    outcome: varchar('outcome', { length: 30 }),
+
+    mentorAttendedSeconds: integer('mentor_attended_seconds'),
+    studentAttendedSeconds: integer('student_attended_seconds'),
+
+    // The booking no longer uses one of the student's credits (mentor no-show
+    // or nobody joined). Excluded from the credit and cooldown recount.
+    creditRefunded: boolean('credit_refunded').notNull().default(false),
+
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqBooking: unique('uniq_mentor_session_attendance_booking').on(
+      table.mentorBookingId,
+    ),
+  }),
+);
+
+/* ============================================================================
    RELATIONS
 ============================================================================ */
 

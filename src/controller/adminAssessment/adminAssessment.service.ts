@@ -1743,7 +1743,7 @@ Team Zuvy`;
       // video chapter credits the full video duration to that student.
       const perStudentWatchedTime =
         chapterDetails.topicId === 1
-          ? (chapterDetails.videoDurationSeconds ?? 0)
+          ? chapterDetails.videoDurationSeconds ?? 0
           : 0;
 
       const submittedStudents = chapterTrackingDetails

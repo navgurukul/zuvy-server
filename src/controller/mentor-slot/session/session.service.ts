@@ -12,28 +12,10 @@ import {
 } from '../../../../drizzle/schema';
 
 import { and, eq, desc, sql } from 'drizzle-orm';
+import { withoutHostZoomFields } from '../booking-response.util';
 
 @Injectable()
 export class SessionService {
-  /* ==========================================================================
-     BACKGROUND JOB TO AUTO-CLOSE EXPIRED SESSIONS
-  ========================================================================== */
-  async autoCloseExpiredSessions() {
-    await db
-      .update(zuvyMentorSlotBooking)
-      .set({ sessionLifecycleState: 'COMPLETED' } as Partial<
-        typeof zuvyMentorSlotBooking.$inferInsert
-      >)
-      .where(
-        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-      SELECT ${zuvyMentorSlotAvailability.id}
-      FROM ${zuvyMentorSlotAvailability}
-      WHERE ${zuvyMentorSlotAvailability.slotEndDateTime} < NOW()
-    )
-    AND ${zuvyMentorSlotBooking.sessionLifecycleState} = 'SCHEDULED'`,
-      );
-  }
-
   private mapMeetingLink(booking: any, userId: bigint) {
     if (booking.mentorUserId === userId) {
       return booking.zoomStartUrl; // mentor
@@ -52,8 +34,10 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
-
+    // Lifecycle transitions (SCHEDULED -> IN_PROGRESS -> COMPLETED/MISSED) are
+    // handled only by MentorSlotJob.handleSessionTransitions, which runs every
+    // minute. This read path used to write those transitions too, racing the
+    // cron with different rules. See MDA-09.
     const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
@@ -109,7 +93,7 @@ export class SessionService {
     const mappedData = data.map((item) => ({
       ...item,
       booking: {
-        ...item.booking,
+        ...withoutHostZoomFields(item.booking),
         meetingLink: item.booking.meetingLink,
       },
     }));
@@ -129,8 +113,7 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
-
+    // See the note in getStudentSessions above — MDA-09.
     const conditions = [
       eq(zuvyMentorSlotBooking.mentorUserId, userId),
       eq(zuvyMentorSlotBooking.organizationId, organizationId),
@@ -319,8 +302,12 @@ export class SessionService {
       );
     }
 
+    // Shared by the student and mentor routes: only the mentor (the host)
+    // may receive the host-only Zoom fields.
+    const isMentor = session.mentorUserId === userId;
+
     return {
-      ...session,
+      ...(isMentor ? session : withoutHostZoomFields(session)),
       meetingLink: this.mapMeetingLink(session, userId),
     };
   }

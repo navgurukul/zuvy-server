@@ -10,6 +10,8 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
   Query,
   BadRequestException,
 } from '@nestjs/common';
@@ -32,9 +34,16 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { AttendanceDto } from './dto/attendance.dto';
 import { UpdateMentorProfileDto } from './dto/update-mentor-profile.dto';
 
+// Class-level so every DTO in this controller is validated, not just the
+// routes someone remembered to annotate (main.ts registers no global pipe).
+// `transform` is deliberately off: in Nest 10 it turns an absent numeric
+// query param into NaN, which would override defaults like `limit = 10`.
+// `whitelist` strips undeclared properties, so every DTO field the services
+// read must carry a class-validator decorator.
 @ApiTags('Mentor Slots')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 @Controller('mentor-slots')
 export class MentorSlotController {
   constructor(private readonly mentorSlotService: MentorSlotService) {}

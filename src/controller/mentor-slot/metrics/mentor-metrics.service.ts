@@ -8,6 +8,14 @@ import { and, eq, sql, gte, lte, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
+  private mentorScopeConditions(mentorUserId: bigint, organizationId?: number) {
+    const conditions = [eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId)];
+    if (organizationId !== undefined) {
+      conditions.push(eq(zuvyMentorSlotBooking.organizationId, organizationId));
+    }
+    return conditions;
+  }
+
   async getMentorMetrics(
     mentorUserId: bigint,
     organizationId?: number,
@@ -34,15 +42,10 @@ export class MentorMetricsService {
        SESSION FILTERING (ACTUAL SESSION DATE)
     ========================================================== */
 
-    const sessionConditions: any[] = [
-      eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
-    ];
-
-    if (organizationId !== undefined) {
-      sessionConditions.push(
-        eq(zuvyMentorSlotBooking.organizationId, organizationId),
-      );
-    }
+    const sessionConditions: any[] = this.mentorScopeConditions(
+      mentorUserId,
+      organizationId,
+    );
 
     let filteredSlotIds: number[] = [];
 
@@ -163,6 +166,21 @@ export class MentorMetricsService {
     let upcomingCount = 0;
 
     if (upcomingSlotIds.length > 0) {
+      // Deliberately NOT reusing sessionConditions here: its optional last
+      // entry (inArray on filteredSlotIds, pushed above when fromDate is
+      // set) scopes to the PAST 30d/3m window for the completed/cancelled/
+      // missed counts — combined with upcomingSlotIds (a FUTURE window) the
+      // intersection is always empty. Only the mentor/org scoping applies
+      // to "upcoming", so it's rebuilt explicitly instead of filtering
+      // sessionConditions by shape (the previous `typeof c === 'object'`
+      // check matched every condition, including mentorUserId/organizationId,
+      // and silently turned this into an unscoped, platform-wide count
+      // whenever fromDate was set — see MDA-12).
+      const upcomingConditions = this.mentorScopeConditions(
+        mentorUserId,
+        organizationId,
+      );
+
       const [upcoming] = await db
         .select({
           upcomingCount: sql<number>`COUNT(*)`,
@@ -170,9 +188,7 @@ export class MentorMetricsService {
         .from(zuvyMentorSlotBooking)
         .where(
           and(
-            ...sessionConditions.filter(
-              (c) => !(typeof c === 'object' && filteredSlotIds.length > 0),
-            ),
+            ...upcomingConditions,
             eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
             inArray(zuvyMentorSlotBooking.slotAvailabilityId, upcomingSlotIds),
           ),
