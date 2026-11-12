@@ -1657,7 +1657,6 @@ export class ContentController {
       });
     }
   }
-
   @Get('curriculum/download-certificate/:moduleId')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
