@@ -15,6 +15,7 @@ import {
   ValidationPipe,
   UseGuards,
   Query,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -129,9 +130,16 @@ export class LearnerProfileController {
   @ApiParam({ name: 'id', type: Number, description: 'User ID' })
   @ApiBody({ type: SaveCompleteProfileDto })
   async updateProfile(
+    @Req() req,
     @Param('id', ParseIntPipe) id: number,
     @Body() payload: SaveCompleteProfileDto,
   ) {
+    const currentUser = req.user[0];
+    if (Number(currentUser.id) !== id) {
+      throw new ForbiddenException(
+        'Access denied: You cannot update another learner’s profile',
+      );
+    }
     return this.learnerProfileService.updateProfile(id, payload);
   }
 
@@ -150,7 +158,13 @@ export class LearnerProfileController {
     summary: 'Delete learner profile by user ID',
   })
   @ApiParam({ name: 'id', type: Number, description: 'User ID' })
-  async deleteProfile(@Param('id', ParseIntPipe) id: number) {
+  async deleteProfile(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    const currentUser = req.user[0];
+    if (Number(currentUser.id) !== id) {
+      throw new ForbiddenException(
+        'Access denied: You cannot delete another learner’s profile',
+      );
+    }
     return this.learnerProfileService.deleteProfile(id);
   }
 }
