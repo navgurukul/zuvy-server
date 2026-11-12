@@ -604,12 +604,26 @@ export class ContentService {
     });
 
     // Date: right after the "Date:" label, on the same baseline
+    // const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+    // page.drawText(issuedDate, {
+    //   x: anchors?.date
+    //     ? anchors.date.x + anchors.date.width + dateSize * 0.4
+    //     : width * 0.7725,
+    //   y: anchors?.date ? anchors.date.y : height * 0.1429,
+    //   size: dateSize,
+    //   font: dateFont,
+    //   color: textColor,
+    // });
+
     const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+
+    const dateY = anchors?.date ? anchors.date.y + 5 : height * 0.1429;
+
     page.drawText(issuedDate, {
       x: anchors?.date
         ? anchors.date.x + anchors.date.width + dateSize * 0.4
         : width * 0.7725,
-      y: anchors?.date ? anchors.date.y : height * 0.1429,
+      y: dateY,
       size: dateSize,
       font: dateFont,
       color: textColor,
