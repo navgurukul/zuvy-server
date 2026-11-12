@@ -177,6 +177,7 @@ export class ContentService {
     chapterId: number,
     fileBuffer: Buffer,
     fileName: string,
+    chapterTitle?: string,
   ) {
     const resolvedModuleId = Number(moduleId);
     const resolvedChapterId = Number(chapterId);
@@ -233,7 +234,14 @@ export class ContentService {
     try {
       const [updatedChapter] = await db
         .update(zuvyModuleChapter)
-        .set({ links: [certificateUrl] })
+        // .set({ links: [certificateUrl] })
+        .set({
+          links: [certificateUrl],
+          ...(chapterTitle?.trim() && {
+            title: chapterTitle.trim(),
+          }),
+        })
+
         .where(
           and(
             eq(zuvyModuleChapter.id, resolvedChapterId),
@@ -243,6 +251,7 @@ export class ContentService {
         )
         .returning({
           id: zuvyModuleChapter.id,
+          title: zuvyModuleChapter.title,
           links: zuvyModuleChapter.links,
         });
 
@@ -254,7 +263,8 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Certificate uploaded successfully',
-        chapterTitle: chapter[0].title,
+        // chapterTitle: chapter[0].title,
+        chapterTitle: updatedChapter.title,
         chapterId: updatedChapter.id,
         certificateUrl,
       };
