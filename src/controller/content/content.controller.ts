@@ -1630,6 +1630,7 @@ export class ContentController {
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
+    @Body('title') chapterTitle?: string,
   ) {
     if (!file) {
       throw new BadRequestException('A PDF file is required');
@@ -1641,6 +1642,7 @@ export class ContentController {
         chapterId,
         file.buffer,
         file.originalname,
+        chapterTitle,
       );
     } catch (err) {
       if (
@@ -1655,7 +1657,6 @@ export class ContentController {
       });
     }
   }
-
   @Get('curriculum/download-certificate/:moduleId')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
