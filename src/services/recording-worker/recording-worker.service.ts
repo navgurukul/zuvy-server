@@ -1694,18 +1694,53 @@ export class RecordingWorkerService implements OnModuleInit {
       // themselves are also gone. Reset to the pre-merge status so the next
       // pick-up goes through mergeRecording() again instead of failing here
       // every time. See MDA-21.
+      //
+      // This returns instead of throwing, like the other "send back to an
+      // earlier stage" paths above. Throwing would hand the job to
+      // markFailed, which conflicts with the reset: for mentor jobs its
+      // "status = the job's old status" guard no longer matches (so no
+      // retry is counted and the job is re-picked immediately), and for
+      // session jobs it overwrites DOWNLOADED with FAILED (so the job
+      // re-downloads instead of re-merging). The reset itself counts the
+      // retry and sets the backoff, so a file that keeps going missing still
+      // ends in PERMANENT_FAILED instead of looping.
+      const nextRetryCount = (job.retry_count ?? 0) + 1;
+      const resetError = `Merged file not found (${filePath}); reset to re-merge.`;
+
+      if (nextRetryCount >= MAX_RETRIES) {
+        await db.execute(sql`
+          UPDATE ${sql.raw(this.getTableName(job))}
+          SET
+            status = 'PERMANENT_FAILED',
+            retry_count = ${nextRetryCount},
+            last_error = ${resetError}
+          WHERE id = ${job.id}
+        `);
+        this.logJob(
+          'error',
+          job,
+          'Merged file missing and retry budget exhausted',
+          { filePath, retryCount: nextRetryCount },
+        );
+        return;
+      }
+
       await db.execute(sql`
         UPDATE ${sql.raw(this.getTableName(job))}
         SET
           status = 'DOWNLOADED',
           merged_file_path = NULL,
-          is_final_merged = FALSE
+          is_final_merged = FALSE,
+          retry_count = ${nextRetryCount},
+          next_retry_at = ${this.computeNextRetry(job.retry_count ?? 0)},
+          last_error = ${resetError}
         WHERE id = ${job.id}
       `);
-
-      throw new Error(
-        `Merged file not found (${filePath}) — reset job ${job.id} to re-merge on its next pass.`,
-      );
+      this.logJob('warn', job, 'Merged file missing; reset to re-merge', {
+        filePath,
+        retryCount: nextRetryCount,
+      });
+      return;
     }
 
     const fileSize = fs.statSync(filePath).size;

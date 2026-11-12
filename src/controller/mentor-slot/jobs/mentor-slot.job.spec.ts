@@ -23,7 +23,7 @@ jest.mock('../../../db', () => ({
   },
 }));
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { zuvyMentorSlotBooking } from '../../../../drizzle/schema';
 import { MentorSlotJob } from './mentor-slot.job';
 
@@ -83,15 +83,24 @@ describe('MentorSlotJob.handleSessionTransitions', () => {
         slotStart: '2026-11-05T11:00:00.000Z',
         slotEnd: '2026-11-05T11:30:00.000Z',
       },
+      // SCHEDULED, now past end, attendance recorded -> COMPLETED. The cron
+      // never saw it IN_PROGRESS (e.g. it was down during the slot); before,
+      // no branch matched and it stayed "upcoming" forever.
+      {
+        bookingId: 5,
+        lifecycle: 'SCHEDULED',
+        joinedAt: '2026-11-05T08:05:00.000Z',
+        slotStart: '2026-11-05T08:00:00.000Z',
+        slotEnd: '2026-11-05T08:30:00.000Z',
+      },
     ]);
 
     const job = new MentorSlotJob();
     await job.handleSessionTransitions();
 
-    // Exactly one bulk UPDATE per target state (not one per row) — that's
-    // the actual fix. Compare each call's WHERE against a real inArray(...)
-    // built from the expected booking ids, same column, so this verifies
-    // both the batching and the correct id grouping.
+    // Exactly one bulk UPDATE per target state (not one per row). Compare
+    // each call's WHERE against real drizzle expressions built from the
+    // expected ids, so this checks both the batching and the grouping.
     expect(updateCalls).toHaveLength(3);
 
     const byState = (state: string) =>
@@ -112,14 +121,20 @@ describe('MentorSlotJob.handleSessionTransitions', () => {
     );
     expect(byState('COMPLETED')?.whereArgs[0]).toEqual(
       and(
-        inArray(zuvyMentorSlotBooking.id, [2]),
-        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'IN_PROGRESS'),
+        inArray(zuvyMentorSlotBooking.id, [2, 5]),
+        inArray(zuvyMentorSlotBooking.sessionLifecycleState, [
+          'SCHEDULED',
+          'IN_PROGRESS',
+        ]),
       ),
     );
+    // MISSED also re-checks joined_at IS NULL at write time, so attendance
+    // recorded between the SELECT and this UPDATE isn't stored as a no-show.
     expect(byState('MISSED')?.whereArgs[0]).toEqual(
       and(
         inArray(zuvyMentorSlotBooking.id, [3]),
         eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+        isNull(zuvyMentorSlotBooking.joinedAt),
       ),
     );
     expect(byState('COMPLETED')?.set).toMatchObject({ completedAt: NOW });

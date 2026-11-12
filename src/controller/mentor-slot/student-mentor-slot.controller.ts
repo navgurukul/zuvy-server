@@ -28,9 +28,12 @@ import { MentorSearchDto } from './public/dto/mentor-search.dto';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 import { FeedbackDto } from './dto/feedback.dto';
 
+// Class-level validation for every DTO in this controller — see the note on
+// MentorSlotController for why `transform` is off and what `whitelist` needs.
 @ApiTags('Student Mentor APIs')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 @SkipOrgCheck()
 @Controller('student')
 export class StudentMentorSlotController {
@@ -149,9 +152,6 @@ export class StudentMentorSlotController {
 
   @Post('mentor-slots/bookings/:bookingId/cancel')
   @ApiOperation({ summary: 'Cancel a student mentor booking' })
-  // See MDA-15: without this, CancelBookingDto.cancelledBy's @IsEnum never
-  // runs, letting an invalid value bypass the service's ownership check.
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -179,8 +179,6 @@ export class StudentMentorSlotController {
 
   @Post('mentor-slots/bookings/:bookingId/feedback')
   @ApiOperation({ summary: 'Submit student feedback for a mentor session' })
-  // Without this, FeedbackDto.rating's @Min/@Max (added in MDA-19) never run.
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async submitStudentFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,

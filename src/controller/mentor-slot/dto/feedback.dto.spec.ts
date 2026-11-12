@@ -15,7 +15,8 @@ import { FeedbackDto } from './feedback.dto';
 // silently strips it from every submission — not just an edge case, a
 // regression that would've shipped with this exact fix.
 describe('FeedbackDto validation (MDA-19)', () => {
-  const pipe = new ValidationPipe({ whitelist: true, transform: true });
+  // Same options as the class-level pipe on the mentor controllers.
+  const pipe = new ValidationPipe({ whitelist: true });
   const metadata: ArgumentMetadata = { type: 'body', metatype: FeedbackDto };
 
   it('accepts a rating within 1-5 and keeps the feedback text', async () => {

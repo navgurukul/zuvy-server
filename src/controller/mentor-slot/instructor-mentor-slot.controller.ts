@@ -35,9 +35,12 @@ import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
+// Class-level validation for every DTO in this controller — see the note on
+// MentorSlotController for why `transform` is off and what `whitelist` needs.
 @ApiTags('Instructor Mentor APIs')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 @Controller('instructor')
 export class InstructorMentorSlotController {
   constructor(
@@ -183,8 +186,6 @@ export class InstructorMentorSlotController {
     description:
       'Submits the instructor’s feedback and rating for the specified session and records the action in the tracking log.',
   })
-  // Without this, FeedbackDto.rating's @Min/@Max (added in MDA-19) never run.
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async submitMentorFeedback(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -292,9 +293,6 @@ export class InstructorMentorSlotController {
     description:
       'Cancels the specified booking using the supplied reason and cancellation actor, then records the action in the tracking log.',
   })
-  // See MDA-15: without this, CancelBookingDto.cancelledBy's @IsEnum never
-  // runs, letting an invalid value bypass the service's ownership check.
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async cancelBooking(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,

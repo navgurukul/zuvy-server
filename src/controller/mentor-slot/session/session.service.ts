@@ -12,6 +12,7 @@ import {
 } from '../../../../drizzle/schema';
 
 import { and, eq, desc, sql } from 'drizzle-orm';
+import { withoutHostZoomFields } from '../booking-response.util';
 
 @Injectable()
 export class SessionService {
@@ -33,11 +34,10 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    // SCHEDULED -> COMPLETED/MISSED transitions are handled exclusively by
-    // MentorSlotJob.handleSessionTransitions (runs every minute, joinedAt-aware).
-    // This used to force-complete expired sessions here too, with no joinedAt
-    // check — racing the cron and mislabeling genuine no-shows as COMPLETED
-    // whenever this read ran first. See MDA-09.
+    // Lifecycle transitions (SCHEDULED -> IN_PROGRESS -> COMPLETED/MISSED) are
+    // handled only by MentorSlotJob.handleSessionTransitions, which runs every
+    // minute. This read path used to write those transitions too, racing the
+    // cron with different rules. See MDA-09.
     const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
@@ -93,7 +93,7 @@ export class SessionService {
     const mappedData = data.map((item) => ({
       ...item,
       booking: {
-        ...item.booking,
+        ...withoutHostZoomFields(item.booking),
         meetingLink: item.booking.meetingLink,
       },
     }));
@@ -302,8 +302,12 @@ export class SessionService {
       );
     }
 
+    // Shared by the student and mentor routes: only the mentor (the host)
+    // may receive the host-only Zoom fields.
+    const isMentor = session.mentorUserId === userId;
+
     return {
-      ...session,
+      ...(isMentor ? session : withoutHostZoomFields(session)),
       meetingLink: this.mapMeetingLink(session, userId),
     };
   }

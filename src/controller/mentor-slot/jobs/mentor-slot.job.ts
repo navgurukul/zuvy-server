@@ -7,7 +7,7 @@ import {
   zuvyStudentBookingMetrics,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, gte, ne, inArray } from 'drizzle-orm';
+import { and, eq, lt, gte, ne, inArray, isNull } from 'drizzle-orm';
 
 @Injectable()
 export class MentorSlotJob {
@@ -45,15 +45,21 @@ export class MentorSlotJob {
         ]),
       );
 
-    // The three transitions below are mutually exclusive per row (gated by
-    // lifecycle state plus now-vs-start/end, which can't both hold at once),
-    // so grouping ids by target state and issuing one bulk UPDATE per group
-    // is equivalent to the old one-UPDATE-per-row loop, just O(3) queries
-    // instead of O(bookings.length).
+    // Each booking lands in at most one group (the branches below are
+    // mutually exclusive), so one bulk UPDATE per target state replaces the
+    // old one-UPDATE-per-row loop: O(3) queries instead of O(bookings).
     const toInProgress: number[] = [];
     const toCompleted: number[] = [];
     const toMissed: number[] = [];
 
+    // Note on attendance: joinedAt is only written by the manual
+    // markAttendance endpoint and is null on almost every booking, so it
+    // can't decide COMPLETED vs MISSED here — requiring it would mark every
+    // real session MISSED. This job closes an IN_PROGRESS session as
+    // COMPLETED when its slot ends; MentorAttendanceJob then reads Zoom's
+    // participant report and corrects it to MISSED if either side didn't
+    // join. MISSED is set here only for a booking the cron never saw in
+    // progress (still SCHEDULED when the slot ended) with no attendance.
     for (const b of bookings) {
       const start = new Date(b.slotStart);
       const end = new Date(b.slotEnd);
@@ -62,8 +68,14 @@ export class MentorSlotJob {
         toInProgress.push(b.bookingId);
       } else if (b.lifecycle === 'IN_PROGRESS' && now >= end) {
         toCompleted.push(b.bookingId);
-      } else if (b.lifecycle === 'SCHEDULED' && now >= end && !b.joinedAt) {
-        toMissed.push(b.bookingId);
+      } else if (b.lifecycle === 'SCHEDULED' && now >= end) {
+        // Still SCHEDULED after the slot ended (the cron didn't tick during
+        // the slot, e.g. a deploy or a slot shorter than a minute). If
+        // attendance was recorded it happened; otherwise it's a no-show.
+        // Before, a SCHEDULED booking with joinedAt set matched no branch
+        // and stayed "upcoming" forever.
+        if (b.joinedAt) toCompleted.push(b.bookingId);
+        else toMissed.push(b.bookingId);
       }
     }
 
@@ -96,11 +108,17 @@ export class MentorSlotJob {
         .where(
           and(
             inArray(zuvyMentorSlotBooking.id, toCompleted),
-            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'IN_PROGRESS'),
+            inArray(zuvyMentorSlotBooking.sessionLifecycleState, [
+              'SCHEDULED',
+              'IN_PROGRESS',
+            ]),
           ),
         );
     }
 
+    // joined_at IS NULL is re-checked here too: attendance recorded between
+    // the SELECT and this UPDATE means the session happened, so it must not
+    // be stored as MISSED.
     if (toMissed.length > 0) {
       await db
         .update(zuvyMentorSlotBooking)
@@ -111,6 +129,7 @@ export class MentorSlotJob {
           and(
             inArray(zuvyMentorSlotBooking.id, toMissed),
             eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+            isNull(zuvyMentorSlotBooking.joinedAt),
           ),
         );
     }

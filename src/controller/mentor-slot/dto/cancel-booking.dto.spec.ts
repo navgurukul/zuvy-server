@@ -12,7 +12,8 @@ import { CancelBookingDto } from './cancel-booking.dto';
 // now applied on those routes against the real DTO, with no Nest app/module
 // bootstrap needed.
 describe('CancelBookingDto validation (MDA-15)', () => {
-  const pipe = new ValidationPipe({ whitelist: true, transform: true });
+  // Same options as the class-level pipe on the mentor controllers.
+  const pipe = new ValidationPipe({ whitelist: true });
   const metadata: ArgumentMetadata = {
     type: 'body',
     metatype: CancelBookingDto,
