@@ -272,6 +272,7 @@ export class quizBatchDto {
     required: true,
   })
   @IsArray()
+  @ArrayNotEmpty()
   @ValidateNested({ each: true })
   @Type(() => QuizVariantDto)
   variantMCQs: QuizVariantDto[];
