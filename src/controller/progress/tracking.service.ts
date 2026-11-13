@@ -51,7 +51,7 @@ import { UpdateProjectDto } from './dto/project.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
-import * as crypto from 'crypto';
+import { pickQuizVariantPerQuestion } from 'src/helpers/quizVariants';
 import { ContentService } from '../content/content.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
@@ -1983,12 +1983,10 @@ export class TrackingService {
             const status = isAttempted ? 'Completed' : 'Pending';
 
             if (isAttempted) {
-              // Fetch all quiz variants for the chapter questions
               const allVariants =
                 await db.query.zuvyModuleQuizVariants.findMany({
                   where: (moduleQuiz, { inArray }) =>
                     inArray(moduleQuiz.quizId, quizQuestionIds),
-                  orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
                   with: {
                     quizTrackingData: {
                       columns: {
@@ -2004,14 +2002,19 @@ export class TrackingService {
                   },
                 });
 
-              // Add empty quizTrackingData for unattempted variants
-              const enrichedVariants = allVariants.map((variant) => ({
-                ...variant,
-                quizTrackingData:
-                  variant['quizTrackingData'].length > 0
-                    ? variant['quizTrackingData']
-                    : [],
-              }));
+              // One variant per chapter question: the one the student
+              // answered, otherwise the admin's variant 1. Returning every
+              // variant here used to add questions the student never saw.
+              const enrichedVariants = pickQuizVariantPerQuestion(
+                quizQuestionIds,
+                allVariants,
+                quizTrack.map((t) => t.mcqId),
+              )
+                .filter((variant) => variant !== undefined)
+                .map((variant) => ({
+                  ...variant,
+                  quizTrackingData: variant['quizTrackingData'] ?? [],
+                }));
 
               return [
                 null,
@@ -2029,42 +2032,26 @@ export class TrackingService {
               ];
             }
 
-            // If not attempted yet, deterministically pick variants.
-            // Fetch all variants for every quiz question in a single query
-            // (instead of one query per quizId) and group them by quizId.
+            // Not attempted yet: show the same variant the admin saved
+            // (variant 1) for every question. This used to pick a variant per
+            // student by hashing userId-quizId, so a student could get a
+            // different variant than the one shown on the admin side.
             const allVariantsForQuestions =
               await db.query.zuvyModuleQuizVariants.findMany({
                 where: (moduleQuiz) =>
                   inArray(moduleQuiz.quizId, quizQuestionIds),
               });
-            const variantsByQuizId = new Map<
-              number,
-              typeof allVariantsForQuestions
-            >();
-            for (const variant of allVariantsForQuestions) {
-              const list = variantsByQuizId.get(variant.quizId) ?? [];
-              list.push(variant);
-              variantsByQuizId.set(variant.quizId, list);
-            }
 
-            const randomVariants = quizQuestionIds.map((quizId) => {
-              const allVariants = variantsByQuizId.get(quizId) ?? [];
-
-              if (allVariants.length === 0) {
-                throw new Error(`No variants found for quizId: ${quizId}`);
+            const selectedVariants = pickQuizVariantPerQuestion(
+              quizQuestionIds,
+              allVariantsForQuestions,
+            ).map((variant, index) => {
+              if (!variant) {
+                throw new Error(
+                  `No variants found for quizId: ${quizQuestionIds[index]}`,
+                );
               }
-
-              const hash = crypto
-                .createHash('sha256')
-                .update(`${userId}-${quizId}`)
-                .digest('hex');
-              const hashValue = parseInt(hash.substring(0, 8), 16);
-              const selectedVariantIndex = hashValue % allVariants.length;
-
-              return {
-                ...allVariants[selectedVariantIndex],
-                quizTrackingData: [],
-              };
+              return variant;
             });
 
             return [
@@ -2076,7 +2063,7 @@ export class TrackingService {
                   chapterTitle: chapter[0].title,
                   chapterId: chapter[0].id,
                   chapterOrder: chapter[0].order,
-                  quizDetails: randomVariants.map((variant) => ({
+                  quizDetails: selectedVariants.map((variant) => ({
                     id: variant.id,
                     quizId: variant.quizId,
                     question: variant.question,

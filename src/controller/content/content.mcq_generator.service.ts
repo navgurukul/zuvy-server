@@ -204,10 +204,12 @@ export class MCQGeneratorService {
         }));
 
         // 3. Single batch insert
-        const insertedQuestions = await tx
-          .insert(zuvyAIGeneratedQuestions)
-          .values(questionsData)
-          .returning();
+        if (questionsData.length > 0) {
+          await tx
+            .insert(zuvyAIGeneratedQuestions)
+            .values(questionsData)
+            .returning();
+        }
       });
 
       console.log(
