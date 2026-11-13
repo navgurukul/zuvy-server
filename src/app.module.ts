@@ -36,9 +36,7 @@ import { OrgModule } from './org/org.module';
 import { NotificationModule } from './notification/notification.module';
 import { LearnerModule } from './controller/learnerInformation/learner.module';
 import { ZoomService } from './services/zoom/zoom.service';
-import { RecordingWorkerService } from './services/recording-worker/recording-worker.service';
 import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
-import { RecordingWorkerTriggerService } from './services/recording-worker/recording-worker-trigger.service';
 import { RecordingWorkerModule } from './services/recording-worker/recording-worker.module';
 import { AttendanceWorkerModule } from './services/attendance-worker/attendance-worker.module';
 import { MentorSlotModule } from './controller/mentor-slot/mentor-slot.module';
@@ -51,6 +49,7 @@ import { SuperAdminModule } from './super-admin/super-admin.module';
 import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
 import { StudentAuthModule } from './student-auth/student-auth.module';
 import { SchoolsModule } from './schools/schools.module';
+import { GmailMonitorModule } from './services/gmail-monitor/gmail-monitor.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -102,6 +101,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     LeaderboardModule,
     StudentAuthModule,
     SchoolsModule,
+    GmailMonitorModule,
   ],
 
   providers: [
@@ -121,8 +121,6 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     Reflector,
     AuthService,
     ZoomService,
-    RecordingWorkerService,
-    RecordingWorkerTriggerService,
     NotificationService,
     NotificationJob,
   ],

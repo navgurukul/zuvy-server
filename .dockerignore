@@ -28,6 +28,7 @@
 **/node_modules
 **/npm-debug.log
 **/obj
+**/temp-recordings
 **/secrets.dev.yaml
 **/values.dev.yaml
 LICENSE

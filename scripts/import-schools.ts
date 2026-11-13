@@ -107,8 +107,9 @@ async function main() {
   console.log(`Loading ${args.file} into ${target()}`);
   // Loaded only now: importing src/db opens the database connection.
   const { db } = await import('../src/db');
-  const { loadPlaceNames, upsertSchools } =
-    await import('../src/schools/school-store');
+  const { loadPlaceNames, upsertSchools } = await import(
+    '../src/schools/school-store'
+  );
   const { sql } = await import('drizzle-orm');
   const { zuvySchools } = await import('../drizzle/schema');
 
