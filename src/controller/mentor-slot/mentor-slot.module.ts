@@ -19,6 +19,8 @@ import { ZoomLicenseModule } from '../zoom-license/zoom-license.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { RbacModule } from '../../rbac/rbac.module';
+import { AdminMentorSessionsController } from './admin/admin-mentor-sessions.controller';
+import { AdminMentorSessionsService } from './admin/admin-mentor-sessions.service';
 
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { RbacModule } from '../../rbac/rbac.module';
     SessionController,
     StudentMentorSlotController,
     InstructorMentorSlotController,
+    AdminMentorSessionsController,
   ],
   providers: [
     MentorSlotService,
@@ -46,6 +49,7 @@ import { RbacModule } from '../../rbac/rbac.module';
     MentorSlotJob,
     MentorPublicService,
     SessionService,
+    AdminMentorSessionsService,
   ],
   exports: [MentorSlotService],
 })
