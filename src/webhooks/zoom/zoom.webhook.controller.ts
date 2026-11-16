@@ -10,6 +10,11 @@ import { RecordingWorkerTriggerService } from '../../services/recording-worker/r
 import { RecordingWorkerService } from '../../services/recording-worker/recording-worker.service';
 import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import {
+  MentorParticipantAttendanceService,
+  PARTICIPANT_JOINED_EVENT,
+  PARTICIPANT_LEFT_EVENT,
+} from './mentor-participant-attendance.service';
 
 const ATTENDANCE_JOB_INITIAL_DELAY_MS = 3 * 60 * 1000;
 
@@ -65,6 +70,7 @@ export class ZoomWebhookController {
     private readonly recordingWorkerService: RecordingWorkerService,
     private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
     private readonly zoomService: ZoomService,
+    private readonly mentorParticipantAttendance: MentorParticipantAttendanceService,
   ) {}
 
   @Public()
@@ -104,9 +110,20 @@ export class ZoomWebhookController {
     const meetingObjUuid = body?.payload?.object?.uuid || '';
     const fileId = body?.payload?.object?.recording_files?.[0]?.id || '';
 
+    // Zoom sends no delivery id. Two participants can join the same meeting
+    // in the same second, so participant events also key on who and when —
+    // otherwise the second one would be dropped as a "duplicate" below.
+    const isParticipantEvent =
+      eventType === PARTICIPANT_JOINED_EVENT ||
+      eventType === PARTICIPANT_LEFT_EVENT;
+    const participant = body?.payload?.object?.participant;
+    const participantSuffix = isParticipantEvent
+      ? `_${participant?.participant_uuid || participant?.user_id || ''}_${participant?.join_time || participant?.leave_time || ''}`
+      : '';
+
     const eventId =
       body?.event_id ||
-      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}`;
+      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}${participantSuffix}`;
 
     this.logger.debug({
       msg: 'Zoom webhook rawBody diagnostics',
@@ -244,6 +261,26 @@ export class ZoomWebhookController {
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events
         SET processing_status = 'PROCESSED'
+        WHERE event_id = ${eventId}
+          `);
+
+        return res.status(200).send();
+      }
+
+      // --------------------------------
+      // PARTICIPANT JOINED / LEFT — mentor booking attendance intervals.
+      // Non-mentor meetings (class sessions) are marked IGNORED.
+      // --------------------------------
+      if (isParticipantEvent) {
+        const outcome =
+          await this.mentorParticipantAttendance.handleParticipantEvent(
+            event,
+            body.payload,
+          );
+
+        await db.execute(sql`
+        UPDATE zuvy_zoom_webhook_events
+        SET processing_status = ${outcome}
         WHERE event_id = ${eventId}
           `);
 

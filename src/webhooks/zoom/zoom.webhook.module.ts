@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ZoomWebhookController } from './zoom.webhook.controller';
 import { ZoomWebhookService } from './zoom.webhook.service';
+import { MentorParticipantAttendanceService } from './mentor-participant-attendance.service';
 import { ZoomModule } from '../../services/zoom/zoom.module';
 import { RecordingWorkerModule } from '../../services/recording-worker/recording-worker.module';
 import { AttendanceWorkerModule } from '../../services/attendance-worker/attendance-worker.module';
 
 @Module({
   imports: [ZoomModule, RecordingWorkerModule, AttendanceWorkerModule],
-  providers: [ZoomWebhookService],
+  providers: [ZoomWebhookService, MentorParticipantAttendanceService],
   controllers: [ZoomWebhookController],
 })
 export class ZoomWebhookModule {}

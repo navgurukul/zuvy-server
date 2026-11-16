@@ -21,6 +21,17 @@ export const MENTOR_SESSION_LIFECYCLE_STATES = [
   'RESCHEDULE_PENDING',
 ] as const;
 
+export const MENTOR_SESSION_ATTENDANCE_FILTERS = [
+  'BOTH_JOINED',
+  'STUDENT_NO_SHOW',
+  'MENTOR_NO_SHOW',
+  'SCHEDULED',
+  'JOINED_LATE',
+] as const;
+
+export type MentorSessionAttendanceFilter =
+  (typeof MENTOR_SESSION_ATTENDANCE_FILTERS)[number];
+
 const toTrimmedString = ({ value }) =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -119,6 +130,17 @@ export class AdminMentorSessionsQueryDto {
   })
   @IsBoolean()
   hasRecording?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filter mentor sessions by attendance status.',
+    enum: MENTOR_SESSION_ATTENDANCE_FILTERS,
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(MENTOR_SESSION_ATTENDANCE_FILTERS)
+  attendanceStatus?: MentorSessionAttendanceFilter;
 
   @ApiPropertyOptional({ default: 10, minimum: 1, maximum: 100 })
   @IsOptional()

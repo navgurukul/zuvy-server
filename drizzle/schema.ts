@@ -3099,6 +3099,56 @@ export const zuvyMentorSlotBooking = main.table(
   }),
 );
 
+/**
+ * One row per join→leave interval of a participant in a mentor booking's
+ * Zoom meeting, written from meeting.participant_joined / _left webhooks.
+ * A person who drops and rejoins gets several rows. joined_at is null only
+ * while a leave event has arrived before its join (out-of-order delivery);
+ * left_at is null while the participant is still in the meeting.
+ */
+export const zuvyMentorSessionAttendance= main.table(
+  'zuvy_mentor_session_attendance',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    bookingId: integer('booking_id')
+      .notNull()
+      .references(() => zuvyMentorSlotBooking.id, {
+        onDelete: 'cascade',
+      }),
+
+    // MENTOR | STUDENT | UNMATCHED
+    participantRole: varchar('participant_role', {
+      length: 16,
+    }).notNull(),
+
+    zoomParticipantKey: text('zoom_participant_key').notNull(),
+
+    joinedAt: timestamp('joined_at', {
+      withTimezone: true,
+    }).notNull(),
+
+    leftAt: timestamp('left_at', {
+      withTimezone: true,
+    }),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqInterval: unique('uniq_mentor_attendance_interval').on(
+      table.bookingId,
+      table.zoomParticipantKey,
+      table.joinedAt,
+    ),
+
+    bookingRoleIdx: index('idx_mentor_attendance_booking_role').on(
+      table.bookingId,
+      table.participantRole,
+    ),
+  }),
+);
 /* ============================================================================
    RELATIONS
 ============================================================================ */

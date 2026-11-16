@@ -33,8 +33,17 @@ import {
   zuvyMentorSlotManagement,
   zuvyOrganizations,
   zuvyStudentBookingMetrics,
+  zuvyMentorSessionAttendance,
+  zuvyZoomWebhookEvents,
 } from '../../../../drizzle/schema';
-import { AdminMentorSessionsQueryDto } from './dto/admin-mentor-sessions-query.dto';
+import {
+  AdminMentorSessionsQueryDto,
+  MentorSessionAttendanceFilter,
+} from './dto/admin-mentor-sessions-query.dto';
+import {
+  LATE_JOIN_THRESHOLD_MINUTES,
+  summarizeBookingAttendance,
+} from '../attendance/mentor-session-attendance';
 
 /**
  * Annual mentorship quota per learner. Mirrors the hard-coded limit enforced
@@ -185,13 +194,23 @@ export class AdminMentorSessionsService {
       );
     }
 
+    if (query.attendanceStatus) {
+      conditions.push(this.buildAttendanceFilter(query.attendanceStatus));
+    }
+
     const where = conditions.length ? and(...conditions) : undefined;
 
     // Every join below is many-to-one (enrollments are unique per
     // user+bootcamp, metrics unique per user), so rows never multiply and
     // COUNT(*) equals the number of matching bookings.
     const needsMgmt = Boolean(query.bootcampId || query.batchId);
-    const needsSlot = Boolean(query.from || query.to || needsMgmt);
+    const needsSlot = Boolean(
+      query.from ||
+      query.to ||
+      needsMgmt ||
+      query.attendanceStatus === 'SCHEDULED' ||
+      query.attendanceStatus === 'JOINED_LATE',
+    );
     const needsEnrollment = Boolean(query.batchId);
     const needsUsers = Boolean(query.search);
 
@@ -274,6 +293,9 @@ export class AdminMentorSessionsService {
         quotaUsed: zuvyStudentBookingMetrics.quotaUsed,
         quotaResetDate: zuvyStudentBookingMetrics.quotaResetDate,
         cooldownEndDate: zuvyStudentBookingMetrics.cooldownEndDate,
+        // Internal only — used to derive participant attendance.
+        isZoomMeet: zuvyMentorSlotBooking.isZoomMeet,
+        zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
       })
       .from(zuvyMentorSlotBooking)
       .leftJoin(
@@ -333,11 +355,12 @@ export class AdminMentorSessionsService {
       countQuery.where(where),
     ]);
 
-    const recordingsByBooking = await this.getRecordingsForBookings(
-      rows.map((row) => row.bookingId),
-    );
-
     const now = new Date();
+
+    const [recordingsByBooking, attendanceByBooking] = await Promise.all([
+      this.getRecordingsForBookings(rows.map((row) => row.bookingId)),
+      this.getParticipantAttendanceForBookings(rows, now),
+    ]);
 
     const data = rows.map((row) => {
       const recording = recordingsByBooking.get(row.bookingId);
@@ -377,6 +400,7 @@ export class AdminMentorSessionsService {
         recordingUrl: recording?.url ?? null,
         recordingStatus: recording?.status ?? null,
         ...credits,
+        ...attendanceByBooking.get(row.bookingId),
       };
     });
 
@@ -392,6 +416,75 @@ export class AdminMentorSessionsService {
   /* ==========================================================================
      HELPERS
   ========================================================================== */
+
+  /**
+   * SQL condition for the attendance filter, evaluated per booking with
+   * correlated EXISTS subqueries (no joins, so rows never multiply and the
+   * filter applies before LIMIT/OFFSET and COUNT). Mirrors the rules in
+   * summarizeBookingAttendance(): only verified MENTOR / STUDENT intervals
+   * count, and "meeting ended" requires a verified meeting.ended webhook not
+   * older than the latest join.
+   */
+  private buildAttendanceFilter(filter: MentorSessionAttendanceFilter): SQL {
+    const intervals = zuvyMentorSessionAttendance;
+    const booking = zuvyMentorSlotBooking;
+
+    const roleIntervals = (role?: 'STUDENT' | 'MENTOR') =>
+      db
+        .select({ one: sql`1` })
+        .from(intervals)
+        .where(
+          and(
+            eq(intervals.bookingId, booking.id),
+            role ? eq(intervals.participantRole, role) : undefined,
+          ),
+        );
+
+    const studentJoined = exists(roleIntervals('STUDENT'));
+    const mentorJoined = exists(roleIntervals('MENTOR'));
+    const anyoneJoined = exists(roleIntervals());
+
+    const meetingEnded = exists(
+      db
+        .select({ one: sql`1` })
+        .from(zuvyZoomWebhookEvents)
+        .where(
+          and(
+            eq(zuvyZoomWebhookEvents.eventType, 'meeting.ended'),
+            eq(zuvyZoomWebhookEvents.processingStatus, 'PROCESSED'),
+            eq(zuvyZoomWebhookEvents.meetingId, booking.zoomMeetingId),
+            sql`COALESCE((${zuvyZoomWebhookEvents.payload}->'payload'->'object'->>'end_time')::timestamptz, ${zuvyZoomWebhookEvents.receivedAt})
+              >= COALESCE((SELECT MAX(${intervals.joinedAt}) FROM ${intervals} WHERE ${intervals.bookingId} = ${booking.id}), '-infinity'::timestamptz)`,
+          ),
+        ),
+    );
+
+    const joinedLate = (role: 'STUDENT' | 'MENTOR') =>
+      sql`(SELECT MIN(${intervals.joinedAt}) FROM ${intervals}
+            WHERE ${intervals.bookingId} = ${booking.id}
+              AND ${intervals.participantRole} = ${role})
+          >= ${zuvyMentorSlotAvailability.slotStartDateTime}
+             + (${`${LATE_JOIN_THRESHOLD_MINUTES} minutes`})::interval`;
+
+    switch (filter) {
+      case 'BOTH_JOINED':
+        return and(studentJoined, mentorJoined);
+      case 'STUDENT_NO_SHOW':
+        return and(meetingEnded, mentorJoined, not(studentJoined));
+      case 'MENTOR_NO_SHOW':
+        return and(meetingEnded, studentJoined, not(mentorJoined));
+      case 'SCHEDULED':
+        return and(
+          gte(zuvyMentorSlotAvailability.slotStartDateTime, sql`NOW()`),
+          sql`COALESCE(${booking.status}, '') <> 'cancelled'`,
+          sql`COALESCE(${booking.sessionLifecycleState}, '') <> 'CANCELLED'`,
+          not(anyoneJoined),
+          not(meetingEnded),
+        );
+      case 'JOINED_LATE':
+        return or(joinedLate('STUDENT'), joinedLate('MENTOR'));
+    }
+  }
 
   /**
    * One recording row per booking: a finished upload (COMPLETED + drive_link)
@@ -424,6 +517,96 @@ export class AdminMentorSessionsService {
         url: final ? rec.driveLink : null,
         status: rec.status,
       });
+    }
+
+    return result;
+  }
+
+  /**
+   * Participant-wise attendance for the current page's bookings, from
+   * zuvy_mentor_session_attendance_intervals (written by the Zoom
+   * participant webhooks). "Meeting ended" comes only from verified
+   * (PROCESSED) meeting.ended webhooks already stored in
+   * zuvy_zoom_webhook_events — never from completedAt, recordings or time.
+   * Two page-scoped queries; no joins added to the list query.
+   */
+  private async getParticipantAttendanceForBookings(
+    rows: {
+      bookingId: number;
+      status: string | null;
+      lifecycleState: string | null;
+      isZoomMeet: boolean | null;
+      zoomMeetingId: string | null;
+      slotStart: Date | null;
+    }[],
+    now: Date,
+  ) {
+    const result = new Map<
+      number,
+      ReturnType<typeof summarizeBookingAttendance>
+    >();
+    if (!rows.length) return result;
+
+    const bookingIds = rows.map((row) => row.bookingId);
+    const meetingIds = [
+      ...new Set(rows.map((row) => row.zoomMeetingId).filter(Boolean)),
+    ] as string[];
+
+    const [intervals, endedEvents] = await Promise.all([
+      db
+        .select({
+          bookingId: zuvyMentorSessionAttendance.bookingId,
+          participantRole: zuvyMentorSessionAttendance.participantRole,
+          joinedAt: zuvyMentorSessionAttendance.joinedAt,
+          leftAt: zuvyMentorSessionAttendance.leftAt,
+        })
+        .from(zuvyMentorSessionAttendance)
+        .where(inArray(zuvyMentorSessionAttendance.bookingId, bookingIds)),
+      meetingIds.length
+        ? db
+            .select({
+              meetingId: zuvyZoomWebhookEvents.meetingId,
+              endedAt: sql<string>`MAX(COALESCE((${zuvyZoomWebhookEvents.payload}->'payload'->'object'->>'end_time')::timestamptz, ${zuvyZoomWebhookEvents.receivedAt}))`,
+            })
+            .from(zuvyZoomWebhookEvents)
+            .where(
+              and(
+                eq(zuvyZoomWebhookEvents.eventType, 'meeting.ended'),
+                eq(zuvyZoomWebhookEvents.processingStatus, 'PROCESSED'),
+                inArray(zuvyZoomWebhookEvents.meetingId, meetingIds),
+              ),
+            )
+            .groupBy(zuvyZoomWebhookEvents.meetingId)
+        : Promise.resolve(
+            [] as { meetingId: string | null; endedAt: string }[],
+          ),
+    ]);
+
+    const endedByMeeting = new Map(
+      endedEvents.map((e) => [e.meetingId, new Date(e.endedAt)]),
+    );
+    const intervalsByBooking = new Map<number, typeof intervals>();
+    for (const interval of intervals) {
+      const list = intervalsByBooking.get(interval.bookingId) ?? [];
+      list.push(interval);
+      intervalsByBooking.set(interval.bookingId, list);
+    }
+
+    for (const row of rows) {
+      result.set(
+        row.bookingId,
+        summarizeBookingAttendance(
+          intervalsByBooking.get(row.bookingId) ?? [],
+          {
+            hasZoomMeeting: row.isZoomMeet !== false && !!row.zoomMeetingId,
+            isCancelled:
+              row.status === 'cancelled' || row.lifecycleState === 'CANCELLED',
+            meetingEndedAt: endedByMeeting.get(row.zoomMeetingId) ?? null,
+            now,
+            scheduledStart: row.slotStart ? new Date(row.slotStart) : null,
+          },
+        ),
+      );
     }
 
     return result;
