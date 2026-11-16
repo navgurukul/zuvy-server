@@ -129,11 +129,21 @@ export class RolesService {
 
   async remove(id: number) {
     await this.ensureExists(id);
-    const [deleted] = await db
-      .delete(zuvyUserRoles)
-      .where(eq(zuvyUserRoles.id, id))
-      .returning();
-    return deleted;
+    try {
+      const [deleted] = await db
+        .delete(zuvyUserRoles)
+        .where(eq(zuvyUserRoles.id, id))
+        .returning();
+      return deleted;
+    } catch (e: any) {
+      this.logger.error('Failed to delete role:', e);
+      if (e.code === '23503') {
+        throw new ConflictException(
+          'Role is still referenced and cannot be deleted',
+        );
+      }
+      throw new InternalServerErrorException('Failed to delete role');
+    }
   }
 
   private async ensureExists(id: number) {

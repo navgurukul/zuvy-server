@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { generateCppTemplate } from './cpp/generateCpp';
 
 export const complairDateTyeps = [
@@ -85,6 +86,7 @@ export const typeMappings = {
     short: 'int',
     byte: 'int',
     float: 'float',
+    double: 'float',
     str: 'str',
     char: 'str',
     bool: 'bool',
@@ -102,6 +104,7 @@ export const typeMappings = {
         short: 'int(input())',
         byte: 'int(input())',
         float: 'float(input())',
+        double: 'float(input())',
         str: 'input()',
         char: 'input()',
         bool: 'bool(input())',
@@ -171,6 +174,7 @@ export const typeMappings = {
   c: {
     int: 'int',
     long: 'long',
+    short: 'short',
     float: 'float',
     double: 'double',
     str: 'char*',
@@ -180,10 +184,15 @@ export const typeMappings = {
     arrayOfnum: 'int*',
     arrayOfStr: 'char**',
     arrayOfChar: 'char*',
+    arrayOfObj: 'void*',
+    map: 'void*',
+    object: 'void*',
     jsonType: 'void',
+    returnType: 'void',
     defaultReturnValue: {
       int: '0',
       long: '0L',
+      short: '0',
       float: '0.0f',
       double: '0.0',
       str: 'NULL',
@@ -192,6 +201,9 @@ export const typeMappings = {
       arrayOfnum: 'NULL',
       arrayOfStr: 'NULL',
       arrayOfChar: 'NULL',
+      arrayOfObj: 'NULL',
+      map: 'NULL',
+      object: 'NULL',
       void: '',
     },
   },
@@ -325,7 +337,7 @@ rl.on('close', () => {
     )
     .join('\n  ')}
   const result = ${functionName}(${parameters.map((p) => `_${p.parameterName}_`).join(', ')});
-  ${!['arrayOfnum', 'arrayOfStr', 'jsonType', 'object'].includes(returnType) ? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
+  ${!['arrayOfnum', 'arrayOfStr', 'jsonType', 'object', 'map'].includes(returnType) ? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
   });
   `,
       ];
@@ -413,7 +425,7 @@ rl.on('close', () => {
     }
     return [null, templates];
   } catch (error) {
-    console.error(error);
+    Logger.error(error);
     return [error, null];
   }
 }
@@ -467,6 +479,23 @@ async function generateJavaTemplate(
         if (parsed_${p.parameterName} instanceof Object[]) {
             ${p.parameterName} = (Object[]) parsed_${p.parameterName};
         }`;
+        } else if (javaType === 'char[]') {
+          return `
+        Object parsed_${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());
+        char[] ${p.parameterName} = new char[0];
+        if (parsed_${p.parameterName} instanceof Object[]) {
+            Object[] arrObj = (Object[]) parsed_${p.parameterName};
+            ${p.parameterName} = new char[arrObj.length];
+            for (int i = 0; i < arrObj.length; i++) {
+                String str = arrObj[i].toString();
+                ${p.parameterName}[i] = str.isEmpty() ? '\\0' : str.charAt(0);
+            }
+        }`;
+        } else if (javaType === 'Map<String,Object>') {
+          return `
+        Object parsed_${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ${p.parameterName} = parsed_${p.parameterName} instanceof Map ? (Map<String, Object>) parsed_${p.parameterName} : new HashMap<>();`;
         } else if (javaType === 'Object') {
           // Handle jsonType
           return `
@@ -483,6 +512,7 @@ async function generateJavaTemplate(
       'arrayOfObj',
       'object',
       'jsonType',
+      'map',
     ].includes(returnType)
       ? 'System.out.println(formatArrayNoSpaces(returnData));'
       : 'System.out.println(returnData);';
@@ -688,7 +718,7 @@ public class Main {
 
     return [null, template];
   } catch (error) {
-    console.error('Error generating Java template:', error);
+    Logger.error('Error generating Java template:', error);
     return [error];
   }
 }
@@ -761,7 +791,7 @@ int main() {
 }`;
     return [null, cTemplate];
   } catch (error) {
-    console.error('Error generating template:', error);
+    Logger.error('Error generating template:', error);
     return [error, null];
   }
 }
@@ -801,10 +831,10 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map((p) => `_${p.parameterName}_`).join(', ')})
-${!['arrayOfnum', 'arrayOfStr', 'jsonType', 'object'].includes(returnType) ? 'print(result);' : 'print(json.dumps(result, separators=(",", ":")));'}`,
+${!['arrayOfnum', 'arrayOfStr', 'jsonType', 'object', 'map'].includes(returnType) ? 'print(result);' : 'print(json.dumps(result, separators=(",", ":")));'}`,
     ];
   } catch (error) {
-    console.error('Error generating template:', error);
+    Logger.error('Error generating template:', error);
     return [error, null];
   }
 }
