@@ -278,7 +278,7 @@ export class AdminMentorSessionsService {
         lifecycleState: zuvyMentorSlotBooking.sessionLifecycleState,
         rescheduleStatus: zuvyMentorSlotBooking.rescheduleStatus,
         // Participant join URL only — never expose the Zoom host start URL.
-        meetingLink: zuvyMentorSlotBooking.meetingLink,
+        // meetingLink: zuvyMentorSlotBooking.meetingLink,
         joinedAt: zuvyMentorSlotBooking.joinedAt,
         leftAt: zuvyMentorSlotBooking.leftAt,
         bookedAt: zuvyMentorSlotBooking.bookedAt,
@@ -385,7 +385,7 @@ export class AdminMentorSessionsService {
         status: row.status,
         lifecycleState: row.lifecycleState,
         rescheduleStatus: row.rescheduleStatus,
-        meetingLink: row.meetingLink,
+        // meetingLink: row.meetingLink,
         joinedAt: row.joinedAt,
         leftAt: row.leftAt,
         bookedAt: row.bookedAt,
