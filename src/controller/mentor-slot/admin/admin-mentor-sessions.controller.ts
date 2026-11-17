@@ -23,18 +23,19 @@ import { AdminMentorSessionsService } from './admin-mentor-sessions.service';
 import {
   AdminMentorSessionsFilterDto,
   AdminMentorSessionsQueryDto,
+  AdminMentorsQueryDto,
 } from './dto/admin-mentor-sessions-query.dto';
 
 @ApiTags('Admin Mentor Sessions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
-@Controller('admin/mentor-sessions')
+@Controller('admin')
 export class AdminMentorSessionsController {
   constructor(
     private readonly adminMentorSessionsService: AdminMentorSessionsService,
   ) {}
 
-  @Get()
+  @Get('mentor-sessions')
   @ApiOperation({
     summary:
       'List mentorship sessions for the Admin Dashboard (paginated, server-side filters)',
@@ -52,7 +53,7 @@ export class AdminMentorSessionsController {
     return this.adminMentorSessionsService.listSessions(req.user[0], query);
   }
 
-  @Get('metrics')
+  @Get('mentor-sessions/metrics')
   @ApiOperation({
     summary:
       'Aggregate mentorship session metrics for the Admin Dashboard (same filters as the listing, no pagination)',
@@ -70,7 +71,24 @@ export class AdminMentorSessionsController {
     return this.adminMentorSessionsService.getMetrics(req.user[0], query);
   }
 
-  @Get(':bookingId')
+  @Get('mentors')
+  @ApiOperation({
+    summary: 'List mentors available to the Admin Mentor Sessions filters',
+  })
+  @ApiResponse({ status: 200, description: 'Mentors in the organisation' })
+  @ApiResponse({ status: 403, description: 'Not an admin of the organization' })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  async listMentors(@Req() req, @Query() query: AdminMentorsQueryDto) {
+    return this.adminMentorSessionsService.listMentors(req.user[0], query);
+  }
+
+  @Get('mentor-sessions/:bookingId')
   // @UseGuards(PermissionsGuard)
   // @RequirePermissions('viewMentorship')
   @ApiOperation({ summary: 'Get complete details for a mentorship session' })

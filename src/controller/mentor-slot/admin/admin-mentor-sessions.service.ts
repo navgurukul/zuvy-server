@@ -6,6 +6,7 @@ import {
 import {
   SQL,
   and,
+  asc,
   count,
   desc,
   eq,
@@ -40,6 +41,7 @@ import {
 import {
   AdminMentorSessionsFilterDto,
   AdminMentorSessionsQueryDto,
+  AdminMentorsQueryDto,
   MentorSessionAttendanceFilter,
 } from './dto/admin-mentor-sessions-query.dto';
 import {
@@ -207,6 +209,58 @@ export class AdminMentorSessionsService {
     }
 
     return conditions.length ? and(...conditions) : undefined;
+  }
+
+  /* ==========================================================================
+     MENTOR FILTER OPTIONS
+  ========================================================================== */
+
+  /**
+   * Returns mentors from their organisation-level mentor-management mapping.
+   * This is deliberately not derived from roles or bookings: a mentor can have
+   * a valid assignment before receiving a booking, and historical assignments
+   * must remain selectable. The mapping is unique per mentor + organisation,
+   * so it cannot produce duplicate mentors.
+   */
+  async listMentors(user: AdminRequester, query: AdminMentorsQueryDto) {
+    const orgId = await this.resolveOrganizationScope(user, query.orgId);
+
+    // orgId is mandatory in this endpoint's DTO. Keep this defensive check so
+    // a future DTO change cannot accidentally expose a cross-org dropdown.
+    if (orgId === null) {
+      throw new ForbiddenException('Organization context missing');
+    }
+
+    const conditions: SQL[] = [
+      eq(zuvyMentorSlotManagement.organizationId, orgId),
+    ];
+    if (query.bootcampId) {
+      conditions.push(
+        eq(zuvyMentorSlotManagement.bootcampId, query.bootcampId),
+      );
+    }
+
+    const mentors = await db
+      .select({
+        id: zuvyMentorSlotManagement.mentorUserId,
+        name: users.name,
+        email: users.email,
+      })
+      .from(zuvyMentorSlotManagement)
+      // Keep the management row as the source of truth. A left join avoids
+      // discarding historical mappings because of a missing user projection.
+      .leftJoin(users, eq(users.id, zuvyMentorSlotManagement.mentorUserId))
+      .where(and(...conditions))
+      .orderBy(asc(users.name), asc(zuvyMentorSlotManagement.mentorUserId));
+
+    return {
+      status: 'success',
+      data: mentors.map((mentor) => ({
+        id: Number(mentor.id),
+        name: mentor.name,
+        email: mentor.email,
+      })),
+    };
   }
 
   /* ==========================================================================

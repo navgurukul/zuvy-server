@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -159,4 +159,26 @@ export class AdminMentorSessionsQueryDto extends AdminMentorSessionsFilterDto {
   @IsInt()
   @Min(0)
   offset?: number = 0;
+}
+
+/** Query parameters for the Admin Mentor filter dropdown. */
+export class AdminMentorsQueryDto {
+  @ApiProperty({
+    description:
+      'Organisation ID. Org Admins may only request their own organisation; Super Admins must specify the organisation to view.',
+    example: 12,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  orgId: number;
+
+  @ApiPropertyOptional({
+    description: 'Optionally restrict mentors to a course',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  bootcampId?: number;
 }
