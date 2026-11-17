@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Param,
+  ParseIntPipe,
   Query,
   Req,
   UseGuards,
@@ -15,6 +17,8 @@ import {
 } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+// import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+// import { RequirePermissions } from 'src/rbac/decorators/require-permissions.decorator';
 import { AdminMentorSessionsService } from './admin-mentor-sessions.service';
 import {
   AdminMentorSessionsFilterDto,
@@ -64,5 +68,22 @@ export class AdminMentorSessionsController {
   )
   async getMetrics(@Req() req, @Query() query: AdminMentorSessionsFilterDto) {
     return this.adminMentorSessionsService.getMetrics(req.user[0], query);
+  }
+
+  @Get(':bookingId')
+  // @UseGuards(PermissionsGuard)
+  // @RequirePermissions('viewMentorship')
+  @ApiOperation({ summary: 'Get complete details for a mentorship session' })
+  @ApiResponse({ status: 200, description: 'Mentorship session details' })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions or mentorship disabled',
+  })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async getSession(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.adminMentorSessionsService.getSession(req.user[0], bookingId);
   }
 }

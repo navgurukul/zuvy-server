@@ -27,6 +27,7 @@ import {
   zuvyBatchEnrollments,
   zuvyBatches,
   zuvyBootcamps,
+  zuvyBootcampType,
   zuvyMentorSessionRecordings,
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
@@ -512,6 +513,261 @@ export class AdminMentorSessionsService {
         mentorNoShows: Number(row.mentorNoShows),
         averageMentorRating: toAvg(row.averageMentorRating),
         averageStudentRating: toAvg(row.averageStudentRating),
+      },
+    };
+  }
+
+  /* ==========================================================================
+     SESSION DETAIL
+  ========================================================================== */
+
+  async getSession(user: AdminRequester, bookingId: number) {
+    const orgId = await this.resolveOrganizationScope(user);
+    const [row] = await db
+      .select({
+        bookingId: zuvyMentorSlotBooking.id,
+        courseName: zuvyBootcamps.name,
+        batchName: zuvyBatches.name,
+        bootcampId: zuvyMentorSlotManagement.bootcampId,
+        mentorId: zuvyMentorSlotBooking.mentorUserId,
+        mentorName: mentorUser.name,
+        mentorEmail: mentorUser.email,
+        studentId: zuvyMentorSlotBooking.studentUserId,
+        studentName: studentUser.name,
+        studentEmail: studentUser.email,
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+        status: zuvyMentorSlotBooking.status,
+        lifecycleState: zuvyMentorSlotBooking.sessionLifecycleState,
+        rescheduleStatus: zuvyMentorSlotBooking.rescheduleStatus,
+        joinedAt: zuvyMentorSlotBooking.joinedAt,
+        leftAt: zuvyMentorSlotBooking.leftAt,
+        bookedAt: zuvyMentorSlotBooking.bookedAt,
+        confirmedAt: zuvyMentorSlotBooking.confirmedAt,
+        rescheduleRequestedAt: zuvyMentorSlotBooking.rescheduleRequestedAt,
+        cancelledAt: zuvyMentorSlotBooking.cancelledAt,
+        completedAt: zuvyMentorSlotBooking.completedAt,
+        cancelledBy: zuvyMentorSlotBooking.cancelledBy,
+        cancellationReason: zuvyMentorSlotBooking.cancellationReason,
+        mentorRating: zuvyMentorSlotBooking.mentorRating,
+        studentRating: zuvyMentorSlotBooking.studentRating,
+        mentorFeedback: zuvyMentorSlotBooking.mentorFeedback,
+        studentFeedback: zuvyMentorSlotBooking.studentFeedback,
+        quotaUsed: zuvyStudentBookingMetrics.quotaUsed,
+        quotaResetDate: zuvyStudentBookingMetrics.quotaResetDate,
+        cooldownEndDate: zuvyStudentBookingMetrics.cooldownEndDate,
+        isZoomMeet: zuvyMentorSlotBooking.isZoomMeet,
+        zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .leftJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotManagement.id,
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+        ),
+      )
+      .leftJoin(
+        zuvyBootcamps,
+        eq(zuvyBootcamps.id, zuvyMentorSlotManagement.bootcampId),
+      )
+      .leftJoin(
+        zuvyBatchEnrollments,
+        and(
+          eq(zuvyBatchEnrollments.userId, zuvyMentorSlotBooking.studentUserId),
+          eq(
+            zuvyBatchEnrollments.bootcampId,
+            zuvyMentorSlotManagement.bootcampId,
+          ),
+        ),
+      )
+      .leftJoin(zuvyBatches, eq(zuvyBatches.id, zuvyBatchEnrollments.batchId))
+      .leftJoin(
+        studentUser,
+        eq(studentUser.id, zuvyMentorSlotBooking.studentUserId),
+      )
+      .leftJoin(
+        mentorUser,
+        eq(mentorUser.id, zuvyMentorSlotBooking.mentorUserId),
+      )
+      .leftJoin(
+        zuvyStudentBookingMetrics,
+        eq(
+          zuvyStudentBookingMetrics.userId,
+          zuvyMentorSlotBooking.studentUserId,
+        ),
+      )
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.id, bookingId),
+          orgId === null
+            ? undefined
+            : eq(zuvyMentorSlotBooking.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) throw new NotFoundException('Booking not found');
+
+    const enabled =
+      row.bootcampId === null
+        ? undefined
+        : (
+            await db
+              .select({ one: sql<number>`1` })
+              .from(zuvyBootcampType)
+              .where(
+                and(
+                  eq(zuvyBootcampType.bootcampId, row.bootcampId),
+                  eq(zuvyBootcampType.mentorshipEnabled, true),
+                ),
+              )
+              .limit(1)
+          )[0];
+    if (!enabled)
+      throw new ForbiddenException('Mentorship is disabled for this course.');
+
+    const now = new Date();
+    const [attendanceByBooking, recordings, intervals, meetingEvents] =
+      await Promise.all([
+        this.getParticipantAttendanceForBookings([row], now),
+        db
+          .select({
+            id: zuvyMentorSessionRecordings.id,
+            zoomMeetingId: zuvyMentorSessionRecordings.zoomMeetingId,
+            zoomMeetingUuid: zuvyMentorSessionRecordings.zoomMeetingUuid,
+            zoomRecordingId: zuvyMentorSessionRecordings.zoomRecordingId,
+            status: zuvyMentorSessionRecordings.status,
+            driveLink: zuvyMentorSessionRecordings.driveLink,
+            recordingStart: zuvyMentorSessionRecordings.recordingStart,
+            recordingEnd: zuvyMentorSessionRecordings.recordingEnd,
+            isFinalMerged: zuvyMentorSessionRecordings.isFinalMerged,
+            segmentsCount: zuvyMentorSessionRecordings.segmentsCount,
+            createdAt: zuvyMentorSessionRecordings.createdAt,
+            updatedAt: zuvyMentorSessionRecordings.updatedAt,
+          })
+          .from(zuvyMentorSessionRecordings)
+          .where(eq(zuvyMentorSessionRecordings.mentorBookingId, bookingId))
+          .orderBy(desc(zuvyMentorSessionRecordings.createdAt)),
+        db
+          .select({
+            participantRole: zuvyMentorSessionAttendance.participantRole,
+            joinedAt: zuvyMentorSessionAttendance.joinedAt,
+            leftAt: zuvyMentorSessionAttendance.leftAt,
+          })
+          .from(zuvyMentorSessionAttendance)
+          .where(
+            and(
+              eq(zuvyMentorSessionAttendance.bookingId, bookingId),
+              inArray(zuvyMentorSessionAttendance.participantRole, [
+                'STUDENT',
+                'MENTOR',
+              ]),
+            ),
+          ),
+        row.zoomMeetingId
+          ? db
+              .select({
+                eventType: zuvyZoomWebhookEvents.eventType,
+                timestamp: sql<Date>`COALESCE((${zuvyZoomWebhookEvents.payload}->'payload'->'object'->>'start_time')::timestamptz, (${zuvyZoomWebhookEvents.payload}->'payload'->'object'->>'end_time')::timestamptz, ${zuvyZoomWebhookEvents.receivedAt})`,
+              })
+              .from(zuvyZoomWebhookEvents)
+              .where(
+                and(
+                  eq(zuvyZoomWebhookEvents.meetingId, row.zoomMeetingId),
+                  eq(zuvyZoomWebhookEvents.processingStatus, 'PROCESSED'),
+                  inArray(zuvyZoomWebhookEvents.eventType, [
+                    'meeting.started',
+                    'meeting.ended',
+                  ]),
+                ),
+              )
+          : Promise.resolve([]),
+      ]);
+
+    const timeline = [
+      row.bookedAt && { event: 'BOOKED', timestamp: row.bookedAt },
+      row.confirmedAt && { event: 'CONFIRMED', timestamp: row.confirmedAt },
+      row.rescheduleRequestedAt && {
+        event: 'RESCHEDULED',
+        timestamp: row.rescheduleRequestedAt,
+      },
+      row.cancelledAt && {
+        event: 'CANCELLED',
+        timestamp: row.cancelledAt,
+        metadata: {
+          cancelledBy: row.cancelledBy,
+          reason: row.cancellationReason,
+        },
+      },
+      ...intervals.flatMap((interval) => [
+        {
+          event: `${interval.participantRole}_JOINED`,
+          timestamp: interval.joinedAt,
+        },
+        interval.leftAt && {
+          event: `${interval.participantRole}_LEFT`,
+          timestamp: interval.leftAt,
+        },
+      ]),
+      ...meetingEvents.map((event) => ({
+        event:
+          event.eventType === 'meeting.started'
+            ? 'MEETING_STARTED'
+            : 'MEETING_ENDED',
+        timestamp: event.timestamp,
+      })),
+      row.completedAt && { event: 'COMPLETED', timestamp: row.completedAt },
+    ]
+      .filter(Boolean)
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      );
+
+    return {
+      status: 'success',
+      data: {
+        bookingId: row.bookingId,
+        courseName: row.courseName ?? null,
+        batchName: row.batchName ?? null,
+        mentor: {
+          id: Number(row.mentorId),
+          name: row.mentorName ?? null,
+          email: row.mentorEmail ?? null,
+        },
+        student: {
+          id: Number(row.studentId),
+          name: row.studentName ?? null,
+          email: row.studentEmail ?? null,
+        },
+        slotStart: row.slotStart ?? null,
+        slotEnd: row.slotEnd ?? null,
+        status: row.status,
+        lifecycleState: row.lifecycleState,
+        rescheduleStatus: row.rescheduleStatus,
+        joinedAt: row.joinedAt,
+        leftAt: row.leftAt,
+        bookedAt: row.bookedAt,
+        cancelledAt: row.cancelledAt,
+        cancelledBy: row.cancelledBy,
+        cancellationReason: row.cancellationReason,
+        completedAt: row.completedAt,
+        mentorRating: row.mentorRating,
+        studentRating: row.studentRating,
+        mentorFeedback: row.mentorFeedback,
+        studentFeedback: row.studentFeedback,
+        ...attendanceByBooking.get(bookingId),
+        timeline,
+        recordings,
+        ...this.deriveCredits(row, now),
       },
     };
   }
