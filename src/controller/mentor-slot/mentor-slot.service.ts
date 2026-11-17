@@ -2049,6 +2049,9 @@ export class MentorSlotService {
         .update(zuvyMentorSlotBooking)
         .set({
           slotAvailabilityId: booking.rescheduleProposedSlotId,
+          // Joins from the old slot don't apply to the new time.
+          mentorJoinedAt: null,
+          studentJoinedAt: null,
           rescheduleStatus: null,
           rescheduleRequestedAt: null,
           rescheduleProposedSlotId: null,

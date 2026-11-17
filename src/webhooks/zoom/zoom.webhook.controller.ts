@@ -10,6 +10,7 @@ import { RecordingWorkerTriggerService } from '../../services/recording-worker/r
 import { RecordingWorkerService } from '../../services/recording-worker/recording-worker.service';
 import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import { MentorJoinService } from './mentor-join.service';
 
 const ATTENDANCE_JOB_INITIAL_DELAY_MS = 3 * 60 * 1000;
 
@@ -65,6 +66,7 @@ export class ZoomWebhookController {
     private readonly recordingWorkerService: RecordingWorkerService,
     private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
     private readonly zoomService: ZoomService,
+    private readonly mentorJoinService: MentorJoinService,
   ) {}
 
   @Public()
@@ -103,10 +105,15 @@ export class ZoomWebhookController {
     const meetingObjId = body?.payload?.object?.id?.toString() || '';
     const meetingObjUuid = body?.payload?.object?.uuid || '';
     const fileId = body?.payload?.object?.recording_files?.[0]?.id || '';
+    // Participant events for one meeting can share a timestamp; keep them apart.
+    const participantKey =
+      body?.payload?.object?.participant?.user_id ||
+      body?.payload?.object?.participant?.participant_uuid ||
+      '';
 
     const eventId =
       body?.event_id ||
-      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}`;
+      `${req.headers['x-zm-request-timestamp'] || Date.now()}_${eventType}_${meetingObjId}_${meetingObjUuid}_${fileId}${participantKey ? `_${participantKey}` : ''}`;
 
     this.logger.debug({
       msg: 'Zoom webhook rawBody diagnostics',
@@ -408,6 +415,24 @@ export class ZoomWebhookController {
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events
         SET processing_status = 'PROCESSED'
+        WHERE event_id = ${eventId}
+          `);
+
+        return res.status(200).send();
+      }
+
+      // --------------------------------
+      // PARTICIPANT JOINED — first join time of the mentor / student on a
+      // mentor booking (admin "Live now" view). Class meetings are ignored.
+      // --------------------------------
+      if (event === 'meeting.participant_joined') {
+        const handled = await this.mentorJoinService.recordParticipantJoined(
+          body.payload,
+        );
+
+        await db.execute(sql`
+        UPDATE zuvy_zoom_webhook_events
+        SET processing_status = ${handled ? 'PROCESSED' : 'IGNORED'}
         WHERE event_id = ${eventId}
           `);
 
