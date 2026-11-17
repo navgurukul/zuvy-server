@@ -35,7 +35,8 @@ export type MentorSessionAttendanceFilter =
 const toTrimmedString = ({ value }) =>
   typeof value === 'string' ? value.trim() : value;
 
-export class AdminMentorSessionsQueryDto {
+/** Filters shared by the listing and metrics endpoints (no pagination). */
+export class AdminMentorSessionsFilterDto {
   @ApiPropertyOptional({
     description:
       'Organisation ID. Super Admins: selects the organisation to view (omit to see all). Org Admins: optional, must equal their own organisation.',
@@ -141,7 +142,9 @@ export class AdminMentorSessionsQueryDto {
   )
   @IsIn(MENTOR_SESSION_ATTENDANCE_FILTERS)
   attendanceStatus?: MentorSessionAttendanceFilter;
+}
 
+export class AdminMentorSessionsQueryDto extends AdminMentorSessionsFilterDto {
   @ApiPropertyOptional({ default: 10, minimum: 1, maximum: 100 })
   @IsOptional()
   @Type(() => Number)

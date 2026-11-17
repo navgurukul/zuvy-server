@@ -16,7 +16,10 @@ import {
 
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { AdminMentorSessionsService } from './admin-mentor-sessions.service';
-import { AdminMentorSessionsQueryDto } from './dto/admin-mentor-sessions-query.dto';
+import {
+  AdminMentorSessionsFilterDto,
+  AdminMentorSessionsQueryDto,
+} from './dto/admin-mentor-sessions-query.dto';
 
 @ApiTags('Admin Mentor Sessions')
 @ApiBearerAuth('JWT-auth')
@@ -43,5 +46,23 @@ export class AdminMentorSessionsController {
   )
   async listSessions(@Req() req, @Query() query: AdminMentorSessionsQueryDto) {
     return this.adminMentorSessionsService.listSessions(req.user[0], query);
+  }
+
+  @Get('metrics')
+  @ApiOperation({
+    summary:
+      'Aggregate mentorship session metrics for the Admin Dashboard (same filters as the listing, no pagination)',
+  })
+  @ApiResponse({ status: 200, description: 'Mentorship session metrics' })
+  @ApiResponse({ status: 403, description: 'Not an admin of the organization' })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  async getMetrics(@Req() req, @Query() query: AdminMentorSessionsFilterDto) {
+    return this.adminMentorSessionsService.getMetrics(req.user[0], query);
   }
 }

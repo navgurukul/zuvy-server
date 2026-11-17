@@ -37,6 +37,7 @@ import {
   zuvyZoomWebhookEvents,
 } from '../../../../drizzle/schema';
 import {
+  AdminMentorSessionsFilterDto,
   AdminMentorSessionsQueryDto,
   MentorSessionAttendanceFilter,
 } from './dto/admin-mentor-sessions-query.dto';
@@ -117,13 +118,19 @@ export class AdminMentorSessionsService {
   }
 
   /* ==========================================================================
-     LIST SESSIONS
+     SHARED FILTERS
   ========================================================================== */
 
-  async listSessions(user: AdminRequester, query: AdminMentorSessionsQueryDto) {
-    const limit = query.limit ?? 10;
-    const offset = query.offset ?? 0;
-
+  /**
+   * Org scope + WHERE clause shared by the listing and metrics endpoints, so
+   * both always match the same bookings. Callers must join slot availability,
+   * slot management, batch enrollment and the student/mentor user aliases
+   * whenever the corresponding filter is set.
+   */
+  private async buildSessionsWhere(
+    user: AdminRequester,
+    query: AdminMentorSessionsFilterDto,
+  ): Promise<SQL | undefined> {
     const orgId = await this.resolveOrganizationScope(user, query.orgId);
 
     const conditions: SQL[] = [];
@@ -198,7 +205,18 @@ export class AdminMentorSessionsService {
       conditions.push(this.buildAttendanceFilter(query.attendanceStatus));
     }
 
-    const where = conditions.length ? and(...conditions) : undefined;
+    return conditions.length ? and(...conditions) : undefined;
+  }
+
+  /* ==========================================================================
+     LIST SESSIONS
+  ========================================================================== */
+
+  async listSessions(user: AdminRequester, query: AdminMentorSessionsQueryDto) {
+    const limit = query.limit ?? 10;
+    const offset = query.offset ?? 0;
+
+    const where = await this.buildSessionsWhere(user, query);
 
     // Every join below is many-to-one (enrollments are unique per
     // user+bootcamp, metrics unique per user), so rows never multiply and
@@ -410,6 +428,91 @@ export class AdminMentorSessionsService {
       total: Number(total),
       limit,
       offset,
+    };
+  }
+
+  /* ==========================================================================
+     METRICS
+  ========================================================================== */
+
+  /**
+   * Aggregate metrics over every booking the listing API would return for the
+   * same filters (no pagination), in a single SQL aggregate. Uses the
+   * listing's many-to-one joins only, so each booking is counted once.
+   */
+  async getMetrics(user: AdminRequester, query: AdminMentorSessionsFilterDto) {
+    const where = await this.buildSessionsWhere(user, query);
+
+    const booking = zuvyMentorSlotBooking;
+    const isCancelled = sql`(COALESCE(${booking.status}, '') = 'cancelled' OR COALESCE(${booking.sessionLifecycleState}, '') = 'CANCELLED')`;
+    const notCancelled = sql`NOT ${isCancelled}`;
+    // Reuses the listing's attendance filter: requires a verified meeting.ended
+    // webhook, so nobody is marked absent before the meeting has really ended.
+    const studentNoShow = and(
+      notCancelled,
+      this.buildAttendanceFilter('STUDENT_NO_SHOW'),
+    );
+    const mentorNoShow = and(
+      notCancelled,
+      this.buildAttendanceFilter('MENTOR_NO_SHOW'),
+    );
+
+    const [row] = await db
+      .select({
+        totalSessions: count(),
+        completedSessions: sql<number>`COUNT(*) FILTER (WHERE ${booking.sessionLifecycleState} = 'COMPLETED' AND ${notCancelled})`,
+        cancelledSessions: sql<number>`COUNT(*) FILTER (WHERE ${isCancelled})`,
+        scheduledSessions: sql<number>`COUNT(*) FILTER (WHERE ${booking.sessionLifecycleState} = 'SCHEDULED' AND ${notCancelled})`,
+        studentNoShows: sql<number>`COUNT(*) FILTER (WHERE ${studentNoShow})`,
+        mentorNoShows: sql<number>`COUNT(*) FILTER (WHERE ${mentorNoShow})`,
+        // AVG ignores NULL ratings.
+        averageMentorRating: sql<
+          string | null
+        >`ROUND(AVG(${booking.mentorRating})::numeric, 2)`,
+        averageStudentRating: sql<
+          string | null
+        >`ROUND(AVG(${booking.studentRating})::numeric, 2)`,
+      })
+      .from(booking)
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId),
+      )
+      .leftJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotManagement.id,
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+        ),
+      )
+      .leftJoin(
+        zuvyBatchEnrollments,
+        and(
+          eq(zuvyBatchEnrollments.userId, booking.studentUserId),
+          eq(
+            zuvyBatchEnrollments.bootcampId,
+            zuvyMentorSlotManagement.bootcampId,
+          ),
+        ),
+      )
+      .leftJoin(studentUser, eq(studentUser.id, booking.studentUserId))
+      .leftJoin(mentorUser, eq(mentorUser.id, booking.mentorUserId))
+      .where(where);
+
+    const toAvg = (v: string | null) => (v === null ? null : Number(v));
+
+    return {
+      status: 'success',
+      data: {
+        totalSessions: Number(row.totalSessions),
+        completedSessions: Number(row.completedSessions),
+        cancelledSessions: Number(row.cancelledSessions),
+        scheduledSessions: Number(row.scheduledSessions),
+        studentNoShows: Number(row.studentNoShows),
+        mentorNoShows: Number(row.mentorNoShows),
+        averageMentorRating: toAvg(row.averageMentorRating),
+        averageStudentRating: toAvg(row.averageStudentRating),
+      },
     };
   }
 
