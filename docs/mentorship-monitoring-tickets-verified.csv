@@ -80,7 +80,7 @@ Validate on our Zoom plan:
 • Admin of org A gets 403 for org B.
 • A request missing orgId is rejected, not silently allowed through.
 • Status labels match the mentor Sessions page.","CONFIRMED and sharpened: OrgAuthorizationGuard (src/guards/org-authorization.guard.ts) does exactly what the ticket assumed — `if (requestOrgId === null) return true;` — it skips its own check whenever orgId is absent from params/query/body, and also whenever the route has @SkipOrgCheck() or the caller is super_admin. CONFIRMED there are currently zero admin-facing mentor-session endpoints anywhere in the backend — the only admin-side touch today is an unrelated aggregate count buried in adminAssessment.service.ts. Added an explicit warning above not to copy @SkipOrgCheck() from the student controllers this might get modeled on, since that decorator is exactly what makes the guard a no-op."
-"MM-07 · Live now endpoint + Need attention count","Backend","High","Backlog","Zuvy","Admin view","Mentorship Monitoring for Admin and Super Admin","","Phase 1 · Backend","2","MM-03, MM-06","GET /admin/mentor-sessions/live?orgId&bootcampId
+"MM-07 · Live now endpoint + Need attention count","Backend","High","Backlog","Zuvy","Admin view","Mentorship Monitoring for Admin and Super Admin","","Phase 1 · Backend","2","MM-03, MM-06","GET ?orgId&bootcampId
 • Window: 10 min before start to 15 min after end, on server time. Thresholds from config.
 • joinStatus computed on the server per the PRD Join status rules.
 • Sorted: Mentor not joined → Student not joined → No one joined → Waiting → In progress → Starting soon → Ended.

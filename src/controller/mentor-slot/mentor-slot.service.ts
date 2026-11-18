@@ -19,7 +19,7 @@ import {
   zuvyBootcampType,
   zuvyBootcamps,
   zuvyMentorSessionRecordings,
-  zuvyMentorSessionAttendance,
+  zuvyMentorBookingAttendance,
   zuvyOrganizations,
   users,
   zuvyStudentBookingMetrics,
@@ -631,15 +631,15 @@ export class MentorSlotService {
       ne(zuvyMentorSlotBooking.status, 'cancelled'),
       notExists(
         trx
-          .select({ id: zuvyMentorSessionAttendance.id })
-          .from(zuvyMentorSessionAttendance)
+          .select({ id: zuvyMentorBookingAttendance.id })
+          .from(zuvyMentorBookingAttendance)
           .where(
             and(
               eq(
-                zuvyMentorSessionAttendance.mentorBookingId,
+                zuvyMentorBookingAttendance.mentorBookingId,
                 zuvyMentorSlotBooking.id,
               ),
-              eq(zuvyMentorSessionAttendance.creditRefunded, true),
+              eq(zuvyMentorBookingAttendance.creditRefunded, true),
             ),
           ),
       ),
@@ -1289,8 +1289,6 @@ export class MentorSlotService {
     cancelledBy: 'mentor' | 'student',
     actorUserId?: number,
   ) {
-    await this.syncZoomLicenseState();
-
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Cancellation reason must be at least 10 characters.',
@@ -1312,6 +1310,34 @@ export class MentorSlotService {
         );
       }
     }
+
+    return this.applyCancellation(bookingId, reason, cancelledBy);
+  }
+
+  /**
+   * Cancels a booking: locks the row, releases the slot, marks the booking
+   * cancelled, notifies both sides, recomputes the student's credits, then
+   * (after commit) deletes the Zoom meeting and Google Calendar event.
+   *
+   * Callers do their own permission and reason checks first. `beforeCancel`
+   * runs against the locked row, so checks in it cannot race a concurrent
+   * reschedule or completion. `allowStarted` lets an admin cancel a session
+   * that is already live; finished sessions are always rejected.
+   */
+  async applyCancellation(
+    bookingId: number,
+    reason: string,
+    cancelledBy: 'mentor' | 'student' | 'admin',
+    opts: {
+      beforeCancel?: (
+        booking: typeof zuvyMentorSlotBooking.$inferSelect,
+      ) => void | Promise<void>;
+      allowStarted?: boolean;
+      studentMessage?: string;
+      mentorMessage?: string;
+    } = {},
+  ) {
+    await this.syncZoomLicenseState();
 
     // Captured inside the transaction so the external Zoom/Google calls can
     // run strictly AFTER the DB transaction has durably committed — doing
@@ -1356,20 +1382,29 @@ export class MentorSlotService {
       // state alone isn't enough — the cron only advances it once a minute,
       // and never advances RESCHEDULE_PENDING — so the slot's own start time
       // is checked too.
+      // An admin may cancel a live session (allowStarted), but never a
+      // finished one.
       if (
-        booking.sessionLifecycleState === 'IN_PROGRESS' ||
         booking.sessionLifecycleState === 'COMPLETED' ||
-        booking.sessionLifecycleState === 'MISSED'
+        booking.sessionLifecycleState === 'MISSED' ||
+        (!opts.allowStarted && booking.sessionLifecycleState === 'IN_PROGRESS')
       ) {
         throw new BadRequestException(
           'This session has already started or finished and can no longer be cancelled.',
         );
       }
 
-      if (await this.slotHasStarted(trx, booking.slotAvailabilityId)) {
+      if (
+        !opts.allowStarted &&
+        (await this.slotHasStarted(trx, booking.slotAvailabilityId))
+      ) {
         throw new BadRequestException(
           'This session has already started or finished and can no longer be cancelled.',
         );
+      }
+
+      if (opts.beforeCancel) {
+        await opts.beforeCancel(booking);
       }
 
       /* Release slot capacity */
@@ -1416,7 +1451,7 @@ export class MentorSlotService {
         userId: booking.studentUserId,
         type: NotificationType.BOOKING_CANCELLED,
         title: 'Session cancelled',
-        message: ``,
+        message: opts.studentMessage ?? ``,
         referenceId: bookingId,
         referenceType: 'booking',
       });
@@ -1425,7 +1460,7 @@ export class MentorSlotService {
         userId: booking.mentorUserId,
         type: NotificationType.BOOKING_CANCELLED,
         title: 'Session cancelled',
-        message: ``,
+        message: opts.mentorMessage ?? ``,
         referenceId: bookingId,
         referenceType: 'booking',
       });
@@ -2985,12 +3020,12 @@ export class MentorSlotService {
     // that is what happened: marking it complete by hand could otherwise
     // show a no-show (credit already refunded) as a session that was held.
     const [recorded] = await db
-      .select({ outcome: zuvyMentorSessionAttendance.outcome })
-      .from(zuvyMentorSessionAttendance)
+      .select({ outcome: zuvyMentorBookingAttendance.outcome })
+      .from(zuvyMentorBookingAttendance)
       .where(
         and(
-          eq(zuvyMentorSessionAttendance.mentorBookingId, bookingId),
-          eq(zuvyMentorSessionAttendance.status, 'RECORDED'),
+          eq(zuvyMentorBookingAttendance.mentorBookingId, bookingId),
+          eq(zuvyMentorBookingAttendance.status, 'RECORDED'),
         ),
       )
       .limit(1);
@@ -3015,15 +3050,15 @@ export class MentorSlotService {
           ne(zuvyMentorSlotBooking.status, 'cancelled'),
           notExists(
             db
-              .select({ id: zuvyMentorSessionAttendance.id })
-              .from(zuvyMentorSessionAttendance)
+              .select({ id: zuvyMentorBookingAttendance.id })
+              .from(zuvyMentorBookingAttendance)
               .where(
                 and(
                   eq(
-                    zuvyMentorSessionAttendance.mentorBookingId,
+                    zuvyMentorBookingAttendance.mentorBookingId,
                     zuvyMentorSlotBooking.id,
                   ),
-                  eq(zuvyMentorSessionAttendance.status, 'RECORDED'),
+                  eq(zuvyMentorBookingAttendance.status, 'RECORDED'),
                 ),
               ),
           ),

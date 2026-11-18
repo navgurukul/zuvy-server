@@ -4,7 +4,7 @@
  *
  *   npx ts-node -r tsconfig-paths/register --transpile-only scripts/e2e-mentor-attendance.ts
  *
- * Needs migration 0047. Case 1 uses real Zoom end to end. The other cases
+ * Needs migration 0049. Case 1 uses real Zoom end to end. The other cases
  * drive the real job, DB, transactions and credit recount with Zoom's answer
  * scripted, since nobody can join a meeting from a script. Cron jobs and
  * background workers are stopped in this process, so only this script's own
@@ -100,8 +100,8 @@ const getAttendance = async (id: number) =>
   (
     await db
       .select()
-      .from(schema.zuvyMentorSessionAttendance)
-      .where(eq(schema.zuvyMentorSessionAttendance.mentorBookingId, id))
+      .from(schema.zuvyMentorBookingAttendance)
+      .where(eq(schema.zuvyMentorBookingAttendance.mentorBookingId, id))
       .limit(1)
   )[0];
 const getMetrics = async () =>
@@ -604,9 +604,9 @@ async function main() {
     FLAGS.MENTOR_NO_SHOW_CREDIT_RULES = true;
     if (created.length) {
       await db
-        .delete(schema.zuvyMentorSessionAttendance)
+        .delete(schema.zuvyMentorBookingAttendance)
         .where(
-          inArray(schema.zuvyMentorSessionAttendance.mentorBookingId, created),
+          inArray(schema.zuvyMentorBookingAttendance.mentorBookingId, created),
         );
     }
     const m = await getMetrics();

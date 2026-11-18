@@ -13,7 +13,7 @@
 -- booking (credit recount) and completing a session both read this table.
 -- Safe to run more than once.
 
-CREATE TABLE IF NOT EXISTS "zuvy_mentor_session_attendance" (
+CREATE TABLE IF NOT EXISTS "zuvy_mentor_booking_attendance" (
   "id" serial PRIMARY KEY NOT NULL,
   "mentor_booking_id" integer NOT NULL
     REFERENCES "zuvy_mentor_slot_booking" ("id") ON DELETE CASCADE,
@@ -28,5 +28,5 @@ CREATE TABLE IF NOT EXISTS "zuvy_mentor_session_attendance" (
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
   -- Also serves as the index the credit recount uses to look up a booking.
-  CONSTRAINT "uniq_mentor_session_attendance_booking" UNIQUE ("mentor_booking_id")
+  CONSTRAINT "uniq_mentor_booking_attendance_booking" UNIQUE ("mentor_booking_id")
 );

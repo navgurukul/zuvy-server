@@ -16,7 +16,7 @@ import {
 import { db } from 'src/db';
 import {
   users,
-  zuvyMentorSessionAttendance,
+  zuvyMentorBookingAttendance,
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
 } from '../../../../drizzle/schema';
@@ -48,7 +48,7 @@ const RETRY_INTERVAL_MS = 30 * 60 * 1000;
 const BATCH_SIZE = 20;
 
 // Off unless MENTOR_ATTENDANCE_JOB_ENABLED=true, like the other background
-// workers. Turn it on only once migration 0047 is applied, and on one server
+// workers. Turn it on only once migration 0049 is applied, and on one server
 // only: on several, each calls Zoom for the same sessions (the claim in
 // record() still stops a double refund).
 export function mentorAttendanceJobEnabled(
@@ -126,9 +126,9 @@ export class MentorAttendanceJob implements OnModuleInit {
         )
         .innerJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
         .leftJoin(
-          zuvyMentorSessionAttendance,
+          zuvyMentorBookingAttendance,
           eq(
-            zuvyMentorSessionAttendance.mentorBookingId,
+            zuvyMentorBookingAttendance.mentorBookingId,
             zuvyMentorSlotBooking.id,
           ),
         )
@@ -151,11 +151,11 @@ export class MentorAttendanceJob implements OnModuleInit {
             // Never checked, or still pending and not retried in the last
             // RETRY_INTERVAL_MS. RECORDED and UNAVAILABLE are final.
             or(
-              isNull(zuvyMentorSessionAttendance.id),
+              isNull(zuvyMentorBookingAttendance.id),
               and(
-                eq(zuvyMentorSessionAttendance.status, 'PENDING'),
+                eq(zuvyMentorBookingAttendance.status, 'PENDING'),
                 lt(
-                  zuvyMentorSessionAttendance.checkedAt,
+                  zuvyMentorBookingAttendance.checkedAt,
                   new Date(now.getTime() - RETRY_INTERVAL_MS),
                 ),
               ),
@@ -164,7 +164,7 @@ export class MentorAttendanceJob implements OnModuleInit {
         )
         // Never-checked bookings first, then the ones retried longest ago.
         .orderBy(
-          sql`${zuvyMentorSessionAttendance.checkedAt} ASC NULLS FIRST`,
+          sql`${zuvyMentorBookingAttendance.checkedAt} ASC NULLS FIRST`,
           zuvyMentorSlotAvailability.slotEndDateTime,
         )
         .limit(BATCH_SIZE)
@@ -253,25 +253,25 @@ export class MentorAttendanceJob implements OnModuleInit {
   ) {
     const status = givingUp ? 'UNAVAILABLE' : 'PENDING';
     return db
-      .insert(zuvyMentorSessionAttendance)
+      .insert(zuvyMentorBookingAttendance)
       .values({
         mentorBookingId: bookingId,
         status,
         attempts: 1,
         lastError: reason,
         checkedAt: now,
-      } as typeof zuvyMentorSessionAttendance.$inferInsert)
+      } as typeof zuvyMentorBookingAttendance.$inferInsert)
       .onConflictDoUpdate({
-        target: zuvyMentorSessionAttendance.mentorBookingId,
+        target: zuvyMentorBookingAttendance.mentorBookingId,
         set: {
           status,
-          attempts: sql`${zuvyMentorSessionAttendance.attempts} + 1`,
+          attempts: sql`${zuvyMentorBookingAttendance.attempts} + 1`,
           lastError: reason,
           checkedAt: now,
           updatedAt: now,
-        } as Partial<typeof zuvyMentorSessionAttendance.$inferInsert>,
+        } as Partial<typeof zuvyMentorBookingAttendance.$inferInsert>,
         // Never downgrade a result another run already recorded.
-        where: eq(zuvyMentorSessionAttendance.status, 'PENDING'),
+        where: eq(zuvyMentorBookingAttendance.status, 'PENDING'),
       });
   }
 
@@ -290,7 +290,7 @@ export class MentorAttendanceJob implements OnModuleInit {
       // nothing is returned and nothing else happens — so a credit can't be
       // refunded twice.
       const claimed = await trx
-        .insert(zuvyMentorSessionAttendance)
+        .insert(zuvyMentorBookingAttendance)
         .values({
           mentorBookingId: booking.bookingId,
           status: 'RECORDED',
@@ -301,23 +301,23 @@ export class MentorAttendanceJob implements OnModuleInit {
           attempts: 1,
           lastError: null,
           checkedAt: now,
-        } as typeof zuvyMentorSessionAttendance.$inferInsert)
+        } as typeof zuvyMentorBookingAttendance.$inferInsert)
         .onConflictDoUpdate({
-          target: zuvyMentorSessionAttendance.mentorBookingId,
+          target: zuvyMentorBookingAttendance.mentorBookingId,
           set: {
             status: 'RECORDED',
             outcome: decision.outcome,
             mentorAttendedSeconds: decision.mentorSeconds,
             studentAttendedSeconds: decision.studentSeconds,
             creditRefunded: refundCredit,
-            attempts: sql`${zuvyMentorSessionAttendance.attempts} + 1`,
+            attempts: sql`${zuvyMentorBookingAttendance.attempts} + 1`,
             lastError: null,
             checkedAt: now,
             updatedAt: now,
-          } as Partial<typeof zuvyMentorSessionAttendance.$inferInsert>,
-          where: eq(zuvyMentorSessionAttendance.status, 'PENDING'),
+          } as Partial<typeof zuvyMentorBookingAttendance.$inferInsert>,
+          where: eq(zuvyMentorBookingAttendance.status, 'PENDING'),
         })
-        .returning({ id: zuvyMentorSessionAttendance.id });
+        .returning({ id: zuvyMentorBookingAttendance.id });
 
       if (claimed.length === 0) return false;
 
