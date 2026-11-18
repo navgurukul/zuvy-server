@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MentorSlotController } from './mentor-slot.controller';
 import { MentorSlotService } from './mentor-slot.service';
 import { MentorSlotJob } from './jobs/mentor-slot.job';
+import { MentorAttendanceJob } from './jobs/mentor-attendance.job';
 import { MentorRecurrenceService } from './recurrence/mentor-recurrence.service';
 import { MentorMetricsService } from './metrics/mentor-metrics.service';
 import { MentorMetricsController } from './metrics/mentor-metrics.controller';
@@ -47,6 +48,7 @@ import { AdminMentorSessionsService } from './admin/admin-mentor-sessions.servic
     MentorRecurrenceService,
     MentorMetricsService,
     MentorSlotJob,
+    MentorAttendanceJob,
     MentorPublicService,
     SessionService,
     AdminMentorSessionsService,

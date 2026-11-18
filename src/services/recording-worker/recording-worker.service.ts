@@ -503,7 +503,26 @@ export class RecordingWorkerService implements OnModuleInit {
       return { ...result.rows[0], table: 'session' } as RecordingJob;
     }
 
-    // Then try mentor recordings
+    // Then try mentor recordings.
+    //
+    // Mentor recording jobs are enqueued at BOOKING time (bookSlot), which
+    // can be days or weeks before the session actually happens — unlike
+    // zuvy_session_recordings' jobs, which are only discovered once a real
+    // Zoom recording exists. Without this join+filter, a job sitting in
+    // DISCOVERED since booking time gets picked up immediately, tries to
+    // fetch Zoom recording metadata that can't exist yet, and burns through
+    // all 5 retries (exponential backoff capped at 15m) to PERMANENT_FAILED
+    // long before the session starts. Gating on the slot's own end time
+    // means the first real attempt only happens once the session could
+    // plausibly have a recording. `FOR UPDATE OF r` scopes the row lock to
+    // the recordings table only — without it, Postgres would also try to
+    // lock the joined booking/availability rows, which bookSlot and
+    // acceptReschedule already lock with their own `.for('update')`, risking
+    // a deadlock between this cron and live booking traffic. Also excludes
+    // cancelled bookings (b.status != 'cancelled') — a cancelled booking's
+    // Zoom meeting is already deleted (see cancelBooking), so attempting it
+    // would just poll Zoom for a meeting that no longer exists and mark the
+    // recording falsely failed.
     result = await db.execute(sql`
     UPDATE zuvy_mentor_session_recordings
     SET
@@ -517,16 +536,20 @@ export class RecordingWorkerService implements OnModuleInit {
       END,
       updated_at = NOW()
     WHERE id = (
-      SELECT id
-      FROM zuvy_mentor_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
-        AND status NOT LIKE 'PROCESSING_%'
-        AND status != 'PERMANENT_FAILED'
-        AND drive_link IS NULL
-        AND retry_count < ${MAX_RETRIES}
-        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-      ORDER BY created_at ASC
-      FOR UPDATE SKIP LOCKED
+      SELECT r.id
+      FROM zuvy_mentor_session_recordings r
+      JOIN zuvy_mentor_slot_booking b ON b.id = r.mentor_booking_id
+      JOIN zuvy_mentor_slot_availability a ON a.id = b.slot_availability_id
+      WHERE r.status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+        AND r.status NOT LIKE 'PROCESSING_%'
+        AND r.status != 'PERMANENT_FAILED'
+        AND r.drive_link IS NULL
+        AND r.retry_count < ${MAX_RETRIES}
+        AND (r.next_retry_at IS NULL OR r.next_retry_at <= NOW())
+        AND a.slot_end_date_time <= NOW()
+        AND b.status != 'cancelled'
+      ORDER BY r.created_at ASC
+      FOR UPDATE OF r SKIP LOCKED
       LIMIT 1
     )
     RETURNING *, 'mentor' as table
@@ -1661,11 +1684,63 @@ export class RecordingWorkerService implements OnModuleInit {
     }
 
     if (!fs.existsSync(filePath)) {
-      throw new Error(`Merged file not found: ${filePath}`);
-    }
+      // temp-recordings/ is local, non-persistent disk — if the worker
+      // restarted (or this job got picked up by a different instance)
+      // between the merge step and this upload step, the merged file is
+      // gone for good and this used to permanently fail the job right here.
+      // mergeRecording() already knows how to recover: it re-checks the
+      // local segment files and re-runs ffmpeg if the merged output is
+      // missing, or surfaces a clear, retryable error if the segments
+      // themselves are also gone. Reset to the pre-merge status so the next
+      // pick-up goes through mergeRecording() again instead of failing here
+      // every time. See MDA-21.
+      //
+      // This returns instead of throwing, like the other "send back to an
+      // earlier stage" paths above. Throwing would hand the job to
+      // markFailed, which conflicts with the reset: for mentor jobs its
+      // "status = the job's old status" guard no longer matches (so no
+      // retry is counted and the job is re-picked immediately), and for
+      // session jobs it overwrites DOWNLOADED with FAILED (so the job
+      // re-downloads instead of re-merging). The reset itself counts the
+      // retry and sets the backoff, so a file that keeps going missing still
+      // ends in PERMANENT_FAILED instead of looping.
+      const nextRetryCount = (job.retry_count ?? 0) + 1;
+      const resetError = `Merged file not found (${filePath}); reset to re-merge.`;
 
-    if (!fs.existsSync(filePath)) {
-      throw new Error('Merged file not found for upload');
+      if (nextRetryCount >= MAX_RETRIES) {
+        await db.execute(sql`
+          UPDATE ${sql.raw(this.getTableName(job))}
+          SET
+            status = 'PERMANENT_FAILED',
+            retry_count = ${nextRetryCount},
+            last_error = ${resetError}
+          WHERE id = ${job.id}
+        `);
+        this.logJob(
+          'error',
+          job,
+          'Merged file missing and retry budget exhausted',
+          { filePath, retryCount: nextRetryCount },
+        );
+        return;
+      }
+
+      await db.execute(sql`
+        UPDATE ${sql.raw(this.getTableName(job))}
+        SET
+          status = 'DOWNLOADED',
+          merged_file_path = NULL,
+          is_final_merged = FALSE,
+          retry_count = ${nextRetryCount},
+          next_retry_at = ${this.computeNextRetry(job.retry_count ?? 0)},
+          last_error = ${resetError}
+        WHERE id = ${job.id}
+      `);
+      this.logJob('warn', job, 'Merged file missing; reset to re-merge', {
+        filePath,
+        retryCount: nextRetryCount,
+      });
+      return;
     }
 
     const fileSize = fs.statSync(filePath).size;

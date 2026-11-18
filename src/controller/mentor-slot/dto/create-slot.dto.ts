@@ -3,6 +3,7 @@ import {
   IsString,
   IsOptional,
   IsNumber,
+  IsInt,
   IsDateString,
   Min,
 } from 'class-validator';
@@ -29,4 +30,15 @@ export class CreateSlotDto {
   @IsOptional()
   @IsString()
   topic?: string;
+
+  // createSlot reads dto.maxCapacity (defaulting to 1). It must be declared
+  // here, or ValidationPipe's `whitelist: true` strips it before it arrives.
+  @ApiPropertyOptional({
+    description: 'How many students can book this slot (defaults to 1)',
+    example: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxCapacity?: number;
 }
