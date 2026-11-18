@@ -532,12 +532,6 @@ export class PermissionsService {
             ),
           );
 
-        const auditLog = await this.auditLogService.log('perm_to_role', {
-          actorUserId,
-          roleId,
-          permissions,
-        });
-
         return {
           status: 'success',
           message: 'Permissions updated',
@@ -547,6 +541,16 @@ export class PermissionsService {
             assignedPermissionIds: assigned.map((r) => r.permissionId),
           },
         };
+      });
+
+      // After the commit: the audit log runs its own transaction on another
+      // pooled connection, so it must not run while this one holds a
+      // connection. Before, on the single shared connection, its COMMIT also
+      // committed the permission change early.
+      await this.auditLogService.log('perm_to_role', {
+        actorUserId,
+        roleId,
+        permissions,
       });
 
       const invalidatedSessions = await this.invalidateRoleMemberSessions(

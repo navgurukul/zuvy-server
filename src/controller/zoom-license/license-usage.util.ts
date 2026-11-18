@@ -122,7 +122,8 @@ export function peakConcurrentLicenses(
  * Whether a new interval fits in a pool of `poolSize` licences, given the
  * assignments already there. The new interval is counted with its host's
  * other assignments, so it can share a licence with that host's back-to-back
- * sessions.
+ * sessions. Checked until the end of the new interval's own cooldown: its
+ * licence stays busy until then, so a session starting in that tail counts.
  */
 export function fitsInPool(
   existing: LicenseInterval[],
@@ -133,7 +134,10 @@ export function fitsInPool(
   if (poolSize <= 0) return false;
   const peak = peakConcurrentLicenses(
     [...existing, requested],
-    { start: requested.start, end: requested.end },
+    {
+      start: requested.start,
+      end: new Date(requested.end.getTime() + cooldownMs),
+    },
     cooldownMs,
   );
   return peak <= poolSize;

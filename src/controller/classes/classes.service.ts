@@ -1035,12 +1035,17 @@ export class ClassesService {
             endTime: endDate,
           });
           try {
-            mentorSlotsAtRisk =
-              await this.zoomLicenseService.findOpenMentorSlotsAtRisk(
-                trx,
+            // In a savepoint: if this advisory check hits a database error,
+            // only the savepoint rolls back. Without it the error would leave
+            // the whole transaction aborted and the COMMIT below would
+            // silently roll back the licence assignLicense just made.
+            mentorSlotsAtRisk = await trx.transaction((savepoint) =>
+              this.zoomLicenseService.findOpenMentorSlotsAtRisk(
+                savepoint,
                 { startTime: startDate, endTime: endDate },
                 instructorEmail,
-              );
+              ),
+            );
           } catch (warnError: any) {
             // The warning is advisory; never block a class on it.
             this.logger.warn(

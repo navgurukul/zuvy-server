@@ -272,14 +272,52 @@ export class AiAssessmentService {
     submitAssessmentDto: SubmitAssessmentDto,
   ) {
     try {
+      const { answers, aiAssessmentId } = submitAssessmentDto;
+
+      // Everything that only reads, and the LLM call, happens before the
+      // transaction: a transaction holds a pooled DB connection for as long
+      // as it is open, and the LLM call can take many seconds. If the LLM
+      // call or parsing fails, nothing has been written yet (same outcome as
+      // before, when the transaction rolled back).
+      const { score, totalQuestions } =
+        await this.countScore(submitAssessmentDto);
+      const totalScore = (score / totalQuestions) * 100;
+      const level = await this.calculateStudentLevel(totalScore);
+
+      const evaluationPrompt = answerEvaluationPrompt(answers);
+      const llmResponse = await this.llmService.generate({
+        systemPrompt: evaluationPrompt,
+      });
+
+      let rawEvaluationText: string | null = null;
+      if (!llmResponse) rawEvaluationText = null;
+      else if (typeof llmResponse === 'string') rawEvaluationText = llmResponse;
+      else if (typeof llmResponse === 'object') {
+        rawEvaluationText =
+          (llmResponse as any).text ??
+          (llmResponse as any).content ??
+          (llmResponse as any).response ??
+          (llmResponse as any).output ??
+          JSON.stringify(llmResponse);
+      } else {
+        rawEvaluationText = String(llmResponse);
+      }
+
+      // Parse & validate BEFORE returning to client
+      let parsedEvaluation: any = null;
+      let parseError: string | null = null;
+
+      if (rawEvaluationText) {
+        try {
+          parsedEvaluation = parseLlmEvaluation(rawEvaluationText);
+        } catch (err) {
+          parseError = (err as Error).message;
+        }
+      } else {
+        parseError = 'Empty LLM response.';
+      }
+
       return await db.transaction(async (tx) => {
-        const { answers, aiAssessmentId } = submitAssessmentDto;
-
-        // const totalQuestions = answers.length;
-        const { score, totalQuestions } =
-          await this.countScore(submitAssessmentDto);
-        const totalScore = (score / totalQuestions) * 100;
-
         // Prepare payloads
         const answerPayloads = answers.map((q) => ({
           studentId,
@@ -294,8 +332,6 @@ export class AiAssessmentService {
           ),
         );
 
-        const level = await this.calculateStudentLevel(totalScore);
-
         const levelPayload = {
           studentId,
           levelId: level.id,
@@ -304,12 +340,6 @@ export class AiAssessmentService {
         };
 
         await tx.insert(studentLevelRelation).values(levelPayload);
-
-        //here evaluate the answers by the LLM.
-        // const encodedQuestionWithAsnwers = encode(answers);
-        // const evaluationPrompt = answerEvaluationPrompt(
-        //   encodedQuestionWithAsnwers,
-        // );
 
         await tx
           .update(studentAssessment)
@@ -324,42 +354,6 @@ export class AiAssessmentService {
             ),
           );
 
-        const evaluationPrompt = answerEvaluationPrompt(answers);
-        const llmResponse = await this.llmService.generate({
-          systemPrompt: evaluationPrompt,
-        });
-
-        let rawEvaluationText: string | null = null;
-        if (!llmResponse) rawEvaluationText = null;
-        else if (typeof llmResponse === 'string')
-          rawEvaluationText = llmResponse;
-        else if (typeof llmResponse === 'object') {
-          rawEvaluationText =
-            (llmResponse as any).text ??
-            (llmResponse as any).content ??
-            (llmResponse as any).response ??
-            (llmResponse as any).output ??
-            JSON.stringify(llmResponse);
-        } else {
-          rawEvaluationText = String(llmResponse);
-        }
-
-        // Parse & validate BEFORE returning to client
-        let parsedEvaluation: any = null;
-        let parseError: string | null = null;
-
-        if (rawEvaluationText) {
-          try {
-            parsedEvaluation = parseLlmEvaluation(rawEvaluationText);
-          } catch (err) {
-            parseError = (err as Error).message;
-          }
-        } else {
-          parseError = 'Empty LLM response.';
-        }
-
-        // Optionally: persist parsedEvaluation to DB here if successful
-        // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
         await this.questionEvaluationService.saveEvaluations(
           parsedEvaluation,
           studentId,

@@ -272,6 +272,26 @@ describe('edge cases', () => {
     ).toBe(1);
   });
 
+  it("checks the new session's own cooldown tail", () => {
+    // Pool of 2. A runs 10:00-11:30. B starts 11:01, while a 10:00-11:00
+    // session for C is still in its 2-minute cooldown: A, B and C at once.
+    const existing = [
+      iv('a@x.org', '10:00', '11:30'),
+      iv('b@x.org', '11:01', '12:00'),
+    ];
+    expect(
+      fitsInPool(existing, iv('c@x.org', '10:00', '11:00'), 2, COOLDOWN),
+    ).toBe(false);
+    // B starting once C's cooldown is over is fine.
+    const later = [
+      iv('a@x.org', '10:00', '11:30'),
+      iv('b@x.org', '11:02', '12:00'),
+    ];
+    expect(
+      fitsInPool(later, iv('c@x.org', '10:00', '11:00'), 2, COOLDOWN),
+    ).toBe(true);
+  });
+
   it('fits the last licence exactly, and not one more', () => {
     const existing = [
       iv('a@x.org', '10:00', '11:00'),

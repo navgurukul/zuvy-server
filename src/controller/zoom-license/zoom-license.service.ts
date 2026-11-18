@@ -52,13 +52,13 @@ export class ZoomLicenseService {
 
   constructor(private readonly zoomService: ZoomService) {}
 
-  async getProtectedLicenseEmails(trx: any = db) {
+  async getProtectedLicenseEmails(trx: any = db): Promise<Set<string>> {
     const rows = await trx
       .select({ email: zuvyUserLicenses.zoomEmail })
       .from(zuvyUserLicenses)
       .where(eq(zuvyUserLicenses.isProtected, true));
 
-    return new Set(
+    return new Set<string>(
       rows
         .map((row) => row.email?.trim().toLowerCase())
         .filter((email): email is string => Boolean(email)),
@@ -122,6 +122,9 @@ export class ZoomLicenseService {
     // Wait at most 20 s for the lock, then fail the request with a clear
     // error. A waiter holds a pool connection, so waiting forever could
     // starve the lock holder of a connection.
+    const previous = await trx.execute(
+      sql`SELECT current_setting('lock_timeout') AS value`,
+    );
     await trx.execute(sql`SET LOCAL lock_timeout = '20s'`);
     try {
       await trx.execute(
@@ -135,8 +138,12 @@ export class ZoomLicenseService {
       }
       throw error;
     }
-    // Back to the server default for the rest of the transaction.
-    await trx.execute(sql`SET LOCAL lock_timeout = DEFAULT`);
+    // Back to this connection's own setting for the rest of the transaction
+    // (src/db sets one per connection). `SET LOCAL ... = DEFAULT` would go to
+    // the server default instead, which is no limit at all.
+    await trx.execute(
+      sql`SELECT set_config('lock_timeout', ${String(previous.rows?.[0]?.value ?? '0')}, true)`,
+    );
   }
 
   /**
@@ -147,8 +154,10 @@ export class ZoomLicenseService {
     trx: any,
     range: { from: Date; to: Date | null },
     instructorEmail: string | null,
+    preloadedProtectedEmails?: Set<string>,
   ): Promise<LicenseInterval[]> {
-    const protectedEmails = await this.getProtectedLicenseEmails(trx);
+    const protectedEmails =
+      preloadedProtectedEmails ?? (await this.getProtectedLicenseEmails(trx));
     const rows = await trx
       .select({
         hostEmail: users.email,
@@ -177,6 +186,139 @@ export class ZoomLicenseService {
       start: new Date(row.startTime),
       end: new Date(row.endTime),
     }));
+  }
+
+  /**
+   * Open mentor slots in the instructor's pool that hold no licence yet: still
+   * open, in the future, and with no licence assignment. Licences are reserved
+   * only when a student books, so slot creation counts these as if they were
+   * booked; that way every open slot can still be booked.
+   */
+  private async loadOpenSlotIntervals(
+    trx: any,
+    range: { from: Date; to: Date | null },
+    instructorEmail: string | null,
+    protectedEmails: Set<string>,
+    excludeSlotIds: number[] = [],
+  ): Promise<Array<LicenseInterval & { slotId: number; mentorEmail: string }>> {
+    const rows = await trx
+      .select({
+        slotId: zuvyMentorSlotAvailability.id,
+        mentorEmail: users.email,
+        startTime: zuvyMentorSlotAvailability.slotStartDateTime,
+        endTime: zuvyMentorSlotAvailability.slotEndDateTime,
+      })
+      .from(zuvyMentorSlotAvailability)
+      .innerJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotManagement.id,
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+        ),
+      )
+      .innerJoin(users, eq(users.id, zuvyMentorSlotManagement.mentorUserId))
+      .where(
+        and(
+          eq(zuvyMentorSlotAvailability.status, 'available'),
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()`,
+          range.to
+            ? lt(zuvyMentorSlotAvailability.slotStartDateTime, range.to)
+            : this.alwaysTrueCondition(),
+          sql`${zuvyMentorSlotAvailability.slotEndDateTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${range.from}`,
+          excludeSlotIds.length
+            ? notInArray(zuvyMentorSlotAvailability.id, excludeSlotIds)
+            : this.alwaysTrueCondition(),
+          this.buildInstructorPoolCondition(
+            Array.from(protectedEmails) as string[],
+            instructorEmail,
+          ),
+          notExists(
+            trx
+              .select({ one: sql`1` })
+              .from(licenseAssignments)
+              .where(
+                and(
+                  eq(licenseAssignments.sourceType, 'mentor_slot'),
+                  eq(
+                    licenseAssignments.mentorSlotAvailabilityId,
+                    zuvyMentorSlotAvailability.id,
+                  ),
+                ),
+              ),
+          ),
+        ),
+      );
+
+    return rows.map((row) => ({
+      slotId: row.slotId,
+      mentorEmail: String(row.mentorEmail || ''),
+      hostKey: String(row.mentorEmail || '').toLowerCase(),
+      start: new Date(row.startTime),
+      end: new Date(row.endTime),
+    }));
+  }
+
+  /**
+   * How many licences can be in use at once for a booking in this pool: the
+   * larger of the active transferable licences and the configured pool size
+   * (assignLicense can hand out either a free licence or a shared pool seat).
+   * A protected instructor has a pool of one: their own seat.
+   */
+  private async getBookingCapacity(
+    trx: any,
+    instructorEmail: string | null,
+    protectedEmails: Set<string>,
+  ): Promise<{ capacity: number; instructorIsProtected: boolean }> {
+    const instructorIsProtected = instructorEmail
+      ? protectedEmails.has(instructorEmail)
+      : false;
+    if (instructorIsProtected) return { capacity: 1, instructorIsProtected };
+    const poolSize = await this.getTransferableLicensePoolCount(trx);
+    const activeLicences = await this.getActiveLicensePoolCount(trx, {
+      instructorEmail: instructorEmail ?? '',
+      protectedEmails,
+    });
+    return {
+      capacity: Math.max(poolSize, activeLicences),
+      instructorIsProtected,
+    };
+  }
+
+  /**
+   * First start at or after the requested one where a session of the same
+   * length fits. The pool only frees up when some licence's cooldown ends,
+   * so the candidates are the requested start and those moments.
+   */
+  private nextFreeStart(
+    existing: LicenseInterval[],
+    hostKey: string,
+    requested: { startTime: Date; endTime: Date },
+    capacity: number,
+  ): Date | null {
+    if (!existing.length) return null;
+    const durationMs =
+      requested.endTime.getTime() - requested.startTime.getTime();
+    const candidateTimes = [
+      requested.startTime,
+      ...existing.map((interval) => this.getBufferedEndTime(interval.end)),
+    ]
+      .filter((date) => date.getTime() >= requested.startTime.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    for (const candidateStart of candidateTimes) {
+      const candidateEnd = new Date(candidateStart.getTime() + durationMs);
+      if (
+        fitsInPool(
+          existing,
+          { hostKey, start: candidateStart, end: candidateEnd },
+          capacity,
+          this.licenseCooldownMs,
+        )
+      ) {
+        return candidateStart;
+      }
+    }
+    return candidateTimes[candidateTimes.length - 1] || null;
   }
 
   private async getPoolSizeForInstructor(
@@ -208,12 +350,15 @@ export class ZoomLicenseService {
       trx,
       hostKey || null,
     );
+    // Up to the end of the new session's cooldown: its licence is busy
+    // until then, so sessions starting in that tail count too.
+    const busyUntil = this.getBufferedEndTime(dto.endTime);
     const existing = await this.loadPoolIntervals(
       trx,
-      { from: dto.startTime, to: dto.endTime },
+      { from: dto.startTime, to: busyUntil },
       hostKey || null,
     );
-    const window = { start: dto.startTime, end: dto.endTime };
+    const window = { start: dto.startTime, end: busyUntil };
 
     return {
       fits: fitsInPool(
@@ -428,8 +573,6 @@ export class ZoomLicenseService {
       trx,
       hostKey || null,
     );
-    const requestedDurationMs = dto.endTime.getTime() - dto.startTime.getTime();
-
     // Only assignments still in use at or after the requested start matter
     // (this used to load every assignment ever made).
     const existing = await this.loadPoolIntervals(
@@ -437,38 +580,7 @@ export class ZoomLicenseService {
       { from: dto.startTime, to: null },
       hostKey || null,
     );
-
-    if (!existing.length) {
-      return null;
-    }
-
-    // The pool only frees up when some licence's cooldown ends, so the first
-    // start that fits is the requested start or one of those moments.
-    const candidateTimes = [
-      dto.startTime,
-      ...existing.map((interval) => this.getBufferedEndTime(interval.end)),
-    ]
-      .filter((date) => date.getTime() >= dto.startTime.getTime())
-      .sort((a, b) => a.getTime() - b.getTime());
-
-    for (const candidateStart of candidateTimes) {
-      const candidateEnd = new Date(
-        candidateStart.getTime() + requestedDurationMs,
-      );
-
-      if (
-        fitsInPool(
-          existing,
-          { hostKey, start: candidateStart, end: candidateEnd },
-          poolSize,
-          this.licenseCooldownMs,
-        )
-      ) {
-        return candidateStart;
-      }
-    }
-
-    return candidateTimes[candidateTimes.length - 1] || null;
+    return this.nextFreeStart(existing, hostKey, dto, poolSize);
   }
 
   async getNextAvailableLicenseTimeForInstructor(
@@ -565,9 +677,13 @@ export class ZoomLicenseService {
 
   async getActiveLicensePoolCount(
     trx: any = db,
-    options?: { instructorEmail?: string | null },
+    options?: {
+      instructorEmail?: string | null;
+      protectedEmails?: Set<string>;
+    },
   ): Promise<number> {
-    const protectedEmails = await this.getProtectedLicenseEmails(trx);
+    const protectedEmails =
+      options?.protectedEmails ?? (await this.getProtectedLicenseEmails(trx));
     const hasInstructorEmail = typeof options?.instructorEmail === 'string';
     const instructorEmail = hasInstructorEmail
       ? options!.instructorEmail!.toLowerCase()
@@ -598,7 +714,11 @@ export class ZoomLicenseService {
     return Number(totalLicenseCount[0]?.count || 0);
   }
 
-  async syncLicensedUsersFromZoom() {
+  /**
+   * `executor`: the caller's transaction when called inside one (assignLicense),
+   * so these writes don't need a second pooled connection.
+   */
+  async syncLicensedUsersFromZoom(executor: any = db) {
     const zoomUsers = await this.zoomService.listAuthorizedUsers({
       status: 'active',
       hostType: 'all',
@@ -621,13 +741,16 @@ export class ZoomLicenseService {
       .filter((email): email is string => Boolean(email));
 
     for (const user of activeZoomUsers) {
-      await this.zoomService.syncZoomLicenseUser({
-        email: user.email,
-        zoomUserId: user.id,
-        userName: user.displayName || user.name || user.email,
-        licenseType: user.userType,
-        status: user.status,
-      });
+      await this.zoomService.syncZoomLicenseUser(
+        {
+          email: user.email,
+          zoomUserId: user.id,
+          userName: user.displayName || user.name || user.email,
+          licenseType: user.userType,
+          status: user.status,
+        },
+        executor,
+      );
     }
 
     const staleUserCondition = activeZoomEmails.length
@@ -649,7 +772,7 @@ export class ZoomLicenseService {
         )
       : this.alwaysTrueCondition();
 
-    await db
+    await executor
       .update(zuvyUserLicenses)
       .set({
         licenseType: 1,
@@ -659,7 +782,7 @@ export class ZoomLicenseService {
       } as any)
       .where(staleUserCondition);
 
-    await db
+    await executor
       .update(zuvyUserLicenses)
       .set({
         isProtected: false,
@@ -728,7 +851,7 @@ export class ZoomLicenseService {
         this.logger.warn(
           'Active Zoom license pool is empty in DB. Attempting one-time sync from Zoom before rejecting allocation.',
         );
-        await this.syncLicensedUsersFromZoom();
+        await this.syncLicensedUsersFromZoom(trx);
         availableLicenses = await this.fetchAvailableLicenseIds(trx, {
           ...dto,
           instructorEmail,
@@ -761,12 +884,11 @@ export class ZoomLicenseService {
         return assignedLicenseId;
       }
 
-      const usedCount = await this.getOverlappingAssignmentCountForPool(
+      const { fits, peakInUse: usedCount } = await this.canFitInPool(
         trx,
         dto,
         instructorEmail,
       );
-      const { fits } = await this.canFitInPool(trx, dto, instructorEmail);
 
       if (!instructorIsProtected && instructorEmail && fits) {
         const placeholderLicenseId = await this.getOrCreatePlaceholderLicenseId(
@@ -1075,57 +1197,102 @@ export class ZoomLicenseService {
   }
 
   /**
-   * Whether a licence would be free for this instructor and window, using the
-   * same rules as assignLicense but reserving nothing. Mentor slots use it at
-   * creation: a slot is refused if no licence is free, but the licence itself
-   * is only reserved when a student books.
+   * Whether a mentor slot at this time could be booked: a licence would still
+   * be free with every licence assignment AND every other open slot (open
+   * slots hold no licence until booked, so they are counted as if booked).
+   * Reserves nothing. Mentor slots are refused at creation when this says no,
+   * so that any slot students see as open can really be booked.
+   *
+   * `lock` (default true) takes the licence-pool lock, so a check followed by
+   * creating the slot in the same transaction can't race another one. The
+   * read-only licence-check route passes false: it must not queue behind or
+   * block real allocations.
    */
   async checkLicenseAvailability(
-    trx: any,
+    executor: any,
     dto: { instructorId: number; startTime: Date; endTime: Date },
+    options: { lock?: boolean; excludeSlotIds?: number[] } = {},
   ): Promise<LicenseAvailability> {
-    await this.lockLicensePool(trx);
+    if (options.lock !== false) {
+      await this.lockLicensePool(executor);
+    }
 
     const instructorEmail = await this.getInstructorEmail(
-      trx,
+      executor,
       dto.instructorId,
     );
-    const { poolSize, instructorIsProtected } =
-      await this.getPoolSizeForInstructor(trx, instructorEmail);
-
-    const freeLicenseRows = await this.fetchAvailableLicenseIds(trx, {
-      ...dto,
-      instructorEmail,
-    });
-    const { fits, peakInUse } = await this.canFitInPool(
-      trx,
-      dto,
-      instructorEmail,
+    const hostKey = (instructorEmail || '').toLowerCase();
+    const protectedEmails = await this.getProtectedLicenseEmails(executor);
+    const { capacity } = await this.getBookingCapacity(
+      executor,
+      hostKey || null,
+      protectedEmails,
     );
 
-    const available =
-      freeLicenseRows.length > 0 ||
-      (!instructorIsProtected && !!instructorEmail && poolSize > 0 && fits);
+    // Everything in use from the slot's start until the end of its own
+    // cooldown.
+    const range = {
+      from: dto.startTime,
+      to: this.getBufferedEndTime(dto.endTime),
+    };
+    const existing: LicenseInterval[] = [
+      ...(await this.loadPoolIntervals(
+        executor,
+        range,
+        hostKey || null,
+        protectedEmails,
+      )),
+      ...(await this.loadOpenSlotIntervals(
+        executor,
+        range,
+        hostKey || null,
+        protectedEmails,
+        options.excludeSlotIds,
+      )),
+    ];
+    const requested = { hostKey, start: dto.startTime, end: dto.endTime };
+    const peakInUse = peakConcurrentLicenses(
+      existing,
+      { start: range.from, end: range.to },
+      this.licenseCooldownMs,
+    );
 
-    if (available) {
+    if (
+      capacity > 0 &&
+      fitsInPool(existing, requested, capacity, this.licenseCooldownMs)
+    ) {
       return {
-        available,
-        poolSize,
+        available: true,
+        poolSize: capacity,
         peakInUse,
         nextAvailableAt: null,
         message: null,
       };
     }
 
-    const nextAvailableAt = await this.getNextPoolAvailabilityTime(
-      trx,
-      dto,
-      instructorEmail,
-    );
+    // Only on the refusal path: look ahead for the next time that fits.
+    const ahead = { from: dto.startTime, to: null };
+    const future: LicenseInterval[] = [
+      ...(await this.loadPoolIntervals(
+        executor,
+        ahead,
+        hostKey || null,
+        protectedEmails,
+      )),
+      ...(await this.loadOpenSlotIntervals(
+        executor,
+        ahead,
+        hostKey || null,
+        protectedEmails,
+        options.excludeSlotIds,
+      )),
+    ];
+    const nextAvailableAt =
+      capacity > 0 ? this.nextFreeStart(future, hostKey, dto, capacity) : null;
 
     return {
-      available,
-      poolSize,
+      available: false,
+      poolSize: capacity,
       peakInUse,
       nextAvailableAt,
       message:
@@ -1136,10 +1303,11 @@ export class ZoomLicenseService {
   }
 
   /**
-   * Open mentor slots (no licence reserved yet, still bookable) that would no
-   * longer fit in the pool if a class were added in this window. Open slots
-   * don't hold a licence, so a class can take the last one; this lets class
-   * scheduling warn about it. Nothing is blocked.
+   * Open mentor slots that this class would make unbookable: they could be
+   * booked before the class is added (counting licence assignments and the
+   * other open slots), and can't be after. Slots that were already unbookable
+   * are not blamed on this class. Nothing is blocked; class creation only
+   * reports them.
    */
   async findOpenMentorSlotsAtRisk(
     trx: any,
@@ -1147,90 +1315,76 @@ export class ZoomLicenseService {
     instructorEmail: string | null,
   ): Promise<Array<{ slotId: number; mentorEmail: string; startTime: Date }>> {
     const hostKey = (instructorEmail || '').toLowerCase();
-    const { instructorIsProtected } = await this.getPoolSizeForInstructor(
-      trx,
-      hostKey || null,
-    );
+    const protectedEmails = await this.getProtectedLicenseEmails(trx);
     // A protected seat is its own pool of one; mentor slots aren't in it.
-    if (instructorIsProtected) return [];
+    if (hostKey && protectedEmails.has(hostKey)) return [];
 
-    const protectedEmails = Array.from(
-      await this.getProtectedLicenseEmails(trx),
-    ) as string[];
-
-    const openSlots = await trx
-      .select({
-        slotId: zuvyMentorSlotAvailability.id,
-        mentorEmail: users.email,
-        startTime: zuvyMentorSlotAvailability.slotStartDateTime,
-        endTime: zuvyMentorSlotAvailability.slotEndDateTime,
-      })
-      .from(zuvyMentorSlotAvailability)
-      .innerJoin(
-        zuvyMentorSlotManagement,
-        eq(
-          zuvyMentorSlotManagement.id,
-          zuvyMentorSlotAvailability.mentorSlotManagementId,
-        ),
-      )
-      .innerJoin(users, eq(users.id, zuvyMentorSlotManagement.mentorUserId))
-      .where(
-        and(
-          eq(zuvyMentorSlotAvailability.status, 'available'),
-          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()`,
-          lt(zuvyMentorSlotAvailability.slotStartDateTime, dto.endTime),
-          sql`${zuvyMentorSlotAvailability.slotEndDateTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
-          protectedEmails.length
-            ? notInArray(this.normalizedUserEmail(), protectedEmails)
-            : this.alwaysTrueCondition(),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(licenseAssignments)
-              .where(
-                and(
-                  eq(licenseAssignments.sourceType, 'mentor_slot'),
-                  eq(
-                    licenseAssignments.mentorSlotAvailabilityId,
-                    zuvyMentorSlotAvailability.id,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      );
-
-    if (!openSlots.length) return [];
-
-    const poolSize = await this.getTransferableLicensePoolCount(trx);
-    const existing = await this.loadPoolIntervals(
+    const classBusyUntil = this.getBufferedEndTime(dto.endTime);
+    const slots = await this.loadOpenSlotIntervals(
       trx,
-      { from: dto.startTime, to: dto.endTime },
+      { from: dto.startTime, to: classBusyUntil },
       hostKey || null,
+      protectedEmails,
     );
-    const withClass: LicenseInterval[] = [
-      ...existing,
-      { hostKey, start: dto.startTime, end: dto.endTime },
-    ];
+    if (!slots.length) return [];
 
-    return openSlots
-      .filter(
-        (slot) =>
-          !fitsInPool(
-            withClass,
-            {
-              hostKey: String(slot.mentorEmail || '').toLowerCase(),
-              start: new Date(slot.startTime),
-              end: new Date(slot.endTime),
-            },
-            poolSize,
-            this.licenseCooldownMs,
-          ),
-      )
+    // Everything that can affect any of these slots, over the union of the
+    // class's time and every slot's time (cooldowns included).
+    const from = new Date(
+      Math.min(dto.startTime.getTime(), ...slots.map((s) => s.start.getTime())),
+    );
+    const to = this.getBufferedEndTime(
+      new Date(
+        Math.max(dto.endTime.getTime(), ...slots.map((s) => s.end.getTime())),
+      ),
+    );
+    const assignments = await this.loadPoolIntervals(
+      trx,
+      { from, to },
+      hostKey || null,
+      protectedEmails,
+    );
+    const otherOpen = await this.loadOpenSlotIntervals(
+      trx,
+      { from, to },
+      hostKey || null,
+      protectedEmails,
+    );
+    const { capacity } = await this.getBookingCapacity(
+      trx,
+      hostKey || null,
+      protectedEmails,
+    );
+    const classInterval: LicenseInterval = {
+      hostKey,
+      start: dto.startTime,
+      end: dto.endTime,
+    };
+
+    return slots
+      .filter((slot) => {
+        const others = [
+          ...assignments,
+          ...otherOpen.filter((o) => o.slotId !== slot.slotId),
+        ];
+        const fitsBefore = fitsInPool(
+          others,
+          slot,
+          capacity,
+          this.licenseCooldownMs,
+        );
+        const fitsAfter = fitsInPool(
+          [...others, classInterval],
+          slot,
+          capacity,
+          this.licenseCooldownMs,
+        );
+        return fitsBefore && !fitsAfter;
+      })
       .map((slot) => ({
         slotId: slot.slotId,
-        mentorEmail: String(slot.mentorEmail || ''),
-        startTime: new Date(slot.startTime),
+        mentorEmail: slot.mentorEmail,
+        startTime: slot.start,
       }));
   }
 

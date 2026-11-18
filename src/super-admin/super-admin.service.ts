@@ -59,15 +59,12 @@ export class SuperAdminService {
       );
     }
 
-    return await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // 3. Cleanup: Remove all existing organization-related data for this user
       // Delete from zuvyUserRolesAssigned (all orgs)
       await tx
         .delete(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, user.id));
-
-      // Global Logout: Invalidate all existing sessions
-      await this.authService.logout(user.id);
 
       // 4. Assign role to user in zuvyUserRolesAssigned (orgId: null)
       await tx.insert(zuvyUserRolesAssigned).values({
@@ -90,6 +87,12 @@ export class SuperAdminService {
         data: { userId: user.id, email: user.email },
       };
     });
+
+    // Global logout: invalidate all existing sessions. After the commit,
+    // because logout writes on its own pooled connection.
+    await this.authService.logout(user.id);
+
+    return result;
   }
 
   async removeSuperAdmin(userId: number) {

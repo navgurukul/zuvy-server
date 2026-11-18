@@ -170,14 +170,24 @@ function blockZoom(zoomService: any, allowed: Record<string, any>) {
 
 let meetingSeq = 0;
 let failNextMeeting = false;
+let failNextGetMeeting = false;
+let createMeetingDelayMs = 0;
+let onMeetingCreated: ((id: number) => void) | null = null;
+const deletedMeetingIds: string[] = [];
 const zoomStubs = {
-  getUser: async () => ({ success: true, data: { status: 'active' } }),
+  getUser: async () => ({ success: true, data: { status: 'active', type: 2 } }),
+  // The real ensureHostLicensedForWindow runs; Zoom says the host is licensed.
+  ensureLicensedUser: async () => ({ success: true, licensed: true }),
   createMeetingForUser: async () => {
     if (failNextMeeting) {
       failNextMeeting = false;
       return { success: false, error: 'E2E: Zoom is down' };
     }
+    if (createMeetingDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, createMeetingDelayMs));
+    }
     meetingSeq += 1;
+    onMeetingCreated?.(990000000 + meetingSeq);
     return {
       success: true,
       data: {
@@ -188,11 +198,20 @@ const zoomStubs = {
       },
     };
   },
-  getMeeting: async () => ({
-    success: true,
-    data: { uuid: `e2e-licence-${Date.now()}-${meetingSeq}` },
-  }),
-  deleteMeeting: async () => ({ success: true }),
+  getMeeting: async () => {
+    if (failNextGetMeeting) {
+      failNextGetMeeting = false;
+      return { success: false, error: 'E2E: meeting lookup failed' };
+    }
+    return {
+      success: true,
+      data: { uuid: `e2e-licence-${Date.now()}-${meetingSeq}` },
+    };
+  },
+  deleteMeeting: async (id: string) => {
+    deletedMeetingIds.push(String(id));
+    return { success: true };
+  },
   updateMeeting: async () => ({ success: true }),
 };
 
@@ -479,7 +498,6 @@ async function main() {
     ),
   )) {
     licenceService.syncLicensedUsersFromZoom = async () => 0;
-    licenceService.ensureHostLicensedForWindow = async () => undefined;
   }
   svc.emailService.sendEmail = async () => undefined;
 
@@ -646,9 +664,17 @@ async function main() {
         'slot starting exactly when the cooldown ends is created',
         !!ok?.id,
       );
-      const ending = await createSlot(at(d, '09:00'), at(d, '10:00'));
+      await expectRefused(
+        'slot ending exactly when the busy hour starts is refused (its own cooldown runs into it)',
+        () => createSlot(at(d, '09:00'), at(d, '10:00')),
+        /No Zoom licence is free/,
+      );
+      const ending = await createSlot(
+        at(d, '09:00'),
+        new Date(at(d, '10:00').getTime() - ZOOM_LICENSE_COOLDOWN_MS),
+      );
       report(
-        'slot ending exactly when the busy hour starts is created',
+        'slot ending one cooldown before the busy hour is created',
         !!ending?.id,
       );
     });
@@ -1372,7 +1398,7 @@ async function main() {
       'F3. Class warns about open mentor slots it affects',
       async () => {
         const d = nextDay();
-        for (let i = 0; i < poolSize - 1; i++)
+        for (let i = 0; i < N - 1; i++)
           await filler(i, at(d, '10:00'), at(d, '11:00'));
         const atRisk = await createSlot(at(d, '10:00'), at(d, '10:30'));
         const held = await createSlot(at(d, '10:30'), at(d, '11:00'));
@@ -1747,6 +1773,603 @@ async function main() {
 
     /* ============================================ H. Clean-up script */
 
+    /* ============================================ N. Review fixes */
+
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+    const waitForBooking = async (slotId: number) => {
+      const started = Date.now();
+      while (Date.now() - started < 20_000) {
+        const rows = await bookingsOnSlot(slotId);
+        if (rows.length) return rows[0];
+        await sleep(150);
+      }
+      throw new Error(`no booking appeared on slot ${slotId}`);
+    };
+    const resetZoomHooks = () => {
+      createMeetingDelayMs = 0;
+      onMeetingCreated = null;
+      failNextGetMeeting = false;
+      failNextMeeting = false;
+    };
+    const confirmAlerts = async (bookingId: number) => {
+      const [{ n }] = await db
+        .select({ n: sql`count(*)::int` })
+        .from(schema.zuvyNotifications)
+        .where(
+          and(
+            eq(schema.zuvyNotifications.referenceType, 'booking'),
+            eq(schema.zuvyNotifications.referenceId, bookingId),
+            inArray(schema.zuvyNotifications.type, [
+              'BOOKING_CREATED',
+              'BOOKING_CONFIRMED',
+            ]),
+          ),
+        );
+      return n;
+    };
+
+    await section(
+      'N1. Booking does not hold the licence lock while Zoom is called',
+      async () => {
+        const d = nextDay();
+        const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        await restoreStudentMetrics();
+        createMeetingDelayMs = 5000;
+        let bookingDone = false;
+        try {
+          const booking = svc.bookSlot(STUDENT, slot.id).then((b: any) => {
+            bookingDone = true;
+            bookingIds.push(b.id);
+            return b;
+          });
+          await waitForBooking(slot.id);
+          const started = Date.now();
+          const other = await db.transaction((trx: any) =>
+            lic.checkLicenseAvailability(trx, {
+              instructorId: hosts[N].id,
+              startTime: at(d, '12:00'),
+              endTime: at(d, '12:30'),
+            }),
+          );
+          const secs = (Date.now() - started) / 1000;
+          report(
+            'another allocation takes the licence lock while the booking waits on Zoom',
+            other.available === true && !bookingDone && secs < 3,
+            `${secs.toFixed(1)}s, booking still waiting on Zoom: ${!bookingDone}`,
+          );
+          const done = await booking;
+          const row = await bookingRow(done.id);
+          report(
+            'the booking then completes with its meeting saved',
+            !!row.zoomMeetingId && !!row.meetingLink,
+          );
+          report(
+            'its alerts are sent once the meeting exists',
+            (await confirmAlerts(done.id)) === 2,
+          );
+        } finally {
+          resetZoomHooks();
+        }
+      },
+    );
+
+    await section(
+      'N2. Booking cancelled while Zoom is being called',
+      async () => {
+        const d = nextDay();
+        const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        await restoreStudentMetrics();
+        createMeetingDelayMs = 5000;
+        let createdId: number | null = null;
+        onMeetingCreated = (id) => {
+          createdId = id;
+        };
+        try {
+          const outcome = svc.bookSlot(STUDENT, slot.id).then(
+            () => 'booked',
+            (e: any) => e.message,
+          );
+          const pending = await waitForBooking(slot.id);
+          bookingIds.push(pending.id);
+          await svc.cancelBooking(pending.id, REASON, 'student', STUDENT);
+          const message = await outcome;
+          report(
+            'the student is told it was cancelled while being set up',
+            /cancelled while the session was being set up/.test(message),
+            message,
+          );
+          report(
+            'the Zoom meeting made meanwhile is deleted',
+            createdId !== null && deletedMeetingIds.includes(String(createdId)),
+          );
+          const row = await bookingRow(pending.id);
+          report(
+            'booking stays cancelled, no meeting saved on it',
+            row.status === 'cancelled' && !row.zoomMeetingId,
+          );
+          report('licence given back', (await holdsFor(slot.id)).length === 0);
+          report(
+            'no "booking confirmed" alerts',
+            (await confirmAlerts(pending.id)) === 0,
+          );
+        } finally {
+          resetZoomHooks();
+        }
+      },
+    );
+
+    await section('N3. Zoom fails after the meeting was created', async () => {
+      const d = nextDay();
+      const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+      await restoreStudentMetrics();
+      const before = await readStudentMetricsJson();
+      let createdId: number | null = null;
+      onMeetingCreated = (id) => {
+        createdId = id;
+      };
+      failNextGetMeeting = true;
+      try {
+        await expectRefused(
+          'booking fails with a clear message',
+          () => svc.bookSlot(STUDENT, slot.id),
+          /Unable to schedule session/,
+        );
+      } finally {
+        resetZoomHooks();
+      }
+      report(
+        'the half-made Zoom meeting is deleted',
+        createdId !== null && deletedMeetingIds.includes(String(createdId)),
+      );
+      const s = await slotRow(slot.id);
+      report('booking removed', (await bookingsOnSlot(slot.id)).length === 0);
+      report('licence given back', (await holdsFor(slot.id)).length === 0);
+      report(
+        'slot open again, count 0',
+        s.status === 'available' && s.currentBookedCount === 0,
+      );
+      report(
+        'student credits exactly as before',
+        (await readStudentMetricsJson()) === before,
+      );
+    });
+
+    await section('N4. Saving the meeting fails: booking undone', async () => {
+      const d = nextDay();
+      const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+      await restoreStudentMetrics();
+      const before = await readStudentMetricsJson();
+      let createdId: number | null = null;
+      onMeetingCreated = (id) => {
+        createdId = id;
+      };
+      const notif = svc.notificationService;
+      const realCreate = notif.createNotification;
+      notif.createNotification = async () => {
+        throw new Error('E2E: alert write failed');
+      };
+      try {
+        await expectRefused(
+          'booking fails with a clear message',
+          () => svc.bookSlot(STUDENT, slot.id),
+          /Unable to schedule session/,
+        );
+      } finally {
+        notif.createNotification = realCreate;
+        resetZoomHooks();
+      }
+      report(
+        'the Zoom meeting is deleted',
+        createdId !== null && deletedMeetingIds.includes(String(createdId)),
+      );
+      report('booking removed', (await bookingsOnSlot(slot.id)).length === 0);
+      report('licence given back', (await holdsFor(slot.id)).length === 0);
+      report(
+        'student credits exactly as before',
+        (await readStudentMetricsJson()) === before,
+      );
+    });
+
+    await section(
+      "N5. Slot creation counts other mentors' open slots",
+      async () => {
+        const protectedList = Array.from(
+          await lic.getProtectedLicenseEmails(db),
+        ) as string[];
+        const others = (
+          await db.execute(sql`
+          SELECT m.id, m.mentor_user_id AS mentor_id
+          FROM main.zuvy_mentor_slot_management m JOIN main.users u ON u.id = m.mentor_user_id
+          WHERE m.id <> ${mgmt.id} AND u.email IS NOT NULL AND m.mentor_user_id <> ${MENTOR}
+          ORDER BY m.id DESC LIMIT 20`)
+        ).rows;
+        if (!others.length) {
+          report('dev has another mentor to test with', false);
+          return;
+        }
+        const otherEmails = await db.execute(
+          sql`SELECT id, lower(email) AS email FROM main.users WHERE id IN (${sql.join(
+            others.map((o: any) => sql`${o.mentor_id}`),
+            sql`, `,
+          )})`,
+        );
+        const other = others.find((o: any) => {
+          const e = otherEmails.rows.find(
+            (r: any) => String(r.id) === String(o.mentor_id),
+          );
+          return e && !protectedList.includes(e.email);
+        });
+        if (!other) {
+          report('dev has another mentor to test with', false);
+          return;
+        }
+        const openSlotFor = async (day: number, from: string, to: string) => {
+          const [row] = await db
+            .insert(schema.zuvyMentorSlotAvailability)
+            .values({
+              mentorSlotManagementId: other.id,
+              slotStartDateTime: at(day, from),
+              slotEndDateTime: at(day, to),
+              durationMinutes: 30,
+              status: 'available',
+            })
+            .returning();
+          extraSlotIds.push(row.id);
+          return row;
+        };
+
+        const d = nextDay();
+        await fillPool(at(d, '10:00'), at(d, '11:00'), 1);
+        await openSlotFor(d, '10:00', '10:30');
+        await expectRefused(
+          "the last licence is taken by another mentor's open slot: slot refused",
+          () => createSlot(at(d, '10:00'), at(d, '10:30')),
+          /No Zoom licence is free/,
+        );
+        const check = await svc.checkSlotLicenceAvailability(
+          MENTOR,
+          iso(at(d, '10:00')),
+          iso(at(d, '10:30')),
+        );
+        report('licence-check says the same', check.available === false);
+
+        const e = nextDay();
+        await fillPool(at(e, '10:00'), at(e, '11:00'), 2);
+        const booked = await openSlotFor(e, '10:00', '10:30');
+        const [hold] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: realRows[N - 1],
+            instructorId: Number(other.mentor_id),
+            sourceType: 'mentor_slot',
+            mentorSlotAvailabilityId: booked.id,
+            startTime: at(e, '10:00'),
+            endTime: at(e, '10:30'),
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(hold.id));
+        const ok = await createSlot(at(e, '10:00'), at(e, '10:30'));
+        report(
+          'a slot that already holds a licence is counted once, not twice',
+          !!ok?.id,
+        );
+      },
+    );
+
+    await section(
+      'N6. Read-only licence-check does not wait for the licence lock',
+      async () => {
+        const d = nextDay();
+        const holder = new Client(ConfigIndex.database);
+        await holder.connect();
+        try {
+          await holder.query('BEGIN');
+          await holder.query(
+            `SELECT pg_advisory_xact_lock(hashtext('zuvy_zoom_license_pool'))`,
+          );
+          const started = Date.now();
+          const result = await svc.checkSlotLicenceAvailability(
+            MENTOR,
+            iso(at(d, '10:00')),
+            iso(at(d, '10:30')),
+          );
+          const secs = (Date.now() - started) / 1000;
+          report(
+            'answers at once while the lock is held elsewhere',
+            result.available === true && secs < 3,
+            `${secs.toFixed(1)}s`,
+          );
+        } finally {
+          await holder.query('ROLLBACK').catch(() => undefined);
+          await holder.end();
+        }
+      },
+    );
+
+    await section('N7. Lock-wait limits', async () => {
+      const shown = await db.execute(sql`SHOW lock_timeout`);
+      report(
+        'every pooled connection waits at most 30 s for a lock',
+        shown.rows[0].lock_timeout === '30s',
+        shown.rows[0].lock_timeout,
+      );
+      const idle = await db.execute(
+        sql`SHOW idle_in_transaction_session_timeout`,
+      );
+      report(
+        'an idle transaction is ended after 2 minutes',
+        idle.rows[0].idle_in_transaction_session_timeout === '2min',
+        idle.rows[0].idle_in_transaction_session_timeout,
+      );
+      const inside = await db.transaction(async (trx: any) => {
+        await lic.lockLicensePool(trx);
+        return (await trx.execute(sql`SHOW lock_timeout`)).rows[0].lock_timeout;
+      });
+      report(
+        'after taking the licence lock, the 30 s limit is back (not "no limit")',
+        inside === '30s',
+        inside,
+      );
+    });
+
+    await section(
+      'N8. Accepting a reschedule when no licence is free',
+      async () => {
+        const d = nextDay();
+        const from = await createSlot(at(d, '08:00'), at(d, '08:30'));
+        const to = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        const b = await fixtureBooking(from.id);
+        await proposeFixture(b, to.id);
+        await fillPool(at(d, '10:00'), at(d, '11:00'));
+        await expectRefused(
+          'mentor gets a clear message',
+          () => svc.acceptReschedule(b, MENTOR, ORG),
+          /No meeting licence is free at the new time/,
+        );
+        report(
+          'booking still on the old slot',
+          (await bookingRow(b)).slotAvailabilityId === from.id,
+        );
+        report(
+          'old slot keeps its licence, new slot has none',
+          (await holdsFor(from.id)).length === 1 &&
+            (await holdsFor(to.id)).length === 0,
+        );
+      },
+    );
+
+    await section(
+      'N9. Accepting a reschedule while someone books the old slot',
+      async () => {
+        let ok = 0;
+        const problems: string[] = [];
+        for (let round = 0; round < 3; round++) {
+          const d = nextDay();
+          const from = await createSlot(at(d, '10:00'), at(d, '10:30'), 2);
+          const to = await createSlot(at(d, '12:00'), at(d, '12:30'));
+          const b = await fixtureBooking(from.id);
+          await proposeFixture(b, to.id);
+          await restoreStudentMetrics();
+          const results = await Promise.allSettled([
+            svc.acceptReschedule(b, MENTOR, ORG),
+            svc.bookSlot(STUDENT, from.id),
+          ]);
+          if (results[1].status === 'fulfilled')
+            bookingIds.push((results[1] as any).value.id);
+          if (results.every((r) => r.status === 'fulfilled')) ok++;
+          results.forEach(
+            (r: any) =>
+              r.status === 'rejected' && problems.push(r.reason?.message),
+          );
+        }
+        report(
+          'both succeed in all 3 rounds, no deadlock',
+          ok === 3,
+          problems.join(' | ') || '3 of 3',
+        );
+      },
+    );
+
+    await section(
+      'N10. Class warning: the right slots, the right time window',
+      async () => {
+        const teacherEmail = hosts[N + 1].email;
+        const atRiskFor = (day: number, from: string, to: string) =>
+          db.transaction((trx: any) =>
+            lic.findOpenMentorSlotsAtRisk(
+              trx,
+              { startTime: at(day, from), endTime: at(day, to) },
+              teacherEmail,
+            ),
+          );
+
+        // A slot that was already unbookable is not blamed on the class.
+        const d = nextDay();
+        await fillPool(at(d, '10:00'), at(d, '11:00'));
+        const [stuck] = await db
+          .insert(schema.zuvyMentorSlotAvailability)
+          .values({
+            mentorSlotManagementId: mgmt.id,
+            slotStartDateTime: at(d, '10:00'),
+            slotEndDateTime: at(d, '10:30'),
+            durationMinutes: 30,
+            status: 'available',
+          })
+          .returning();
+        extraSlotIds.push(stuck.id);
+        const listed1 = (await atRiskFor(d, '10:00', '11:00')).map(
+          (s: any) => s.slotId,
+        );
+        report(
+          'slot that was already unbookable is not listed',
+          !listed1.includes(stuck.id),
+        );
+
+        // The class's cooldown overlaps sessions that start after the class.
+        const e = nextDay();
+        const slot = await createSlot(at(e, '10:15'), at(e, '11:00'));
+        for (let i = 0; i < N - 1; i++)
+          await filler(i, at(e, '10:41'), at(e, '11:00'));
+        const listed2 = (await atRiskFor(e, '10:00', '10:40')).map(
+          (s: any) => s.slotId,
+        );
+        report(
+          "slot is listed when the class's cooldown runs into sessions after the class",
+          listed2.includes(slot.id),
+        );
+      },
+    );
+
+    await section(
+      'N11. Class creation when the warning check fails',
+      async () => {
+        const lsvc = classes.zoomLicenseService;
+        const realFind = lsvc.findOpenMentorSlotsAtRisk;
+        const d = nextDay();
+        // Every licence is touched once in the class's time but never two at
+        // once, so the class gets a shared pool seat (the placeholder path).
+        for (let i = 0; i < N; i++) {
+          const start = at(d, '10:00', i * 10 * MIN);
+          await filler(i, start, new Date(start.getTime() + 6 * MIN));
+        }
+        const teacher = (
+          await db.execute(
+            sql`SELECT lower(u.email) AS email FROM main.zuvy_batches b JOIN main.users u ON u.id = b.instructor_id WHERE b.id = ${classBatch.batch_id}`,
+          )
+        ).rows[0].email;
+        const placeholderBefore = await db
+          .select()
+          .from(schema.zuvyUserLicenses)
+          .where(eq(schema.zuvyUserLicenses.zoomEmail, teacher));
+        lsvc.findOpenMentorSlotsAtRisk = async (executor: any) => {
+          await executor.execute(
+            sql`SELECT * FROM main.e2e_table_that_does_not_exist`,
+          );
+          return [];
+        };
+        const title = `E2E licence test class ${Date.now()}`;
+        let result: any;
+        try {
+          result = await classes.createZoomSession(
+            {
+              title,
+              startDateTime: iso(at(d, '10:00')),
+              endDateTime: iso(at(d, '10:00', N * 10 * MIN)),
+              timeZone: 'Asia/Kolkata',
+              batchId: classBatch.batch_id,
+              bootcampId: classBatch.bootcamp_id,
+              moduleId: classBatch.module_id,
+            },
+            { email: 'e2e-licence@zuvy.invalid' },
+          );
+        } finally {
+          lsvc.findOpenMentorSlotsAtRisk = realFind;
+        }
+        const sessions = (result?.data || []).map((s: any) => Number(s.id));
+        sessions.forEach((id: number) => classSessionIds.push(id));
+        try {
+          report(
+            'class still created',
+            result?.status === 'success',
+            result?.message || result?.error,
+          );
+          const [assignment] = sessions.length
+            ? await db
+                .select()
+                .from(schema.licenseAssignments)
+                .where(eq(schema.licenseAssignments.sessionId, sessions[0]))
+            : [];
+          const [licence] = assignment
+            ? await db
+                .select()
+                .from(schema.zuvyUserLicenses)
+                .where(eq(schema.zuvyUserLicenses.id, assignment.licenseId))
+            : [];
+          report(
+            "the class's licence row exists (the failed check didn't roll it back)",
+            !!licence,
+            licence ? `licence ${licence.id}` : 'missing',
+          );
+        } finally {
+          if (sessions.length) {
+            await db
+              .delete(schema.licenseAssignments)
+              .where(inArray(schema.licenseAssignments.sessionId, sessions));
+            await db
+              .delete(schema.zuvySessions)
+              .where(inArray(schema.zuvySessions.id, sessions));
+            classSessionIds.splice(
+              0,
+              classSessionIds.length,
+              ...classSessionIds.filter((id) => !sessions.includes(id)),
+            );
+          }
+          await db
+            .delete(schema.zuvyModuleChapter)
+            .where(eq(schema.zuvyModuleChapter.title, title));
+          if (!placeholderBefore.length) {
+            await db
+              .delete(schema.zuvyUserLicenses)
+              .where(eq(schema.zuvyUserLicenses.zoomEmail, teacher));
+          }
+        }
+      },
+    );
+
+    await section(
+      'N12. AI-assessment submit: LLM called before the transaction',
+      async () => {
+        const {
+          AiAssessmentService,
+        } = require('../src/ai-assessment/ai-assessment.service');
+        const ai = app.get(AiAssessmentService);
+        const [assessment] = (
+          await db.execute(
+            sql`SELECT id FROM main.ai_assessment ORDER BY id DESC LIMIT 1`,
+          )
+        ).rows;
+        const [question] = (
+          await db.execute(
+            sql`SELECT id FROM main.questions_by_llm ORDER BY id DESC LIMIT 1`,
+          )
+        ).rows;
+        if (!assessment || !question) {
+          report('dev has an AI assessment and a question to test with', false);
+          return;
+        }
+        const counts = async () =>
+          (
+            await db.execute(sql`SELECT
+            (SELECT count(*) FROM main.question_student_answer_relation WHERE student_id = ${STUDENT}) AS answers,
+            (SELECT count(*) FROM main.student_level_relation WHERE student_id = ${STUDENT}) AS levels,
+            (SELECT count(*) FROM main.question_evaluation WHERE student_id = ${STUDENT}) AS evaluations`)
+          ).rows[0];
+        const before = JSON.stringify(await counts());
+        const realGenerate = ai.llmService.generate;
+        ai.llmService.generate = async () => 'not json, so parsing fails';
+        try {
+          await expectRefused(
+            'unparseable LLM answer: submit fails',
+            () =>
+              ai.submitLlmAssessment(STUDENT, {
+                aiAssessmentId: assessment.id,
+                answers: [
+                  { id: question.id, selectedAnswerByStudent: { id: 1 } },
+                ],
+              }),
+            /./,
+          );
+        } finally {
+          ai.llmService.generate = realGenerate;
+        }
+        report(
+          'nothing written: answers, level and evaluations unchanged',
+          JSON.stringify(await counts()) === before,
+        );
+      },
+    );
+
     await section('H. Clean-up script', async () => {
       const d = nextDay();
       const unbooked = await createSlot(at(d, '10:00'), at(d, '10:30'));
@@ -1862,10 +2485,22 @@ async function main() {
         .where(inArray(schema.licenseAssignments.id, fillerIds));
     }
     // Deleting the slots cascades to their bookings, holds and recordings.
+    // Retried: if a connection was cut mid-transaction, the server can hold
+    // that transaction's row locks until its idle limit (2 min) ends it.
     if (allSlotIds.length) {
-      await db
-        .delete(schema.zuvyMentorSlotAvailability)
-        .where(inArray(schema.zuvyMentorSlotAvailability.id, allSlotIds));
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await db
+            .delete(schema.zuvyMentorSlotAvailability)
+            .where(inArray(schema.zuvyMentorSlotAvailability.id, allSlotIds));
+          break;
+        } catch (error: any) {
+          if (error?.code !== '55P03' || attempt >= 6) throw error;
+          console.log(
+            `Clean-up: test slots still locked, retrying (${attempt})`,
+          );
+        }
+      }
     }
     await restoreStudentMetrics();
     await db

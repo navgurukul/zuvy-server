@@ -377,16 +377,24 @@ export class ZoomService {
     }
   }
 
-  async syncZoomLicenseUser(input: {
-    email: string;
-    zoomUserId?: string | null;
-    userName?: string | null;
-    licenseType: number;
-    status?: string | null;
-    isProtected?: boolean;
-  }) {
+  /**
+   * `executor`: the caller's transaction when called inside one, so the
+   * upsert neither needs a second pooled connection nor waits on a row that
+   * transaction has locked.
+   */
+  async syncZoomLicenseUser(
+    input: {
+      email: string;
+      zoomUserId?: string | null;
+      userName?: string | null;
+      licenseType: number;
+      status?: string | null;
+      isProtected?: boolean;
+    },
+    executor: any = db,
+  ) {
     const normalizedEmail = input.email.trim().toLowerCase();
-    const existingRows = await db
+    const existingRows = await executor
       .select({
         isProtected: zuvyUserLicenses.isProtected,
       })
@@ -397,7 +405,7 @@ export class ZoomService {
     const resolvedIsProtected =
       input.isProtected ?? existingRows[0]?.isProtected ?? false;
 
-    await db
+    await executor
       .insert(zuvyUserLicenses)
       .values({
         zoomEmail: normalizedEmail,
