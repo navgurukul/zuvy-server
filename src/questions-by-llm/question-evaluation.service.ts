@@ -10,6 +10,9 @@ export class QuestionEvaluationService {
     evaluationResponse: any,
     studentId: number,
     aiAssessmentId: number,
+    // The caller's transaction, so the evaluations commit or roll back with
+    // the rest of the submission; the global db otherwise.
+    executor: any = db,
   ) {
     try {
       const evaluations = evaluationResponse?.evaluations ?? [];
@@ -34,7 +37,7 @@ export class QuestionEvaluationService {
         aiAssessmentId,
       }));
 
-      await db.insert(questionEvaluation).values(payload);
+      await executor.insert(questionEvaluation).values(payload);
       return { inserted: payload.length };
     } catch (error) {
       this.logger.error('Error creating evaluation', error);

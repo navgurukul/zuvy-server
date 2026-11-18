@@ -1019,13 +1019,35 @@ export class ClassesService {
 
       // 1. Assign Zoom License (6 concurrent limit)
       let assignedLicenseId: number | null = null;
+      // Open mentor slots don't hold a licence until a student books them,
+      // so this class can take a licence an open slot would need. The class
+      // is still created; the creator is told which slots it affects.
+      let mentorSlotsAtRisk: Array<{
+        slotId: number;
+        mentorEmail: string;
+        startTime: Date;
+      }> = [];
       try {
         assignedLicenseId = await db.transaction(async (trx) => {
-          return await this.zoomLicenseService.assignLicense(trx, {
+          const licenseId = await this.zoomLicenseService.assignLicense(trx, {
             instructorId: Number(instructorId),
             startTime: startDate,
             endTime: endDate,
           });
+          try {
+            mentorSlotsAtRisk =
+              await this.zoomLicenseService.findOpenMentorSlotsAtRisk(
+                trx,
+                { startTime: startDate, endTime: endDate },
+                instructorEmail,
+              );
+          } catch (warnError: any) {
+            // The warning is advisory; never block a class on it.
+            this.logger.warn(
+              `Could not check open mentor slots for licence pressure: ${warnError.message}`,
+            );
+          }
+          return licenseId;
         });
         // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
         await this.zoomLicenseService.logLicenseStatus(
@@ -1167,6 +1189,12 @@ export class ClassesService {
         //   : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
         data: responseSessions,
         descriptionSuffix,
+        ...(mentorSlotsAtRisk.length
+          ? {
+              licenceWarning: `This class uses a Zoom licence that ${mentorSlotsAtRisk.length} open mentor slot(s) at the same time would need. Those slots can no longer be booked unless a licence frees up.`,
+              mentorSlotsAtRisk,
+            }
+          : {}),
       };
     } catch (error: any) {
       if (
@@ -1646,8 +1674,10 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
-            const protectedEmails =
-              await this.zoomLicenseService.getProtectedLicenseEmails(trx);
+            // Serialise with every other licence allocation until this
+            // transaction commits, so the check below and the assignment
+            // insert can't interleave with another booking or class.
+            await this.zoomLicenseService.lockLicensePool(trx);
             const batch = await trx
               .select({
                 instructorId: zuvyBatches.instructorId,
@@ -1661,43 +1691,23 @@ export class ClassesService {
             const instructorEmail = batch[0]?.instructorEmail
               ? String(batch[0].instructorEmail).toLowerCase()
               : null;
-            const usingProtectedSeat = instructorEmail
-              ? protectedEmails.has(instructorEmail)
-              : false;
+            // Peak licences in use at one moment (not every assignment that
+            // touches the window), with this instructor's back-to-back
+            // sessions sharing one licence. See license-usage.util.
+            const {
+              fits,
+              poolSize: activePoolCount,
+              peakInUse,
+            } = await this.zoomLicenseService.canFitInPool(
+              trx,
+              {
+                startTime: new Date(original.startTime),
+                endTime: new Date(original.endTime),
+              },
+              instructorEmail,
+            );
 
-            const overlappingAssignments = await trx
-              .select({ count: sql<number>`count(*)` })
-              .from(licenseAssignments)
-              .leftJoin(
-                zuvySessions,
-                eq(licenseAssignments.sessionId, zuvySessions.id),
-              )
-              .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
-              .where(
-                and(
-                  this.blockingZoomAssignmentCondition(),
-                  sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
-                  sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${new Date(original.startTime)}`,
-                  usingProtectedSeat
-                    ? eq(sql<string>`lower(${users.email})`, instructorEmail!)
-                    : Array.from(protectedEmails).length
-                      ? notInArray(
-                          sql<string>`lower(${users.email})`,
-                          Array.from(protectedEmails),
-                        )
-                      : sql.raw('1 = 1'),
-                ),
-              );
-
-            const activePoolCount = usingProtectedSeat
-              ? 1
-              : await this.zoomLicenseService.getTransferableLicensePoolCount(
-                  trx,
-                );
-
-            if (
-              Number(overlappingAssignments[0]?.count || 0) >= activePoolCount
-            ) {
+            if (!fits) {
               const nextAvailableAt =
                 await this.zoomLicenseService.getNextAvailableLicenseTimeForInstructor(
                   trx,
@@ -1713,7 +1723,7 @@ export class ClassesService {
                   nextAvailableAt.getTime() >
                     new Date(original.startTime).getTime()
                   ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
-                  : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
+                  : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, licences in use at the busiest moment: ${peakInUse}.`,
               );
             }
 

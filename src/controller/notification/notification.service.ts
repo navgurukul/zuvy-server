@@ -11,15 +11,22 @@ import { NotificationType } from './notification.types';
 
 @Injectable()
 export class NotificationService {
-  async createNotification(params: {
-    userId: bigint;
-    type: string;
-    title: string;
-    message: string;
-    referenceId?: number;
-    referenceType?: string;
-  }) {
-    await db.insert(zuvyNotifications).values({
+  /**
+   * `executor` is the caller's transaction when the alert must commit or roll
+   * back together with it (e.g. a booking); the global db otherwise.
+   */
+  async createNotification(
+    params: {
+      userId: bigint;
+      type: string;
+      title: string;
+      message: string;
+      referenceId?: number;
+      referenceType?: string;
+    },
+    executor: any = db,
+  ) {
+    await executor.insert(zuvyNotifications).values({
       userId: params.userId,
       type: params.type,
       title: params.title,

@@ -28,8 +28,7 @@ import { MentorRecurrenceService } from './mentor-recurrence.service';
 describe('MentorRecurrenceService.generateRecurringSlots — self-overlap check (MDA-17)', () => {
   const fakeZoomLicenseService = {
     syncLicensedUsersFromZoom: jest.fn().mockResolvedValue(undefined),
-    assignLicense: jest.fn(),
-    createLicenseAssignment: jest.fn(),
+    checkLicenseAvailability: jest.fn(),
   };
 
   beforeEach(() => {

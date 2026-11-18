@@ -590,6 +590,28 @@ export class MentorSlotService {
       .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
   }
 
+  /**
+   * A slot holds a Zoom licence only while someone is booked on it. Once its
+   * last active booking is gone (cancel, or moved by a reschedule), the
+   * licence goes back to the pool so classes and other slots can use it.
+   * Run inside the caller's transaction, after the booking change.
+   */
+  private async releaseSlotLicenceIfUnbooked(trx: any, slotId: number) {
+    const [{ count: activeBookings }] = await trx
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      );
+
+    if (Number(activeBookings) === 0) {
+      await this.zoomLicenseService.releaseMentorSlotAssignment(trx, slotId);
+    }
+  }
+
   // True once the slot's start time has passed. `executor` is db or the
   // caller's transaction.
   private async slotHasStarted(
@@ -931,7 +953,25 @@ export class MentorSlotService {
         throw new BadRequestException('You already booked this slot.');
       }
 
-      await this.ensureMentorSlotLicenseAssignment(trx, slot, mentorProfile);
+      // The slot's Zoom licence is reserved now, at booking, not when the
+      // slot was created. Slot creation already checked a licence was free,
+      // but a class scheduled since then can have taken it.
+      try {
+        await this.ensureMentorSlotLicenseAssignment(trx, slot, mentorProfile);
+      } catch (error: any) {
+        if (
+          error instanceof BadRequestException &&
+          /No Zoom licen|transferable Zoom/i.test(error.message || '')
+        ) {
+          this.logger.warn(
+            `Booking slot ${slotId} refused, no Zoom licence free: ${error.message}`,
+          );
+          throw new BadRequestException(
+            "This slot can't be booked right now because no meeting licence is free at that time. Please pick another slot.",
+          );
+        }
+        throw error;
+      }
 
       /* ========================================
          UPDATE SLOT CAPACITY (NO SQL)
@@ -996,23 +1036,29 @@ export class MentorSlotService {
           } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
         });
 
-      await this.notificationService.createNotification({
-        userId: mentorProfile.mentorUserId,
-        type: NotificationType.BOOKING_CREATED,
-        title: 'New mentorship booking',
-        message: ``,
-        referenceId: createdBooking.id,
-        referenceType: 'booking',
-      });
+      await this.notificationService.createNotification(
+        {
+          userId: mentorProfile.mentorUserId,
+          type: NotificationType.BOOKING_CREATED,
+          title: 'New mentorship booking',
+          message: ``,
+          referenceId: createdBooking.id,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
-      await this.notificationService.createNotification({
-        userId: BigInt(studentId),
-        type: NotificationType.BOOKING_CONFIRMED,
-        title: 'Session confirmed',
-        message: ``,
-        referenceId: createdBooking.id,
-        referenceType: 'booking',
-      });
+      await this.notificationService.createNotification(
+        {
+          userId: BigInt(studentId),
+          type: NotificationType.BOOKING_CONFIRMED,
+          title: 'Session confirmed',
+          message: ``,
+          referenceId: createdBooking.id,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
       /* ========================================
    FETCH EMAILS (FIXED)
@@ -1060,6 +1106,7 @@ export class MentorSlotService {
           mentorEmail,
           slotStartDateTime,
           slotEndDateTime,
+          trx,
         );
 
         const zoomMeetingData = {
@@ -1412,23 +1459,31 @@ export class MentorSlotService {
         throw new BadRequestException('Booking already cancelled.');
       }
 
-      await this.notificationService.createNotification({
-        userId: booking.studentUserId,
-        type: NotificationType.BOOKING_CANCELLED,
-        title: 'Session cancelled',
-        message: ``,
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      await this.releaseSlotLicenceIfUnbooked(trx, booking.slotAvailabilityId);
 
-      await this.notificationService.createNotification({
-        userId: booking.mentorUserId,
-        type: NotificationType.BOOKING_CANCELLED,
-        title: 'Session cancelled',
-        message: ``,
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      await this.notificationService.createNotification(
+        {
+          userId: booking.studentUserId,
+          type: NotificationType.BOOKING_CANCELLED,
+          title: 'Session cancelled',
+          message: ``,
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
+
+      await this.notificationService.createNotification(
+        {
+          userId: booking.mentorUserId,
+          type: NotificationType.BOOKING_CANCELLED,
+          title: 'Session cancelled',
+          message: ``,
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
       const [mentorProfile] = await trx
         .select()
@@ -2250,14 +2305,20 @@ export class MentorSlotService {
         );
       }
 
-      await this.notificationService.createNotification({
-        userId: booking.studentUserId,
-        type: NotificationType.RESCHEDULE_ACCEPTED,
-        title: 'Reschedule accepted',
-        message: '',
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      // The original slot is open again; its licence goes back to the pool.
+      await this.releaseSlotLicenceIfUnbooked(trx, booking.slotAvailabilityId);
+
+      await this.notificationService.createNotification(
+        {
+          userId: booking.studentUserId,
+          type: NotificationType.RESCHEDULE_ACCEPTED,
+          title: 'Reschedule accepted',
+          message: '',
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
       externalUpdate = {
         isZoomMeet: booking.isZoomMeet,
@@ -2465,11 +2526,19 @@ export class MentorSlotService {
     }
 
     return db.transaction(async (trx) => {
-      const licenseId = await this.zoomLicenseService.assignLicense(trx, {
-        instructorId: userId,
-        startTime: start,
-        endTime: end,
-      });
+      // An open slot doesn't hold a Zoom licence (that only happens when a
+      // student books it, in ensureMentorSlotLicenseAssignment), so open
+      // slots never block classes. The slot is still refused here if no
+      // licence would be free at that time, so a student can book whatever
+      // slot is open.
+      const licence = await this.zoomLicenseService.checkLicenseAvailability(
+        trx,
+        { instructorId: userId, startTime: start, endTime: end },
+      );
+
+      if (!licence.available) {
+        throw new BadRequestException(licence.message);
+      }
 
       const createdSlots = await trx
         .insert(zuvyMentorSlotAvailability)
@@ -2485,17 +2554,45 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotAvailability.$inferInsert)
         .returning();
 
-      await this.zoomLicenseService.createLicenseAssignment(trx, {
-        licenseId,
-        instructorId: userId,
-        mentorSlotAvailabilityId: createdSlots[0].id,
-        sourceType: 'mentor_slot',
-        startTime: start,
-        endTime: end,
-      });
-
       return createdSlots;
     });
+  }
+
+  /**
+   * Lets the slot form check a time before saving: is a Zoom licence free for
+   * this mentor then? Reserves nothing.
+   */
+  async checkSlotLicenceAvailability(
+    userId: number,
+    slotStartDateTime: string,
+    slotEndDateTime: string,
+  ) {
+    await this.ensureUserIsMentor(userId);
+
+    const start = new Date(slotStartDateTime);
+    const end = new Date(slotEndDateTime);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      end <= start
+    ) {
+      throw new BadRequestException('Invalid time range.');
+    }
+
+    const licence = await db.transaction((trx) =>
+      this.zoomLicenseService.checkLicenseAvailability(trx, {
+        instructorId: userId,
+        startTime: start,
+        endTime: end,
+      }),
+    );
+
+    return {
+      available: licence.available,
+      nextAvailableAt: licence.nextAvailableAt,
+      message: licence.message,
+    };
   }
 
   async getMySlots(

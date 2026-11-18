@@ -167,46 +167,48 @@ export class MentorRecurrenceService {
         );
       }
 
-      // NOTE: the license-assignment loop below is deliberately left
-      // sequential, not parallelized. assignLicense can perform a real,
-      // stateful Zoom-side license transfer (downgrading a different
-      // mentor's account to free a seat) when the host isn't already
-      // licensed for a window — running several of those concurrently risks
-      // two calls racing to claim the same donor. That's a correctness risk
-      // in a subsystem with a long history of its own bugfix branches, not
-      // something to parallelize as a drive-by performance change. See the
-      // note on MDA-10 for the same reasoning.
-      const licenseIds: number[] = [];
+      // Open slots don't hold a Zoom licence (one is reserved only when a
+      // student books), but every slot time must have a licence free, so a
+      // student can book any open slot. The check reserves nothing and runs
+      // under the licence-pool lock. One mentor's slots in this batch never
+      // overlap each other, so they can't compete for licences.
+      const unavailable: string[] = [];
 
       for (const slot of generatedSlots) {
-        const licenseId = await this.zoomLicenseService.assignLicense(trx, {
-          instructorId: Number(mentorProfile.mentorUserId),
-          startTime: slot.slotStartDateTime,
-          endTime: slot.slotEndDateTime,
-        });
+        const licence = await this.zoomLicenseService.checkLicenseAvailability(
+          trx,
+          {
+            instructorId: Number(mentorProfile.mentorUserId),
+            startTime: slot.slotStartDateTime,
+            endTime: slot.slotEndDateTime,
+          },
+        );
 
-        licenseIds.push(licenseId);
+        if (!licence.available) {
+          unavailable.push(
+            new Intl.DateTimeFormat('en-IN', {
+              day: 'numeric',
+              month: 'short',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+              timeZone: 'Asia/Kolkata',
+            }).format(slot.slotStartDateTime),
+          );
+        }
       }
 
-      const createdSlots = await trx
+      if (unavailable.length > 0) {
+        throw new BadRequestException(
+          `No Zoom licence is free for ${unavailable.length} of these slot times: ${unavailable.join(', ')}. Remove those times and try again.`,
+        );
+      }
+
+      await trx
         .insert(zuvyMentorSlotAvailability)
         .values(
           generatedSlots as (typeof zuvyMentorSlotAvailability.$inferInsert)[],
-        )
-        .returning();
-
-      for (let index = 0; index < createdSlots.length; index += 1) {
-        const createdSlot = createdSlots[index];
-
-        await this.zoomLicenseService.createLicenseAssignment(trx, {
-          licenseId: licenseIds[index],
-          instructorId: Number(mentorProfile.mentorUserId),
-          mentorSlotAvailabilityId: createdSlot.id,
-          sourceType: 'mentor_slot',
-          startTime: new Date(createdSlot.slotStartDateTime),
-          endTime: new Date(createdSlot.slotEndDateTime),
-        });
-      }
+        );
     });
 
     return { message: 'Recurring slots created successfully.' };

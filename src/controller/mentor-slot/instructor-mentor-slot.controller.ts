@@ -112,6 +112,26 @@ export class InstructorMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/licence-check')
+  @ApiOperation({
+    summary: 'Check a Zoom licence is free for a slot time before creating it',
+    description:
+      'Reserves nothing. Returns available=false with the next free time when the licence pool is full at that time; creating the slot would then be refused.',
+  })
+  @ApiQuery({ name: 'slotStartDateTime', required: true, type: String })
+  @ApiQuery({ name: 'slotEndDateTime', required: true, type: String })
+  async checkSlotLicence(
+    @Req() req,
+    @Query('slotStartDateTime') slotStartDateTime: string,
+    @Query('slotEndDateTime') slotEndDateTime: string,
+  ) {
+    return this.mentorSlotService.checkSlotLicenceAvailability(
+      Number(req.user[0].id),
+      slotStartDateTime,
+      slotEndDateTime,
+    );
+  }
+
   @Get('mentor-slots/:slotId/details')
   @ApiOperation({ summary: 'Get instructor-owned slot details and bookings' })
   async getSlotDetails(

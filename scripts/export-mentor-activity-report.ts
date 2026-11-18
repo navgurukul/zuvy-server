@@ -240,7 +240,7 @@ async function main() {
 
   const rows: Row[] = base.map((r) => {
     const bookingRecordings = r.bookingId
-      ? recordingsByBooking.get(r.bookingId) ?? []
+      ? (recordingsByBooking.get(r.bookingId) ?? [])
       : [];
     const best =
       bookingRecordings.find((rec) => rec.status === 'COMPLETED') ??
@@ -293,7 +293,8 @@ async function main() {
   const mentorsWithSlots = new Set(
     rows
       .filter((r) => r.slot_id !== '')
-      .map((r) => `${r.mentor_id}:${r.organization_id}`),
+      // Distinct people: a mentor in two orgs is still one mentor.
+      .map((r) => r.mentor_id),
   );
   const slotsCreated = new Set(
     rows.filter((r) => r.slot_id !== '').map((r) => r.slot_id),
@@ -417,7 +418,7 @@ async function main() {
   }
 
   console.log(`\nMentor · org records: ${mentorOrgRecords.size}`);
-  console.log(`Have created a slot: ${mentorsWithSlots.size}`);
+  console.log(`Mentors who created a slot: ${mentorsWithSlots.size}`);
   console.log(`Slots created: ${slotsCreated}`);
   console.log(`Bookings made: ${bookingsMade}`);
   console.log(`Sessions completed: ${completed}`);
@@ -664,6 +665,20 @@ function renderHtml(data: {
 }`;
   }
 
+  // Dark palette, used for a dark system setting and for an explicit dark
+  // choice in the viewer, so the viewer's light/dark toggle wins both ways.
+  const DARK_TOKENS = `
+    --bg:#10161b; --surface:#182228; --surface-2:#1c262d;
+    --ink:#e8edf0; --ink-soft:#a9b7c0; --ink-faint:#728089;
+    --line:#2c3941; --line-soft:#212c33;
+    --accent:#5cb8ac; --accent-ink:#07211d; --accent-soft:#173330; --accent-line:#2b5b53;
+    --done:#5dc78c; --done-soft:#123322; --done-line:#285e3d;
+    --partial:#dba646; --partial-soft:#33270e; --partial-line:#6b4f18;
+    --missing:#e2707d; --missing-soft:#3a181c; --missing-line:#6e2a33;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.6);
+    color-scheme:dark;
+  `;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -682,17 +697,9 @@ function renderHtml(data: {
   --shadow:0 1px 2px rgba(20,30,35,.06), 0 10px 28px -14px rgba(20,30,35,.18);
 }
 @media (prefers-color-scheme: dark){
-  :root{
-    --bg:#10161b; --surface:#182228; --surface-2:#1c262d;
-    --ink:#e8edf0; --ink-soft:#a9b7c0; --ink-faint:#728089;
-    --line:#2c3941; --line-soft:#212c33;
-    --accent:#5cb8ac; --accent-ink:#07211d; --accent-soft:#173330; --accent-line:#2b5b53;
-    --done:#5dc78c; --done-soft:#123322; --done-line:#285e3d;
-    --partial:#dba646; --partial-soft:#33270e; --partial-line:#6b4f18;
-    --missing:#e2707d; --missing-soft:#3a181c; --missing-line:#6e2a33;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.6);
-  }
+  :root:not([data-theme="light"]){${DARK_TOKENS}}
 }
+:root[data-theme="dark"]{${DARK_TOKENS}}
 *{box-sizing:border-box;}
 body{ margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 'Segoe UI', system-ui, -apple-system, sans-serif; }
 .mono{ font-family:ui-monospace, Consolas, monospace; }
@@ -729,7 +736,9 @@ tr:last-child td{ border-bottom:none; }
 
 .controls{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
 .controls input[type=search]{ flex:1; min-width:220px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:13px; }
-.controls select{ padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:13px; }
+.controls select, .controls input[type=date]{ padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:13px; }
+.controls label{ font-size:12px; color:var(--ink-faint); display:flex; align-items:center; gap:6px; }
+.controls .linkbtn{ font-size:12px; background:none; border:none; color:var(--accent); cursor:pointer; padding:4px; }
 .chip{ font-size:12px; padding:6px 13px; border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); cursor:pointer; }
 .chip.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
 .count{ font-size:12px; color:var(--ink-faint); margin-left:auto; }
@@ -748,7 +757,7 @@ a{ color:var(--accent); }
 
   <div class="tiles">
     <div class="tile"><div class="n">${tiles.mentorOrgRecords}</div><div class="l">Mentor · org records</div></div>
-    <div class="tile"><div class="n">${tiles.mentorsWithSlots}</div><div class="l">Have created a slot</div></div>
+    <div class="tile"><div class="n">${tiles.mentorsWithSlots}</div><div class="l">Mentors who created a slot</div></div>
     <div class="tile"><div class="n">${tiles.slotsCreated}</div><div class="l">Slots created</div></div>
     <div class="tile"><div class="n">${tiles.bookingsMade}</div><div class="l">Bookings made</div></div>
     <div class="tile"><div class="n">${tiles.completed}</div><div class="l">Sessions completed</div></div>
@@ -821,8 +830,11 @@ a{ color:var(--accent); }
   <section>
     <h2>Full detail — every slot &amp; booking</h2>
     <div class="controls">
-      <input type="search" id="search" placeholder="Search mentor or student name / email…" />
+      <input type="search" id="search" placeholder="Search mentor, student or date — e.g. akhil 17 nov, 17/11/2026, 2026-11-17, monday…" />
       <select id="monthFilter"><option value="">All months</option>${monthOptions}</select>
+      <label>From <input type="date" id="dateFrom" /></label>
+      <label>To <input type="date" id="dateTo" /></label>
+      <button class="linkbtn" id="clearDates" type="button">clear dates</button>
       <button class="chip active" data-filter="all">All</button>
       <button class="chip" data-filter="booked">Has a booking</button>
       <button class="chip" data-filter="completed">Completed</button>
@@ -862,37 +874,87 @@ function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// All dates are shown and searched in IST, whatever the viewer's time zone.
+const IST = 'Asia/Kolkata';
+
 function fmt(v) {
   if (!v) return '';
   const d = new Date(v);
   if (isNaN(d.getTime())) return v;
-  return d.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  return d.toLocaleString('en-IN', { timeZone: IST, day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// The row's date (slot start, or booking time when there is no slot) as an
+// ISO day for the range filter, plus the ways people type a date, for search.
+function rowDate(r) {
+  const v = r.slot_start || r.booked_at;
+  const d = v ? new Date(v) : null;
+  if (!d || isNaN(d.getTime())) return { day: '', keys: '' };
+  const part = (opts) => new Intl.DateTimeFormat('en-GB', Object.assign({ timeZone: IST }, opts)).format(d);
+  const dd = part({ day: '2-digit' }), mm = part({ month: '2-digit' }), yyyy = part({ year: 'numeric' });
+  const mon = part({ month: 'short' }), month = part({ month: 'long' });
+  const wd = part({ weekday: 'short' }), weekday = part({ weekday: 'long' });
+  const day = yyyy + '-' + mm + '-' + dd;
+  const keys = [
+    day, dd + '/' + mm + '/' + yyyy, (+dd) + '/' + (+mm) + '/' + yyyy, dd + '-' + mm + '-' + yyyy,
+    dd + ' ' + mon + ' ' + yyyy, (+dd) + ' ' + mon + ' ' + yyyy, (+dd) + ' ' + month + ' ' + yyyy,
+    mon + ' ' + (+dd), month + ' ' + (+dd), wd, weekday,
+  ].join(' | ').toLowerCase();
+  return { day, keys };
 }
 
 const tbody = document.getElementById('detailBody');
-tbody.innerHTML = ROWS.map(r => \`<tr
+tbody.innerHTML = ROWS.map(r => { const rd = rowDate(r); return \`<tr
+    data-day="\${rd.day}"
+    data-dates="\${esc(rd.keys)}"
     data-mentor="\${esc((r.mentor_name||'') + ' ' + (r.mentor_email||'')).toLowerCase()}"
     data-student="\${esc((r.student_name||'') + ' ' + (r.student_email||'')).toLowerCase()}"
     data-month="\${r.month || ''}"
     data-booked="\${r.booking_id ? '1' : '0'}"
     data-completed="\${r.session_lifecycle_state === 'COMPLETED' ? '1' : '0'}"
     data-attention="\${(r.session_lifecycle_state === 'COMPLETED' && (!r.recording_count || r.recording_status !== 'COMPLETED')) ? '1' : '0'}"
-  ><td>\${esc(r.mentor_name)}</td><td class="mono dim">\${esc(r.mentor_email)}</td><td>\${esc(r.organization_name)}</td><td>\${r.slot_start ? fmt(r.slot_start) : '<span class="dim">—</span>'}</td><td>\${r.duration_minutes ? r.duration_minutes + ' min' : ''}</td><td>\${esc(r.slot_status)}</td><td>\${esc(r.student_name) || '<span class="dim">—</span>'}</td><td class="mono dim">\${esc(r.student_email) || '<span class="dim">—</span>'}</td><td>\${statusPill(r.session_lifecycle_state, r.booking_status)}</td><td>\${recordingPill(r)}</td></tr>\`).join('');
+  ><td>\${esc(r.mentor_name)}</td><td class="mono dim">\${esc(r.mentor_email)}</td><td>\${esc(r.organization_name)}</td><td>\${r.slot_start ? fmt(r.slot_start) : '<span class="dim">—</span>'}</td><td>\${r.duration_minutes ? r.duration_minutes + ' min' : ''}</td><td>\${esc(r.slot_status)}</td><td>\${esc(r.student_name) || '<span class="dim">—</span>'}</td><td class="mono dim">\${esc(r.student_email) || '<span class="dim">—</span>'}</td><td>\${statusPill(r.session_lifecycle_state, r.booking_status)}</td><td>\${recordingPill(r)}</td></tr>\`; }).join('');
 
 const rows = Array.from(tbody.querySelectorAll('tr'));
 const searchEl = document.getElementById('search');
 const monthEl = document.getElementById('monthFilter');
 const chips = Array.from(document.querySelectorAll('.chip'));
 const countEl = document.getElementById('rowCount');
+const fromEl = document.getElementById('dateFrom');
+const toEl = document.getElementById('dateTo');
 let activeFilter = 'all';
 
+// A query matches when it appears whole in the mentor, student or date text,
+// or when every word matches ("akhil 17 nov"). In that word-by-word match a
+// number only matches the date (17 = the 17th, not an email with 17 in it),
+// and a month or weekday name matches the date or a name.
+const DATE_WORD = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/;
+function matchesQuery(row, q) {
+  if (!q) return true;
+  const people = row.dataset.mentor + ' | ' + row.dataset.student;
+  const dates = row.dataset.dates;
+  // A date phrase must start and end on a word boundary: "7 oct" is not "17 oct".
+  const qRe = new RegExp('(^|[^0-9a-z])' + q.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&') + '($|[^0-9a-z])');
+  if (people.includes(q) || qRe.test(dates)) return true;
+  const dateTokens = dates.split(/[\\s|\\/,-]+/).filter(Boolean);
+  return q.split(' ').every(term => {
+    if (/^\\d+$/.test(term)) return dateTokens.some(t => /^\\d+$/.test(t) && Number(t) === Number(term));
+    if (/^[\\d\\/-]+$/.test(term)) return dates.includes(term);
+    if (DATE_WORD.test(term)) return dateTokens.some(t => t.startsWith(term)) || people.includes(term);
+    return people.includes(term);
+  });
+}
+
 function applyFilters() {
-  const q = searchEl.value.trim().toLowerCase();
+  const q = searchEl.value.trim().toLowerCase().replace(/\\s+/g, ' ');
   const month = monthEl.value;
+  const from = fromEl.value, to = toEl.value;
   let visible = 0;
   for (const row of rows) {
-    const matchesSearch = !q || row.dataset.mentor.includes(q) || row.dataset.student.includes(q);
-    const matchesMonth = !month || row.dataset.month === month;
+    const day = row.dataset.day;
+    const matchesSearch = matchesQuery(row, q);
+    const matchesRange = (!from || (day && day >= from)) && (!to || (day && day <= to));
+    const matchesMonth = (!month || row.dataset.month === month) && matchesRange;
     const matchesFilter =
       activeFilter === 'all' ? true :
       activeFilter === 'booked' ? row.dataset.booked === '1' :
@@ -907,6 +969,9 @@ function applyFilters() {
 
 searchEl.addEventListener('input', applyFilters);
 monthEl.addEventListener('change', applyFilters);
+fromEl.addEventListener('change', applyFilters);
+toEl.addEventListener('change', applyFilters);
+document.getElementById('clearDates').addEventListener('click', () => { fromEl.value = ''; toEl.value = ''; applyFilters(); });
 chips.forEach(chip => chip.addEventListener('click', () => {
   chips.forEach(c => c.classList.remove('active'));
   chip.classList.add('active');

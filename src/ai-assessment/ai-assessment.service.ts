@@ -364,6 +364,7 @@ export class AiAssessmentService {
           parsedEvaluation,
           studentId,
           aiAssessmentId,
+          tx,
         );
 
         return {
