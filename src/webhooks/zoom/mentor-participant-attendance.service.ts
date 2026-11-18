@@ -16,6 +16,7 @@ import { db } from '../../db';
 import {
   users,
   zuvyMentorSessionAttendance,
+  zuvyMentorSessionAttendanceIntervals,
   zuvyMentorSlotBooking,
 } from '../../../drizzle/schema';
 import {
@@ -112,8 +113,11 @@ export class MentorParticipantAttendanceService {
     };
 
     const sameParticipant = and(
-      eq(zuvyMentorSessionAttendance.bookingId, booking.id),
-      eq(zuvyMentorSessionAttendance.zoomParticipantKey, participantKey),
+      eq(zuvyMentorSessionAttendanceIntervals.bookingId, booking.id),
+      eq(
+        zuvyMentorSessionAttendanceIntervals.zoomParticipantKey,
+        participantKey,
+      ),
     );
 
     if (event === PARTICIPANT_JOINED_EVENT) {
@@ -122,28 +126,28 @@ export class MentorParticipantAttendanceService {
 
       // Leave delivered first → complete that interval.
       const [orphanLeave] = await db
-        .select({ id: zuvyMentorSessionAttendance.id })
-        .from(zuvyMentorSessionAttendance)
+        .select({ id: zuvyMentorSessionAttendanceIntervals.id })
+        .from(zuvyMentorSessionAttendanceIntervals)
         .where(
           and(
             sameParticipant,
-            isNull(zuvyMentorSessionAttendance.joinedAt),
-            gte(zuvyMentorSessionAttendance.leftAt, joinedAt),
+            isNull(zuvyMentorSessionAttendanceIntervals.joinedAt),
+            gte(zuvyMentorSessionAttendanceIntervals.leftAt, joinedAt),
           ),
         )
-        .orderBy(zuvyMentorSessionAttendance.leftAt)
+        .orderBy(zuvyMentorSessionAttendanceIntervals.leftAt)
         .limit(1);
 
       if (orphanLeave) {
         await db
-          .update(zuvyMentorSessionAttendance)
+          .update(zuvyMentorSessionAttendanceIntervals)
           .set({ joinedAt, updatedAt: new Date() } as any)
-          .where(eq(zuvyMentorSessionAttendance.id, orphanLeave.id));
+          .where(eq(zuvyMentorSessionAttendanceIntervals.id, orphanLeave.id));
         return 'PROCESSED';
       }
 
       await db
-        .insert(zuvyMentorSessionAttendance)
+        .insert(zuvyMentorSessionAttendanceIntervals)
         .values({
           bookingId: booking.id,
           zoomMeetingId: meetingId,
@@ -162,38 +166,41 @@ export class MentorParticipantAttendanceService {
       const leaveReason = participant.leave_reason || null;
 
       const [open] = await db
-        .select({ id: zuvyMentorSessionAttendance.id })
-        .from(zuvyMentorSessionAttendance)
+        .select({ id: zuvyMentorSessionAttendanceIntervals.id })
+        .from(zuvyMentorSessionAttendanceIntervals)
         .where(
           and(
             sameParticipant,
-            isNotNull(zuvyMentorSessionAttendance.joinedAt),
-            isNull(zuvyMentorSessionAttendance.leftAt),
-            lte(zuvyMentorSessionAttendance.joinedAt, leftAt),
+            isNotNull(zuvyMentorSessionAttendanceIntervals.joinedAt),
+            isNull(zuvyMentorSessionAttendanceIntervals.leftAt),
+            lte(zuvyMentorSessionAttendanceIntervals.joinedAt, leftAt),
           ),
         )
-        .orderBy(desc(zuvyMentorSessionAttendance.joinedAt))
+        .orderBy(desc(zuvyMentorSessionAttendanceIntervals.joinedAt))
         .limit(1);
 
       if (open) {
         await db
-          .update(zuvyMentorSessionAttendance)
+          .update(zuvyMentorSessionAttendanceIntervals)
           .set({ leftAt, leaveReason, updatedAt: new Date() } as any)
-          .where(eq(zuvyMentorSessionAttendance.id, open.id));
+          .where(eq(zuvyMentorSessionAttendanceIntervals.id, open.id));
         return 'PROCESSED';
       }
 
       // Duplicate delivery of a leave already recorded → nothing to do.
       const [already] = await db
-        .select({ id: zuvyMentorSessionAttendance.id })
-        .from(zuvyMentorSessionAttendance)
+        .select({ id: zuvyMentorSessionAttendanceIntervals.id })
+        .from(zuvyMentorSessionAttendanceIntervals)
         .where(
-          and(sameParticipant, eq(zuvyMentorSessionAttendance.leftAt, leftAt)),
+          and(
+            sameParticipant,
+            eq(zuvyMentorSessionAttendanceIntervals.leftAt, leftAt),
+          ),
         )
         .limit(1);
       if (already) return 'PROCESSED';
 
-      await db.insert(zuvyMentorSessionAttendance).values({
+      await db.insert(zuvyMentorSessionAttendanceIntervals).values({
         bookingId: booking.id,
         zoomMeetingId: meetingId,
         zoomMeetingUuid: meetingUuid,

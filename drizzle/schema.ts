@@ -3106,8 +3106,8 @@ export const zuvyMentorSlotBooking = main.table(
  * while a leave event has arrived before its join (out-of-order delivery);
  * left_at is null while the participant is still in the meeting.
  */
-export const zuvyMentorSessionAttendance= main.table(
-  'zuvy_mentor_session_attendance',
+export const zuvyMentorSessionAttendanceIntervals= main.table(
+  'zuvy_mentor_session_attendance_intervals',
   {
     id: serial('id').primaryKey().notNull(),
 

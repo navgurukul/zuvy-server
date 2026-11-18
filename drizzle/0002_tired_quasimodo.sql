@@ -959,3 +959,8 @@ ADD COLUMN certificate_url TEXT;
 
 INSERT INTO zuvy_module_topics (id, name, version)
 VALUES (10, 'Download Certificate', NULL);
+
+
+
+ALTER TABLE zuvy_mentor_session_attendance
+RENAME TO zuvy_mentor_session_attendance_intervals;

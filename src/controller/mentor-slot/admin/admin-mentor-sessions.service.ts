@@ -35,7 +35,7 @@ import {
   zuvyMentorSlotManagement,
   zuvyOrganizations,
   zuvyStudentBookingMetrics,
-  zuvyMentorSessionAttendance,
+  zuvyMentorSessionAttendanceIntervals,
   zuvyZoomWebhookEvents,
 } from '../../../../drizzle/schema';
 import {
@@ -712,15 +712,16 @@ export class AdminMentorSessionsService {
           .orderBy(desc(zuvyMentorSessionRecordings.createdAt)),
         db
           .select({
-            participantRole: zuvyMentorSessionAttendance.participantRole,
-            joinedAt: zuvyMentorSessionAttendance.joinedAt,
-            leftAt: zuvyMentorSessionAttendance.leftAt,
+            participantRole:
+              zuvyMentorSessionAttendanceIntervals.participantRole,
+            joinedAt: zuvyMentorSessionAttendanceIntervals.joinedAt,
+            leftAt: zuvyMentorSessionAttendanceIntervals.leftAt,
           })
-          .from(zuvyMentorSessionAttendance)
+          .from(zuvyMentorSessionAttendanceIntervals)
           .where(
             and(
-              eq(zuvyMentorSessionAttendance.bookingId, bookingId),
-              inArray(zuvyMentorSessionAttendance.participantRole, [
+              eq(zuvyMentorSessionAttendanceIntervals.bookingId, bookingId),
+              inArray(zuvyMentorSessionAttendanceIntervals.participantRole, [
                 'STUDENT',
                 'MENTOR',
               ]),
@@ -839,7 +840,7 @@ export class AdminMentorSessionsService {
    * older than the latest join.
    */
   private buildAttendanceFilter(filter: MentorSessionAttendanceFilter): SQL {
-    const intervals = zuvyMentorSessionAttendance;
+    const intervals = zuvyMentorSessionAttendanceIntervals;
     const booking = zuvyMentorSlotBooking;
 
     const roleIntervals = (role?: 'STUDENT' | 'MENTOR') =>
@@ -968,13 +969,15 @@ export class AdminMentorSessionsService {
     const [intervals, endedEvents] = await Promise.all([
       db
         .select({
-          bookingId: zuvyMentorSessionAttendance.bookingId,
-          participantRole: zuvyMentorSessionAttendance.participantRole,
-          joinedAt: zuvyMentorSessionAttendance.joinedAt,
-          leftAt: zuvyMentorSessionAttendance.leftAt,
+          bookingId: zuvyMentorSessionAttendanceIntervals.bookingId,
+          participantRole: zuvyMentorSessionAttendanceIntervals.participantRole,
+          joinedAt: zuvyMentorSessionAttendanceIntervals.joinedAt,
+          leftAt: zuvyMentorSessionAttendanceIntervals.leftAt,
         })
-        .from(zuvyMentorSessionAttendance)
-        .where(inArray(zuvyMentorSessionAttendance.bookingId, bookingIds)),
+        .from(zuvyMentorSessionAttendanceIntervals)
+        .where(
+          inArray(zuvyMentorSessionAttendanceIntervals.bookingId, bookingIds),
+        ),
       meetingIds.length
         ? db
             .select({
