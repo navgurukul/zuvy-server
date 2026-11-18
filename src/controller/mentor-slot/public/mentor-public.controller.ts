@@ -30,7 +30,7 @@ export class MentorPublicController {
 
   @Get(':mentorUserId')
   getMentorProfile(
-    @Param('mentorUserId') mentorUserId: number,
+    @Param('mentorUserId', ParseIntPipe) mentorUserId: number,
     @Query('organizationId') organizationId?: number,
   ) {
     return this.service.getMentorProfile(

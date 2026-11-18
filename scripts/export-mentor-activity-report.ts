@@ -21,8 +21,9 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
   zuvyMentorSessionRecordings,
+  zuvyStudentBookingMetrics,
 } from '../drizzle/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, desc } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 function getArg(name: string, fallback: string): string {
@@ -179,6 +180,56 @@ async function main() {
       return 'past (unbooked)';
     return 'available';
   }
+
+  // Credit/quota status for every student who has ever booked a mentor
+  // session. Mirrors the exact logic in mentor-slot.service.ts's
+  // getStudentMetrics()/bookSlot() (remainingCredits = max(0, 3 - quotaUsed);
+  // canBookNow = !isQuotaExhausted && (!cooldownEndDate || now >= cooldownEndDate)) —
+  // there is no admin-facing endpoint for this today, only a student's own
+  // `GET /student/metrics`, so this read-only section is the only way to see
+  // every student's status in one place right now.
+  const studentCreditsRows = await db
+    .select({
+      userId: users.id,
+      name: users.name,
+      email: users.email,
+      totalBookings: zuvyStudentBookingMetrics.totalBookings,
+      quotaUsed: zuvyStudentBookingMetrics.quotaUsed,
+      lastBookingDate: zuvyStudentBookingMetrics.lastBookingDate,
+      quotaResetDate: zuvyStudentBookingMetrics.quotaResetDate,
+      cooldownEndDate: zuvyStudentBookingMetrics.cooldownEndDate,
+      isQuotaExhausted: zuvyStudentBookingMetrics.isQuotaExhausted,
+    })
+    .from(zuvyStudentBookingMetrics)
+    .innerJoin(users, eq(users.id, zuvyStudentBookingMetrics.userId))
+    .orderBy(desc(zuvyStudentBookingMetrics.lastBookingDate));
+
+  const studentCredits = studentCreditsRows.map((r) => {
+    const quotaUsed = r.quotaUsed ?? 0;
+    const remainingCredits = Math.max(0, 3 - quotaUsed);
+    const cooldownActive = !!(
+      r.cooldownEndDate && now < new Date(r.cooldownEndDate as any)
+    );
+    const canBookNow = !r.isQuotaExhausted && !cooldownActive;
+    return {
+      name: r.name,
+      email: r.email ?? '',
+      totalBookings: r.totalBookings ?? 0,
+      quotaUsed,
+      remainingCredits,
+      isQuotaExhausted: !!r.isQuotaExhausted,
+      cooldownEndDate: r.cooldownEndDate
+        ? new Date(r.cooldownEndDate as any).toISOString()
+        : null,
+      quotaResetDate: r.quotaResetDate
+        ? new Date(r.quotaResetDate as any).toISOString()
+        : null,
+      lastBookingDate: r.lastBookingDate
+        ? new Date(r.lastBookingDate as any).toISOString()
+        : null,
+      canBookNow,
+    };
+  });
 
   function monthOf(dateStr: string | null): string {
     if (!dateStr) return '';
@@ -443,6 +494,7 @@ async function main() {
     pastUnbookedSlots,
     monthly,
     mentorSummary: Array.from(mentorSummary.values()),
+    studentCredits,
     rows,
   });
   fs.writeFileSync(htmlPath, html, 'utf-8');
@@ -487,6 +539,18 @@ function renderHtml(data: {
     recFailed: number;
     recMissing: number;
   }>;
+  studentCredits: Array<{
+    name: string;
+    email: string;
+    totalBookings: number;
+    quotaUsed: number;
+    remainingCredits: number;
+    isQuotaExhausted: boolean;
+    cooldownEndDate: string | null;
+    quotaResetDate: string | null;
+    lastBookingDate: string | null;
+    canBookNow: boolean;
+  }>;
   rows: Row[];
 }): string {
   const {
@@ -497,6 +561,7 @@ function renderHtml(data: {
     pastUnbookedSlots,
     monthly,
     mentorSummary,
+    studentCredits,
     rows,
   } = data;
 
@@ -545,6 +610,39 @@ function renderHtml(data: {
     <td class="num">${m.recOk ? `<span class="pill pill-done">${m.recOk} ok</span>` : ''}</td>
     <td class="num">${m.recFailed ? `<span class="pill pill-missing">${m.recFailed} failed</span>` : ''}</td>
     <td class="num">${m.recMissing ? `<span class="pill pill-partial">${m.recMissing} missing</span>` : ''}</td>
+  </tr>`,
+    )
+    .join('');
+
+  function fmtDate(iso: string | null): string {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
+  const studentsWithActivity = studentCredits.filter(
+    (s) => s.totalBookings > 0,
+  );
+  const studentsWithZeroActivity =
+    studentCredits.length - studentsWithActivity.length;
+
+  const studentCreditsRowsHtml = studentsWithActivity
+    .slice()
+    .sort((a, b) => a.remainingCredits - b.remainingCredits)
+    .map(
+      (s) => `<tr>
+    <td>${esc(s.name)}</td>
+    <td class="mono dim">${esc(s.email)}</td>
+    <td class="num">${s.totalBookings}</td>
+    <td class="num">${s.quotaUsed} / 3</td>
+    <td class="num">${s.remainingCredits}</td>
+    <td>${s.isQuotaExhausted ? '<span class="pill pill-missing">exhausted</span>' : '<span class="pill pill-done">ok</span>'}</td>
+    <td>${s.canBookNow ? '<span class="pill pill-done">yes</span>' : `<span class="pill pill-partial">no${s.cooldownEndDate ? ' — until ' + fmtDate(s.cooldownEndDate) : ''}</span>`}</td>
+    <td>${fmtDate(s.quotaResetDate)}</td>
+    <td>${fmtDate(s.lastBookingDate)}</td>
   </tr>`,
     )
     .join('');
@@ -699,6 +797,28 @@ a{ color:var(--accent); }
   </section>
 
   <section>
+    <h2>Student credits (booking quota)</h2>
+    <div class="callout">
+      <b>Every student who has actually booked a mentor session</b> — ${studentsWithActivity.length} of them, with their current quota status:
+      <ul>
+        <li>There is no admin screen for this today — a student can only see their own via <code>GET /student/metrics</code> — so this is currently the only place to see everyone's status at once.</li>
+        <li>Quota resets every 3 bookings within a rolling window; a student goes into a 21-day cooldown after using a credit and can't book again until <b>either</b> the cooldown ends <b>or</b> their quota resets, whichever the backend logic actually applies (see <code>canBook</code> in <code>mentor-slot.service.ts</code>).</li>
+        <li><b>${studentsWithZeroActivity}</b> other students have a quota record with zero bookings — that row gets created automatically the moment anyone opens the mentoring tab, regardless of whether they ever book a session, so those are omitted here as noise.</li>
+      </ul>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Student</th><th>Email</th>
+          <th class="num">Total bookings</th><th class="num">Quota used</th><th class="num">Remaining credits</th>
+          <th>Quota status</th><th>Can book now</th><th>Quota resets</th><th>Last booking</th>
+        </tr></thead>
+        <tbody>${studentCreditsRowsHtml}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
     <h2>Full detail — every slot &amp; booking</h2>
     <div class="controls">
       <input type="search" id="search" placeholder="Search mentor or student name / email…" />
@@ -712,8 +832,8 @@ a{ color:var(--accent); }
     <div class="table-wrap">
       <table id="detailTable">
         <thead><tr>
-          <th>Mentor</th><th>Org</th><th>Slot start</th><th>Duration</th><th>Slot status</th>
-          <th>Student</th><th>Session status</th><th>Recording</th>
+          <th>Mentor</th><th>Mentor email</th><th>Org</th><th>Slot start</th><th>Duration</th><th>Slot status</th>
+          <th>Student</th><th>Student email</th><th>Session status</th><th>Recording</th>
         </tr></thead>
         <tbody id="detailBody"></tbody>
       </table>
@@ -757,7 +877,7 @@ tbody.innerHTML = ROWS.map(r => \`<tr
     data-booked="\${r.booking_id ? '1' : '0'}"
     data-completed="\${r.session_lifecycle_state === 'COMPLETED' ? '1' : '0'}"
     data-attention="\${(r.session_lifecycle_state === 'COMPLETED' && (!r.recording_count || r.recording_status !== 'COMPLETED')) ? '1' : '0'}"
-  ><td>\${esc(r.mentor_name)}</td><td>\${esc(r.organization_name)}</td><td>\${r.slot_start ? fmt(r.slot_start) : '<span class="dim">—</span>'}</td><td>\${r.duration_minutes ? r.duration_minutes + ' min' : ''}</td><td>\${esc(r.slot_status)}</td><td>\${esc(r.student_name) || '<span class="dim">—</span>'}</td><td>\${statusPill(r.session_lifecycle_state, r.booking_status)}</td><td>\${recordingPill(r)}</td></tr>\`).join('');
+  ><td>\${esc(r.mentor_name)}</td><td class="mono dim">\${esc(r.mentor_email)}</td><td>\${esc(r.organization_name)}</td><td>\${r.slot_start ? fmt(r.slot_start) : '<span class="dim">—</span>'}</td><td>\${r.duration_minutes ? r.duration_minutes + ' min' : ''}</td><td>\${esc(r.slot_status)}</td><td>\${esc(r.student_name) || '<span class="dim">—</span>'}</td><td class="mono dim">\${esc(r.student_email) || '<span class="dim">—</span>'}</td><td>\${statusPill(r.session_lifecycle_state, r.booking_status)}</td><td>\${recordingPill(r)}</td></tr>\`).join('');
 
 const rows = Array.from(tbody.querySelectorAll('tr'));
 const searchEl = document.getElementById('search');
