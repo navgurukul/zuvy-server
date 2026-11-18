@@ -164,7 +164,7 @@ export interface ZoomParticipantReportResponse {
   end_time?: string;
 }
 
-interface ZoomParticipant {
+export interface ZoomParticipant {
   id: string;
   name: string;
   user_email?: string;
@@ -1162,7 +1162,7 @@ export class ZoomService {
       return { success: true, data: response.data };
     } catch (error: any) {
       this.logger.error(
-        `Error fetching Zoom meeting: ${error.response?.data || error.message}`,
+        `Error fetching Zoom meeting: ${error.response?.data?.message || error.message}`,
       );
       return {
         success: false,
@@ -1207,49 +1207,60 @@ export class ZoomService {
   }
 
   /**
+   * Every page of one meeting instance's participant report. Throws on any
+   * Zoom error; getMeetingParticipants wraps it for callers that want an
+   * empty list instead.
+   */
+  private async fetchParticipantReport(
+    meetingUuid: string,
+  ): Promise<ZoomParticipantReportResponse> {
+    const encodedUuid = encodeZoomMeetingUuid(meetingUuid);
+    let allParticipants: ZoomParticipant[] = [];
+    let nextPageToken = ''; // Start with an empty token
+    // Meeting-level fields are identical on every page — capture once,
+    // from the first page, for the interval-merge duration cap.
+    let meetingDuration: number | undefined;
+    let meetingStartTime: string | undefined;
+    let meetingEndTime: string | undefined;
+
+    // Use a do...while loop to fetch all pages of participants
+    do {
+      // Append the next_page_token and set a max page_size to reduce API calls
+      const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants?page_size=300&next_page_token=${encodeURIComponent(nextPageToken)}`;
+
+      const response: AxiosResponse<ZoomParticipantReportResponse> =
+        await axios.get(url, { headers: await this.getHeaders() });
+      // Add the participants from the current page to our master list
+      if (response.data && response.data.participants) {
+        allParticipants = allParticipants.concat(response.data.participants);
+      }
+      if (meetingDuration === undefined) {
+        meetingDuration = response.data.duration;
+        meetingStartTime = response.data.start_time;
+        meetingEndTime = response.data.end_time;
+      }
+
+      // Get the token for the next page. If it's empty or null, the loop will end.
+      nextPageToken = response.data.next_page_token;
+    } while (nextPageToken);
+
+    // Return the complete list of participants from all pages
+    return {
+      participants: allParticipants,
+      duration: meetingDuration,
+      start_time: meetingStartTime,
+      end_time: meetingEndTime,
+    };
+  }
+
+  /**
    * Get meeting participants/attendance
    */
   async getMeetingParticipants(
     meetingUuid: string,
   ): Promise<ZoomParticipantReportResponse> {
     try {
-      const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
-      let allParticipants: ZoomParticipant[] = [];
-      let nextPageToken = ''; // Start with an empty token
-      // Meeting-level fields are identical on every page — capture once,
-      // from the first page, for the interval-merge duration cap below.
-      let meetingDuration: number | undefined;
-      let meetingStartTime: string | undefined;
-      let meetingEndTime: string | undefined;
-
-      // Use a do...while loop to fetch all pages of participants
-      do {
-        // Append the next_page_token and set a max page_size to reduce API calls
-        const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants?page_size=300&next_page_token=${encodeURIComponent(nextPageToken)}`;
-
-        const response: AxiosResponse<ZoomParticipantReportResponse> =
-          await axios.get(url, { headers: await this.getHeaders() });
-        // Add the participants from the current page to our master list
-        if (response.data && response.data.participants) {
-          allParticipants = allParticipants.concat(response.data.participants);
-        }
-        if (meetingDuration === undefined) {
-          meetingDuration = response.data.duration;
-          meetingStartTime = response.data.start_time;
-          meetingEndTime = response.data.end_time;
-        }
-
-        // Get the token for the next page. If it's empty or null, the loop will end.
-        nextPageToken = response.data.next_page_token;
-      } while (nextPageToken);
-
-      // Return the complete list of participants from all pages
-      return {
-        participants: allParticipants,
-        duration: meetingDuration,
-        start_time: meetingStartTime,
-        end_time: meetingEndTime,
-      };
+      return await this.fetchParticipantReport(meetingUuid);
     } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`,
@@ -1257,6 +1268,17 @@ export class ZoomService {
       // Return an empty list on error to prevent the main aggregation loop from crashing
       return { participants: [] };
     }
+  }
+
+  /** Every past instance (each time the meeting actually ran). Throws on error. */
+  private async listPastMeetingInstances(
+    meetingId: string | number,
+  ): Promise<Array<{ uuid: string; start_time?: string }>> {
+    const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+    const instancesResponse = await axios.get(instancesUrl, {
+      headers: await this.getHeaders(),
+    });
+    return instancesResponse.data?.meetings ?? [];
   }
   /**
    * Get meeting recordings
@@ -1505,20 +1527,42 @@ export class ZoomService {
     }
   }
 
-  // Assume you have your existing 'getMeetingParticipants(uuid)' function ready.
+  /**
+   * Each time a meeting actually ran, with its start time and full
+   * participant report. Errors are thrown rather than swallowed:
+   * getMeetingParticipants returns an empty list on any failure, so "nobody
+   * joined" and "Zoom failed / report not ready" look the same there, and
+   * attendance decisions that refund credits need to tell them apart. An
+   * empty array means the meeting never ran.
+   */
+  async getPastMeetingRuns(
+    meetingId: string,
+  ): Promise<
+    Array<{ startTime: string | null; participants: ZoomParticipant[] }>
+  > {
+    const instances = await this.listPastMeetingInstances(meetingId);
+    const runs: Array<{
+      startTime: string | null;
+      participants: ZoomParticipant[];
+    }> = [];
+    for (const instance of instances) {
+      const report = await this.fetchParticipantReport(instance.uuid);
+      runs.push({
+        startTime: instance.start_time ?? report.start_time ?? null,
+        participants: report.participants ?? [],
+      });
+    }
+    return runs;
+  }
 
   async getAllParticipantsForMeetingId(
     meetingId: string | number,
   ): Promise<any[]> {
     try {
       // Step 1: Get all past session UUIDs
-      const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
-      const instancesResponse = await axios.get(instancesUrl, {
-        headers: await this.getHeaders(),
-      });
-      const pastSessions = instancesResponse.data.meetings;
+      const pastSessions = await this.listPastMeetingInstances(meetingId);
 
-      if (!pastSessions || pastSessions.length === 0) return [];
+      if (pastSessions.length === 0) return [];
 
       // Step 2: Fetch all participant lists from all sessions, keeping each
       // occurrence's own reported meeting duration alongside its
