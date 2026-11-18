@@ -72,7 +72,7 @@ export class LearnerController {
   }> {
     return this.learnerService.searchColleges(name);
   }
-
+  /////
   @Get('learner-technical-skills')
   @ApiOperation({ summary: 'Get technical skills list' })
   async getTechnicalSkills(): Promise<{

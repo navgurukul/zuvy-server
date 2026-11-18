@@ -957,3 +957,5 @@ ALTER TABLE zuvy_module_tracking
 ADD COLUMN certificate_url TEXT;
 
 
+INSERT INTO zuvy_module_topics (id, name, version)
+VALUES (10, 'Download Certificate', NULL);

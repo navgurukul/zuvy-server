@@ -5203,6 +5203,13 @@ export class ClassesService {
     userInfo: any,
   ) {
     try {
+      if (childSessionId === parentSessionId) {
+        return {
+          success: false,
+          message: 'Child and parent sessions cannot be the same',
+          code: 400,
+        };
+      }
       this.logger.log(
         `Merging classes: childSessionId=${childSessionId}, parentSessionId=${parentSessionId}`,
       );
