@@ -2704,6 +2704,30 @@ async function main() {
           'running it again releases nothing more',
           (await svc.releaseAbandonedBookings()) === 0,
         );
+
+        // Giving the credit back fails: the booking (seat, licence and all)
+        // is kept and retried on the next run, not dropped with the
+        // student's credit still spent.
+        if (CANCEL_RECOUNT_STUBBED) {
+          const retrySlot = await createSlot(at(d, '16:00'), at(d, '16:30'));
+          const retry = await makeReserved(retrySlot, 20, false);
+          recountShouldThrow = true;
+          const firstTry = await svc.releaseAbandonedBookings();
+          recountShouldThrow = false;
+          report(
+            'credit undo fails: the booking is kept for the next run',
+            firstTry === 0 &&
+              !!(await bookingRow(retry)) &&
+              (await holdsFor(retrySlot.id)).length === 1,
+            `${firstTry} released`,
+          );
+          const secondTry = await svc.releaseAbandonedBookings();
+          report(
+            'the next run releases it',
+            secondTry === 1 && !(await bookingRow(retry)),
+            `${secondTry} released`,
+          );
+        }
       },
     );
 
@@ -3121,8 +3145,12 @@ async function main() {
         (await db.execute(sql`SELECT 1 AS one`)).rows[0].one === 1,
       );
 
+      // Only transactions the licence-lock code opens (other people's
+      // sessions on the shared dev database are not this test's business).
       const open = await db.execute(
-        sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = current_user AND state LIKE 'idle in transaction%'`,
+        sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE usename = current_user AND state LIKE 'idle in transaction%'
+              AND (query ILIKE '%advisory%' OR query ILIKE '%idle_in_transaction_session_timeout%')`,
       );
       report(
         'no transaction left open afterwards',
@@ -3252,6 +3280,58 @@ async function main() {
             !/^picked/.test(classResult),
             classResult,
           );
+
+          // Placeholder seats (taken when no licence row was free) count too:
+          // a free row is refused when the pool is full at the peak.
+          const p = nextDay();
+          const [placeholder] = await db
+            .insert(schema.zuvyUserLicenses)
+            .values({
+              zoomEmail: 'e2e-placeholder@zuvy.invalid',
+              userName: 'e2e placeholder',
+              licenseType: 1,
+              status: 'active',
+              isProtected: false,
+            } as any)
+            .returning({ id: schema.zuvyUserLicenses.id });
+          try {
+            for (let i = 0; i < N - 1; i++)
+              await filler(i, at(p, '10:00'), at(p, '11:00'));
+            const [onPlaceholder] = await db
+              .insert(schema.licenseAssignments)
+              .values({
+                licenseId: Number(placeholder.id),
+                instructorId: hosts[N + 14].id,
+                sourceType: 'mentor_slot',
+                startTime: at(p, '10:00'),
+                endTime: at(p, '11:00'),
+              })
+              .returning({ id: schema.licenseAssignments.id });
+            fillerIds.push(Number(onPlaceholder.id));
+            const overResult = await allocate(
+              db,
+              hosts[N + 15].id,
+              at(p, '10:00'),
+              at(p, '10:30'),
+            ).then(
+              (id: number) => `picked ${id}`,
+              (error: any) => error.message,
+            );
+            report(
+              'a free licence row is refused when placeholder seats fill the pool',
+              !/^picked/.test(overResult),
+              overResult,
+            );
+          } finally {
+            await db
+              .delete(schema.licenseAssignments)
+              .where(
+                eq(schema.licenseAssignments.licenseId, Number(placeholder.id)),
+              );
+            await db
+              .delete(schema.zuvyUserLicenses)
+              .where(eq(schema.zuvyUserLicenses.id, Number(placeholder.id)));
+          }
 
           const g = nextDay();
           for (let i = 0; i < N - 1; i++)

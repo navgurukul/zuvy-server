@@ -92,7 +92,27 @@ export function peakConcurrentLicenses(
   const windowEnd = window.end.getTime();
   if (windowEnd <= windowStart) return 0;
 
-  const spans = joinBackToBackByHost(intervals, cooldownMs)
+  // Only hosts with an interval live inside the window can be live there:
+  // a host's joined span is the union of its intervals' live times (each
+  // gap inside a span is at most the cooldown, which every interval's live
+  // time already covers). Leaving the other hosts out gives the same
+  // result, and keeps this proportional to the window, not to every future
+  // assignment and open slot.
+  const nearHosts = new Set(
+    intervals
+      .filter(
+        (interval) =>
+          interval.start.getTime() < windowEnd &&
+          interval.end.getTime() + cooldownMs > windowStart,
+      )
+      .map((interval) => interval.hostKey.trim().toLowerCase()),
+  );
+  if (nearHosts.size === 0) return 0;
+  const relevant = intervals.filter((interval) =>
+    nearHosts.has(interval.hostKey.trim().toLowerCase()),
+  );
+
+  const spans = joinBackToBackByHost(relevant, cooldownMs)
     .map((span) => ({ start: span.start, until: span.end + cooldownMs }))
     .filter((span) => span.start < windowEnd && span.until > windowStart);
 

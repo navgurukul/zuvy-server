@@ -312,3 +312,69 @@ describe('edge cases', () => {
     ).toBe(false);
   });
 });
+
+describe('peakConcurrentLicenses: skipping far-away hosts changes nothing', () => {
+  // The same count, done the plain way over every interval.
+  const reference = (
+    intervals: LicenseInterval[],
+    w: { start: Date; end: Date },
+    cooldownMs: number,
+  ) => {
+    const ws = w.start.getTime();
+    const we = w.end.getTime();
+    if (we <= ws) return 0;
+    const spans = joinBackToBackByHost(intervals, cooldownMs)
+      .map((s) => ({ start: s.start, until: s.end + cooldownMs }))
+      .filter((s) => s.start < we && s.until > ws);
+    const instants = [
+      ws,
+      ...spans.map((s) => s.start).filter((x) => x > ws && x < we),
+    ];
+    return Math.max(
+      0,
+      ...instants.map(
+        (i) => spans.filter((s) => s.start <= i && s.until > i).length,
+      ),
+    );
+  };
+
+  // Deterministic pseudo-random data: several hosts, back-to-back chains,
+  // overlaps and gaps around the cooldown length.
+  let seed = 42;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const base = t('08:00').getTime();
+  const MIN = 60_000;
+
+  it('matches the plain count on 300 random cases', () => {
+    for (let run = 0; run < 300; run++) {
+      const intervals: LicenseInterval[] = [];
+      const hosts = 1 + Math.floor(rand() * 6);
+      for (let h = 0; h < hosts; h++) {
+        let cursor = base + Math.floor(rand() * 240) * MIN;
+        const count = 1 + Math.floor(rand() * 6);
+        for (let i = 0; i < count; i++) {
+          const length = (10 + Math.floor(rand() * 60)) * MIN;
+          intervals.push({
+            hostKey: `h${h}@x.org`,
+            start: new Date(cursor),
+            end: new Date(cursor + length),
+          });
+          // Next one: overlapping, back to back, within the cooldown, or later.
+          const gap = [-15, 0, 1, 2, 3, 30][Math.floor(rand() * 6)] * MIN;
+          cursor += length + gap;
+        }
+      }
+      const ws = base + Math.floor(rand() * 600) * MIN;
+      const w = {
+        start: new Date(ws),
+        end: new Date(ws + (5 + Math.floor(rand() * 120)) * MIN),
+      };
+      expect(peakConcurrentLicenses(intervals, w, COOLDOWN)).toBe(
+        reference(intervals, w, COOLDOWN),
+      );
+    }
+  });
+});

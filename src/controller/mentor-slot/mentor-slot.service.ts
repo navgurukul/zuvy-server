@@ -1650,18 +1650,12 @@ export class MentorSlotService {
       return;
     }
 
-    // Something else changed the row since (another booking or a cancel):
-    // recount from bookings, in a savepoint so a failure here doesn't undo
-    // the booking removal.
-    try {
-      await trx.transaction((sp: any) =>
-        this.recomputeStudentBookingMetrics(sp, studentUserId),
-      );
-    } catch (error: any) {
-      this.logger.error(
-        `Could not recount credits for student ${studentUserId} after undoing a booking: ${error.message}`,
-      );
-    }
+    // No snapshot to restore (the abandoned-booking job), or something else
+    // changed the row since (another booking or a cancel): recount from
+    // bookings. If that fails, the whole undo fails and the booking stays,
+    // so the abandoned-booking job retries it; removing the booking without
+    // giving the credit back would leave the student charged for nothing.
+    await this.recomputeStudentBookingMetrics(trx, studentUserId);
   }
 
   /* ==========================================================================
