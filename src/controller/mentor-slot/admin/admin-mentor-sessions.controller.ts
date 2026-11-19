@@ -5,6 +5,7 @@ import {
   ParseIntPipe,
   Query,
   Req,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -17,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { Response } from 'express';
 // import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 // import { RequirePermissions } from 'src/rbac/decorators/require-permissions.decorator';
 import { AdminMentorSessionsService } from './admin-mentor-sessions.service';
@@ -51,6 +53,35 @@ export class AdminMentorSessionsController {
   )
   async listSessions(@Req() req, @Query() query: AdminMentorSessionsQueryDto) {
     return this.adminMentorSessionsService.listSessions(req.user[0], query);
+  }
+
+  @Get('mentor-sessions/export')
+  @ApiOperation({ summary: 'Export matching mentorship sessions as CSV' })
+  @ApiResponse({ status: 200, description: 'Mentorship sessions CSV export' })
+  @ApiResponse({ status: 403, description: 'Not an admin of the organization' })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  async exportSessions(
+    @Req() req,
+    @Query() query: AdminMentorSessionsFilterDto,
+    @Res() res: Response,
+  ) {
+    const csv = await this.adminMentorSessionsService.exportSessions(
+      req.user[0],
+      query,
+    );
+    res
+      .type('text/csv')
+      .setHeader(
+        'Content-Disposition',
+        'attachment; filename="mentor-sessions.csv"',
+      )
+      .send(csv);
   }
 
   @Get('mentor-sessions/metrics')

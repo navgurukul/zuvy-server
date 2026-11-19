@@ -120,6 +120,29 @@ export class AdminMentorSessionsService {
     return userOrgId;
   }
 
+  /** Uses the same bootcamp setting that guards mentorship session details. */
+  private async assertMentorshipEnabled(bootcampId: number | null | undefined) {
+    const enabled =
+      bootcampId === null || bootcampId === undefined
+        ? undefined
+        : (
+            await db
+              .select({ one: sql<number>`1` })
+              .from(zuvyBootcampType)
+              .where(
+                and(
+                  eq(zuvyBootcampType.bootcampId, bootcampId),
+                  eq(zuvyBootcampType.mentorshipEnabled, true),
+                ),
+              )
+              .limit(1)
+          )[0];
+
+    if (!enabled) {
+      throw new ForbiddenException('Mentorship is not enabled for this course');
+    }
+  }
+
   /* ==========================================================================
      SHARED FILTERS
   ========================================================================== */
@@ -135,6 +158,12 @@ export class AdminMentorSessionsService {
     query: AdminMentorSessionsFilterDto,
   ): Promise<SQL | undefined> {
     const orgId = await this.resolveOrganizationScope(user, query.orgId);
+
+    // Without a requested course, this endpoint can intentionally span
+    // multiple bootcamps, so do not let one disabled course block others.
+    if (query.bootcampId) {
+      await this.assertMentorshipEnabled(query.bootcampId);
+    }
 
     const conditions: SQL[] = [];
 
@@ -231,6 +260,10 @@ export class AdminMentorSessionsService {
       throw new ForbiddenException('Organization context missing');
     }
 
+    if (query.bootcampId) {
+      await this.assertMentorshipEnabled(query.bootcampId);
+    }
+
     const conditions: SQL[] = [
       eq(zuvyMentorSlotManagement.organizationId, orgId),
     ];
@@ -270,6 +303,23 @@ export class AdminMentorSessionsService {
   async listSessions(user: AdminRequester, query: AdminMentorSessionsQueryDto) {
     const limit = query.limit ?? 10;
     const offset = query.offset ?? 0;
+
+    const { data, total } = await this.getSessionsData(user, query, {
+      limit,
+      offset,
+    });
+
+    return { status: 'success', data, total, limit, offset };
+  }
+
+  /** Shared listing/export query and response enrichment. */
+  private async getSessionsData(
+    user: AdminRequester,
+    query: AdminMentorSessionsFilterDto,
+    pagination?: { limit: number; offset: number },
+  ) {
+    const limit = pagination?.limit;
+    const offset = pagination?.offset;
 
     const where = await this.buildSessionsWhere(user, query);
 
@@ -334,7 +384,7 @@ export class AdminMentorSessionsService {
         );
     }
 
-    const pageQuery = db
+    let pageQuery = db
       .select({
         bookingId: zuvyMentorSlotBooking.id,
         courseName: zuvyBootcamps.name,
@@ -420,8 +470,11 @@ export class AdminMentorSessionsService {
         desc(zuvyMentorSlotAvailability.slotStartDateTime),
         desc(zuvyMentorSlotBooking.id),
       )
-      .limit(limit)
-      .offset(offset);
+      .$dynamic();
+
+    if (limit !== undefined) {
+      pageQuery = pageQuery.limit(limit).offset(offset ?? 0);
+    }
 
     const [rows, [{ total }]] = await Promise.all([
       pageQuery,
@@ -477,13 +530,114 @@ export class AdminMentorSessionsService {
       };
     });
 
-    return {
-      status: 'success',
-      data,
-      total: Number(total),
-      limit,
-      offset,
+    return { data, total: Number(total) };
+  }
+
+  async exportSessions(
+    user: AdminRequester,
+    query: AdminMentorSessionsFilterDto,
+  ) {
+    const { data } = await this.getSessionsData(user, query);
+    const headers = [
+      'bookingId',
+      'courseName',
+      'batchName',
+      'mentorId',
+      'mentorName',
+      'mentorEmail',
+      'studentId',
+      'studentName',
+      'studentEmail',
+      'slotStart',
+      'slotEnd',
+      'status',
+      'lifecycleState',
+      'rescheduleStatus',
+      'joinedAt',
+      'leftAt',
+      'bookedAt',
+      'cancelledAt',
+      'completedAt',
+      'cancelledBy',
+      'cancellationReason',
+      'mentorRating',
+      'studentRating',
+      'mentorFeedback',
+      'studentFeedback',
+      'recordingUrl',
+      'recordingStatus',
+      'creditsAssigned',
+      'creditsUsed',
+      'creditsLeft',
+      'nextEligibleDate',
+      'attendanceStatus',
+      'studentAttendanceStatus',
+      'studentJoinedAt',
+      'studentLeftAt',
+      'studentDurationAttended',
+      'studentLateByMinutes',
+      'mentorAttendanceStatus',
+      'mentorJoinedAt',
+      'mentorLeftAt',
+      'mentorDurationAttended',
+      'mentorLateByMinutes',
+    ];
+    const toValue = (value: unknown) => {
+      if (value === null || value === undefined) return '';
+      if (value instanceof Date) return value.toISOString();
+      return typeof value === 'object' ? JSON.stringify(value) : String(value);
     };
+    const escape = (value: unknown) =>
+      `"${toValue(value).replace(/"/g, '""')}"`;
+    const lines = data.map((session) =>
+      [
+        session.bookingId,
+        session.courseName,
+        session.batchName,
+        session.mentor.id,
+        session.mentor.name,
+        session.mentor.email,
+        session.student.id,
+        session.student.name,
+        session.student.email,
+        session.slotStart,
+        session.slotEnd,
+        session.status,
+        session.lifecycleState,
+        session.rescheduleStatus,
+        session.joinedAt,
+        session.leftAt,
+        session.bookedAt,
+        session.cancelledAt,
+        session.completedAt,
+        session.cancelledBy,
+        session.cancellationReason,
+        session.mentorRating,
+        session.studentRating,
+        session.mentorFeedback,
+        session.studentFeedback,
+        session.recordingUrl,
+        session.recordingStatus,
+        session.creditsAssigned,
+        session.creditsUsed,
+        session.creditsLeft,
+        session.nextEligibleDate,
+        session.attendanceStatus,
+        session.studentAttendance.status,
+        session.studentAttendance.joinedAt,
+        session.studentAttendance.leftAt,
+        session.studentAttendance.durationAttended,
+        session.studentAttendance.lateByMinutes,
+        session.mentorAttendance.status,
+        session.mentorAttendance.joinedAt,
+        session.mentorAttendance.leftAt,
+        session.mentorAttendance.durationAttended,
+        session.mentorAttendance.lateByMinutes,
+      ]
+        .map(escape)
+        .join(','),
+    );
+    return [headers.map(escape).join(','), ...lines].join('\r\n');
   }
 
   /* ==========================================================================
@@ -670,23 +824,7 @@ export class AdminMentorSessionsService {
 
     if (!row) throw new NotFoundException('Booking not found');
 
-    const enabled =
-      row.bootcampId === null
-        ? undefined
-        : (
-            await db
-              .select({ one: sql<number>`1` })
-              .from(zuvyBootcampType)
-              .where(
-                and(
-                  eq(zuvyBootcampType.bootcampId, row.bootcampId),
-                  eq(zuvyBootcampType.mentorshipEnabled, true),
-                ),
-              )
-              .limit(1)
-          )[0];
-    if (!enabled)
-      throw new ForbiddenException('Mentorship is disabled for this course.');
+    await this.assertMentorshipEnabled(row.bootcampId);
 
     const now = new Date();
     const [attendanceByBooking, recordings, intervals, meetingEvents] =
