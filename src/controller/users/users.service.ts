@@ -317,8 +317,10 @@ export class UsersService {
     }
   }
 
-  async roleCheck(roleId: number) {
-    const [roleDetails] = await db
+  // `executor`: the caller's transaction when called inside one, so the read
+  // doesn't need a second pooled connection.
+  async roleCheck(roleId: number, executor: any = db) {
+    const [roleDetails] = await executor
       .select({
         id: zuvyUserRoles.id,
         name: zuvyUserRoles.name,
@@ -1205,7 +1207,7 @@ export class UsersService {
             );
           }
 
-          const role = await this.roleCheck(updateUserDto.roleId);
+          const role = await this.roleCheck(updateUserDto.roleId, tx);
           if (!role) {
             throw new BadRequestException('Role not found');
           }

@@ -177,6 +177,7 @@ export class ContentService {
     chapterId: number,
     fileBuffer: Buffer,
     fileName: string,
+    chapterTitle?: string,
   ) {
     const resolvedModuleId = Number(moduleId);
     const resolvedChapterId = Number(chapterId);
@@ -233,7 +234,14 @@ export class ContentService {
     try {
       const [updatedChapter] = await db
         .update(zuvyModuleChapter)
-        .set({ links: [certificateUrl] })
+        // .set({ links: [certificateUrl] })
+        .set({
+          links: [certificateUrl],
+          ...(chapterTitle?.trim() && {
+            title: chapterTitle.trim(),
+          }),
+        })
+
         .where(
           and(
             eq(zuvyModuleChapter.id, resolvedChapterId),
@@ -243,6 +251,7 @@ export class ContentService {
         )
         .returning({
           id: zuvyModuleChapter.id,
+          title: zuvyModuleChapter.title,
           links: zuvyModuleChapter.links,
         });
 
@@ -254,8 +263,9 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Certificate uploaded successfully',
+        // chapterTitle: chapter[0].title,
+        chapterTitle: updatedChapter.title,
         chapterId: updatedChapter.id,
-        chapterTitle: chapter[0].title,
         certificateUrl,
       };
     } catch (error) {
@@ -604,21 +614,36 @@ export class ContentService {
     });
 
     // Date: right after the "Date:" label, on the same baseline
+    // const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+    // page.drawText(issuedDate, {
+    //   x: anchors?.date
+    //     ? anchors.date.x + anchors.date.width + dateSize * 0.4
+    //     : width * 0.7725,
+    //   y: anchors?.date ? anchors.date.y : height * 0.1429,
+    //   size: dateSize,
+    //   font: dateFont,
+    //   color: textColor,
+    // });
+
     const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+
+    const dateY = anchors?.date ? anchors.date.y + 5 : height * 0.1429;
+
     page.drawText(issuedDate, {
       x: anchors?.date
         ? anchors.date.x + anchors.date.width + dateSize * 0.4
         : width * 0.7725,
-      y: anchors?.date ? anchors.date.y : height * 0.1429,
+      y: dateY,
       size: dateSize,
       font: dateFont,
       color: textColor,
     });
-
-    pdfDoc.setTitle(`Certificate - ${studentName}`, {
-      showInWindowTitleBar: true,
-    });
-
+    pdfDoc.setTitle(
+      'Student Participation Certificate - AWS Data Center Tour',
+      {
+        showInWindowTitleBar: true,
+      },
+    );
     return Buffer.from(await pdfDoc.save());
   }
 

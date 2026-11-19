@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
 import {
@@ -59,15 +60,12 @@ export class SuperAdminService {
       );
     }
 
-    return await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // 3. Cleanup: Remove all existing organization-related data for this user
       // Delete from zuvyUserRolesAssigned (all orgs)
       await tx
         .delete(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, user.id));
-
-      // Global Logout: Invalidate all existing sessions
-      await this.authService.logout(user.id);
 
       // 4. Assign role to user in zuvyUserRolesAssigned (orgId: null)
       await tx.insert(zuvyUserRolesAssigned).values({
@@ -90,6 +88,22 @@ export class SuperAdminService {
         data: { userId: user.id, email: user.email },
       };
     });
+
+    // Global logout: end all existing sessions, so the user signs in again
+    // with the new role (their org roles were just removed, and old
+    // sessions must not keep them). After the commit, because logout writes
+    // on its own pooled connection. If it fails, the role is saved but old
+    // sessions live on: say so instead of reporting plain success.
+    try {
+      await this.authService.logout(user.id);
+    } catch (error) {
+      console.error('Failed to logout new super admin:', error);
+      throw new InternalServerErrorException(
+        'The super admin role was saved, but signing the user out of their existing sessions failed. Ask them to sign out and sign in again.',
+      );
+    }
+
+    return result;
   }
 
   async removeSuperAdmin(userId: number) {

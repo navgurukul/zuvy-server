@@ -51,6 +51,11 @@ import { ZoomService } from 'src/services/zoom/zoom.service';
 import { NotificationEmailService } from 'src/notification/email/email.service';
 import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 
+// A booking still without its join link this long after it was made is
+// treated as abandoned between bookSlot's steps: the abandoned-booking job
+// releases it, and it can't be rescheduled.
+export const ABANDONED_BOOKING_MINUTES = 15;
+
 @Injectable()
 export class MentorSlotService {
   private readonly logger = new Logger(MentorSlotService.name);
@@ -590,6 +595,28 @@ export class MentorSlotService {
       .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
   }
 
+  /**
+   * A slot holds a Zoom licence only while someone is booked on it. Once its
+   * last active booking is gone (cancel, or moved by a reschedule), the
+   * licence goes back to the pool so classes and other slots can use it.
+   * Run inside the caller's transaction, after the booking change.
+   */
+  private async releaseSlotLicenceIfUnbooked(trx: any, slotId: number) {
+    const [{ count: activeBookings }] = await trx
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      );
+
+    if (Number(activeBookings) === 0) {
+      await this.zoomLicenseService.releaseMentorSlotAssignment(trx, slotId);
+    }
+  }
+
   // True once the slot's start time has passed. `executor` is db or the
   // caller's transaction.
   private async slotHasStarted(
@@ -819,11 +846,14 @@ export class MentorSlotService {
     await this.validateLearnerBookingEligibility(BigInt(studentId));
     await this.syncZoomLicenseState();
 
-    return db.transaction(async (trx) => {
-      /* ========================================
-     LOCK SLOT (FOR UPDATE)
-  ======================================== */
+    /* ========================================
+       STEP 1: RESERVE (short transaction)
+       Slot seat, Zoom licence, booking row, credit. Commits before any Zoom
+       call, so the licence-pool lock and the DB connection are not held
+       while Zoom answers.
+    ======================================== */
 
+    const reserved = await db.transaction(async (trx) => {
       const [slot] = await trx
         .select()
         .from(zuvyMentorSlotAvailability)
@@ -854,9 +884,6 @@ export class MentorSlotService {
       // 12-hour booking notice is temporarily disabled for short-notice sessions.
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
-      /* ========================================
-       FETCH MENTOR PROFILE
-    ======================================== */
       const [mentorProfile] = await trx
         .select()
         .from(zuvyMentorSlotManagement)
@@ -867,10 +894,7 @@ export class MentorSlotService {
         throw new NotFoundException('Mentor not found.');
       }
 
-      /* ========================================
-         BUFFER CHECK
-      ======================================== */
-
+      /* Buffer check */
       if (mentorProfile?.isBufferEnabled && mentorProfile.bufferMinutes > 0) {
         const bufferMs = mentorProfile.bufferMinutes * 60 * 1000;
 
@@ -911,10 +935,7 @@ export class MentorSlotService {
         }
       }
 
-      /* ========================================
-           DUPLICATE BOOKING CHECK
-        ======================================== */
-
+      /* Duplicate booking check */
       const existingBooking = await trx
         .select()
         .from(zuvyMentorSlotBooking)
@@ -931,12 +952,40 @@ export class MentorSlotService {
         throw new BadRequestException('You already booked this slot.');
       }
 
-      await this.ensureMentorSlotLicenseAssignment(trx, slot, mentorProfile);
+      const [mentorUser] = await trx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, mentorProfile.mentorUserId))
+        .limit(1);
 
-      /* ========================================
-         UPDATE SLOT CAPACITY (NO SQL)
-      ======================================== */
+      const [studentUser] = await trx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, BigInt(studentId)))
+        .limit(1);
 
+      if (!mentorUser?.email) {
+        throw new BadRequestException('Mentor email not found.');
+      }
+
+      // The slot's Zoom licence is reserved now, at booking, not when the
+      // slot was created. Slot creation already checked a licence was free,
+      // but a class scheduled since then can have taken it.
+      try {
+        await this.ensureMentorSlotLicenseAssignment(trx, slot, mentorProfile);
+      } catch (error: any) {
+        if (this.isNoLicenceError(error)) {
+          this.logger.warn(
+            `Booking slot ${slotId} refused, no Zoom licence free: ${error.message}`,
+          );
+          throw new BadRequestException(
+            "This slot can't be booked right now because no meeting licence is free at that time. Please pick another slot.",
+          );
+        }
+        throw error;
+      }
+
+      /* Slot capacity */
       if (slot.currentBookedCount >= slot.maxCapacity)
         throw new BadRequestException('Slot is full.');
 
@@ -951,11 +1000,8 @@ export class MentorSlotService {
         } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(eq(zuvyMentorSlotAvailability.id, slotId));
 
-      /* ========================================
-         CREATE BOOKING
-      ======================================== */
-
-      const booking = await trx
+      /* Booking */
+      const [createdBooking] = await trx
         .insert(zuvyMentorSlotBooking)
         .values({
           slotAvailabilityId: slotId,
@@ -968,11 +1014,14 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotBooking.$inferInsert)
         .returning();
 
-      const createdBooking = booking[0];
+      /* Student credit. The row as it was is kept (as text, so timestamps
+         are not shifted on the way through JS) in case step 2 fails and the
+         booking has to be undone. */
+      const metricsBefore = await this.readStudentMetricsForUndo(
+        trx,
+        BigInt(studentId),
+      );
 
-      /* ========================================
-     UPDATE STUDENT METRICS
-  ======================================== */
       await trx
         .insert(zuvyStudentBookingMetrics)
         .values({
@@ -996,287 +1045,617 @@ export class MentorSlotService {
           } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
         });
 
-      await this.notificationService.createNotification({
-        userId: mentorProfile.mentorUserId,
-        type: NotificationType.BOOKING_CREATED,
-        title: 'New mentorship booking',
-        message: ``,
-        referenceId: createdBooking.id,
-        referenceType: 'booking',
-      });
+      const metricsWritten = await this.readStudentMetricsForUndo(
+        trx,
+        BigInt(studentId),
+      );
 
-      await this.notificationService.createNotification({
-        userId: BigInt(studentId),
-        type: NotificationType.BOOKING_CONFIRMED,
-        title: 'Session confirmed',
-        message: ``,
-        referenceId: createdBooking.id,
-        referenceType: 'booking',
-      });
+      return {
+        createdBooking,
+        slot,
+        mentorProfile,
+        mentorEmail: mentorUser.email as string,
+        studentEmail: studentUser?.email as string | undefined,
+        metricsBefore,
+        metricsWritten,
+      };
+    });
 
-      /* ========================================
-   FETCH EMAILS (FIXED)
-======================================== */
+    const { createdBooking, slot, mentorProfile, mentorEmail, studentEmail } =
+      reserved;
+    const slotStartDateTime = new Date(slot.slotStartDateTime);
+    const slotEndDateTime = new Date(slot.slotEndDateTime);
 
-      const [mentorUser] = await trx
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, mentorProfile.mentorUserId))
-        .limit(1);
+    /* ========================================
+       STEP 2: ZOOM (no transaction, no lock)
+       If this fails, step 1 is undone: booking removed, seat, licence and
+       credit given back.
+    ======================================== */
 
-      const [studentUser] = await trx
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, BigInt(studentId)))
-        .limit(1);
+    let meeting: {
+      joinUrl?: string;
+      startUrl?: string;
+      password?: string;
+      meetingId?: string;
+      uuid?: string;
+    } = {};
 
-      const mentorEmail = mentorUser?.email;
-      const studentEmail = studentUser?.email;
+    try {
+      await this.zoomLicenseService.ensureHostLicensedForWindow(
+        mentorEmail,
+        slotStartDateTime,
+        slotEndDateTime,
+      );
 
-      if (!mentorEmail) {
-        throw new BadRequestException('Mentor email not found.');
+      const zoomMeetingData = {
+        topic: `Mentorship Session: ${mentorEmail} & ${studentEmail}`,
+        type: 2, // Scheduled meeting
+        start_time: slotStartDateTime.toISOString(),
+        duration: slot.durationMinutes,
+        timezone: 'UTC', // Adjust as needed
+        password: Math.random().toString(36).substring(2, 8), // Generate random password
+        agenda: 'One-on-one mentorship session',
+        settings: {
+          host_video: true,
+          participant_video: true,
+          join_before_host: false,
+          mute_upon_entry: true,
+          watermark: false,
+          use_pmi: false,
+          approval_type: 0,
+          // Recognized by Zoom as "invited" for the host's waiting-room
+          // policy (participants_to_place_in_waiting_room = 2), so the
+          // student bypasses the waiting room instead of needing manual
+          // admission.
+          meeting_invitees: studentEmail ? [{ email: studentEmail }] : [],
+          audio: 'both',
+          auto_recording: 'cloud',
+          waiting_room: true,
+          // `mode: 'custom'` is required or Zoom ignores who_goes_to_waiting_room.
+          // Lets the invited student (meeting_invitees below) bypass the
+          // waiting room while everyone else waits.
+          waiting_room_options: {
+            mode: 'custom',
+            who_goes_to_waiting_room: 'users_not_on_invite',
+          },
+          alternative_hosts: mentorEmail,
+        },
+      };
+
+      const zoomResponse = await this.zoomService.createMeetingForUser(
+        mentorEmail,
+        zoomMeetingData,
+      );
+
+      if (!zoomResponse.success) {
+        throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
       }
 
-      const refreshToken = mentorProfile.googleRefreshToken;
+      meeting = {
+        joinUrl: zoomResponse.data.join_url,
+        startUrl: zoomResponse.data.start_url,
+        password: zoomResponse.data.password,
+        meetingId: zoomResponse.data.id.toString(),
+      };
 
-      const slotStartDateTime = new Date(slot.slotStartDateTime);
-      const slotEndDateTime = new Date(slot.slotEndDateTime);
+      // A booking without a join link is useless to the student, and a saved
+      // booking with no link is what the abandoned-booking job looks for, so
+      // treat a missing link as a failed Zoom step.
+      if (!meeting.joinUrl) {
+        throw new Error('Zoom did not return a join link for the meeting');
+      }
 
-      /* ========================================
-   CREATE ZOOM MEETING
-======================================== */
-
-      let meeting: {
-        joinUrl?: string;
-        startUrl?: string;
-        password?: string;
-        meetingId?: string;
-        uuid?: string;
-      } = {};
-
-      /* Create Zoom Meeting */
-      try {
-        await this.zoomLicenseService.ensureHostLicensedForWindow(
-          mentorEmail,
-          slotStartDateTime,
-          slotEndDateTime,
+      // Record the meeting id on the booking at once (the booking is only
+      // complete once step 3 saves the join link). If this request dies
+      // before step 3, the abandoned-booking job finds the id here and
+      // deletes the meeting along with the booking.
+      await db
+        .update(zuvyMentorSlotBooking)
+        .set({ zoomMeetingId: meeting.meetingId } as Partial<
+          typeof zuvyMentorSlotBooking.$inferInsert
+        >)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.id, createdBooking.id),
+            eq(zuvyMentorSlotBooking.status, 'confirmed'),
+          ),
         );
 
-        const zoomMeetingData = {
-          topic: `Mentorship Session: ${mentorEmail} & ${studentEmail}`,
-          type: 2, // Scheduled meeting
-          start_time: slotStartDateTime.toISOString(),
-          duration: slot.durationMinutes,
-          timezone: 'UTC', // Adjust as needed
-          password: Math.random().toString(36).substring(2, 8), // Generate random password
-          agenda: 'One-on-one mentorship session',
-          settings: {
-            host_video: true,
-            participant_video: true,
-            join_before_host: false,
-            mute_upon_entry: true,
-            watermark: false,
-            use_pmi: false,
-            approval_type: 0,
-            // Recognized by Zoom as "invited" for the host's waiting-room
-            // policy (participants_to_place_in_waiting_room = 2), so the
-            // student bypasses the waiting room instead of needing manual
-            // admission.
-            meeting_invitees: studentEmail ? [{ email: studentEmail }] : [],
-            audio: 'both',
-            auto_recording: 'cloud',
-            waiting_room: true,
-            // `mode: 'custom'` is required or Zoom ignores who_goes_to_waiting_room.
-            // Lets the invited student (meeting_invitees below) bypass the
-            // waiting room while everyone else waits.
-            waiting_room_options: {
-              mode: 'custom',
-              who_goes_to_waiting_room: 'users_not_on_invite',
-            },
-            alternative_hosts: mentorEmail,
+      // Fetch UUID explicitly
+      const meetingDetails = await this.zoomService.getMeeting(
+        meeting.meetingId,
+      );
+
+      if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+        throw new Error('Failed to fetch Zoom meeting UUID');
+      }
+
+      meeting.uuid = meetingDetails.data.uuid;
+    } catch (error: any) {
+      this.logger.error(`Zoom meeting creation failed: ${error.message}`);
+      await this.deleteZoomMeetingQuietly(meeting.meetingId, createdBooking.id);
+      await this.undoReservedBooking(reserved);
+      throw this.toBookingZoomError(error);
+    }
+
+    /* ========================================
+       STEP 3: SAVE MEETING (short transaction)
+    ======================================== */
+
+    let saved: { cancelled: boolean; metrics?: any };
+    try {
+      saved = await db.transaction(async (trx) => {
+        // Same row lock cancelBooking takes: a cancel that landed while Zoom
+        // was being called is seen here, not overwritten.
+        const [current] = await trx
+          .select({ status: zuvyMentorSlotBooking.status })
+          .from(zuvyMentorSlotBooking)
+          .where(eq(zuvyMentorSlotBooking.id, createdBooking.id))
+          .for('update');
+
+        if (!current || current.status === 'cancelled') {
+          return { cancelled: true };
+        }
+
+        await trx
+          .update(zuvyMentorSlotBooking)
+          .set({
+            meetingLink: meeting.joinUrl ?? null,
+            isZoomMeet: true,
+            zoomStartUrl: meeting.startUrl ?? null,
+            zoomPassword: meeting.password ?? null,
+            zoomMeetingId: meeting.meetingId ?? null,
+            zoomMeetingUuid: meeting.uuid ?? null,
+          } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+          .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
+
+        await this.enqueueMentorRecordingJob(trx, {
+          id: createdBooking.id,
+          zoomMeetingId: meeting.meetingId ?? null,
+          zoomMeetingUuid: meeting.uuid ?? null,
+          isZoomMeet: true,
+        });
+
+        // Alerts only once the booking is complete, and in this transaction
+        // so they roll back with it.
+        await this.notificationService.createNotification(
+          {
+            userId: mentorProfile.mentorUserId,
+            type: NotificationType.BOOKING_CREATED,
+            title: 'New mentorship booking',
+            message: ``,
+            referenceId: createdBooking.id,
+            referenceType: 'booking',
           },
-        };
-
-        const zoomResponse = await this.zoomService.createMeetingForUser(
-          mentorEmail,
-          zoomMeetingData,
+          trx,
         );
 
-        if (!zoomResponse.success) {
-          throw new Error(
-            `Failed to create Zoom meeting: ${zoomResponse.error}`,
-          );
-        }
-
-        // Fetch UUID explicitly
-        const meetingDetails = await this.zoomService.getMeeting(
-          zoomResponse.data.id.toString(),
+        await this.notificationService.createNotification(
+          {
+            userId: BigInt(studentId),
+            type: NotificationType.BOOKING_CONFIRMED,
+            title: 'Session confirmed',
+            message: ``,
+            referenceId: createdBooking.id,
+            referenceType: 'booking',
+          },
+          trx,
         );
 
-        if (!meetingDetails.success || !meetingDetails.data?.uuid) {
-          throw new Error('Failed to fetch Zoom meeting UUID');
-        }
+        const [metrics] = await trx
+          .select()
+          .from(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, BigInt(studentId)))
+          .limit(1);
 
-        meeting = {
-          joinUrl: zoomResponse.data.join_url,
-          startUrl: zoomResponse.data.start_url,
-          password: zoomResponse.data.password,
-          meetingId: zoomResponse.data.id.toString(),
-          uuid: meetingDetails.data.uuid,
-        };
-      } catch (error) {
-        this.logger.error(`Zoom meeting creation failed: ${error.message}`);
-
-        const errMsg = error?.message || '';
-
-        if (error instanceof BadRequestException) {
-          throw error;
-        }
-
-        /* ========================================
-           HANDLE ZOOM USER NOT FOUND / NOT LICENSED
-        ======================================== */
-
-        if (
-          errMsg.includes('User does not exist') ||
-          errMsg.includes('does not exist')
-        ) {
-          throw new BadRequestException(
-            'This mentor is not available for booking right now. Please try another mentor.',
-          );
-        }
-
-        if (
-          errMsg.includes('not licensed') ||
-          errMsg.includes('No permission')
-        ) {
-          throw new BadRequestException(
-            'This mentor is not fully set up for sessions yet. Please choose another mentor.',
-          );
-        }
-
-        /* ========================================
-           FALLBACK ERROR
-        ======================================== */
-
+        return { cancelled: false, metrics };
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Saving the Zoom meeting for booking ${createdBooking.id} failed: ${error.message}`,
+      );
+      // The error may have come after the COMMIT reached the database (the
+      // acknowledgement was lost). Look before deleting anything.
+      const outcome = await this.readStep3Outcome(
+        createdBooking.id,
+        meeting.meetingId,
+        BigInt(studentId),
+      );
+      if (outcome.state === 'saved') {
+        // Step 3 did commit: the booking is complete.
+        saved = { cancelled: false, metrics: outcome.metrics };
+      } else if (outcome.state === 'not-saved') {
+        await this.deleteZoomMeetingQuietly(
+          meeting.meetingId,
+          createdBooking.id,
+        );
+        await this.undoReservedBooking(reserved);
+        throw new BadRequestException(
+          'Unable to schedule session at the moment. Please try again later.',
+        );
+      } else {
+        // Can't tell (the database is unreachable). Keep the meeting: if the
+        // booking was saved it needs it; if not, the abandoned-booking job
+        // undoes the booking later and deletes the meeting, whose id was
+        // recorded on the booking right after Zoom created it.
+        this.logger.error(
+          `Booking ${createdBooking.id}: could not tell whether its Zoom meeting ${meeting.meetingId} was saved; left for the abandoned-booking job.`,
+        );
         throw new BadRequestException(
           'Unable to schedule session at the moment. Please try again later.',
         );
       }
-      /* ========================================
-    SAVE MEETING DATA
- ======================================== */
+    }
 
-      await trx
-        .update(zuvyMentorSlotBooking)
-        .set({
-          meetingLink: meeting?.joinUrl ?? null,
-          isZoomMeet: true,
-          zoomStartUrl: meeting?.startUrl ?? null,
-          zoomPassword: meeting?.password ?? null,
-          zoomMeetingId: meeting?.meetingId ?? null,
-          zoomMeetingUuid: meeting?.uuid ?? null,
-        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-        .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
+    if (saved.cancelled) {
+      // Cancelled while Zoom was being called: cancelBooking already gave the
+      // seat, licence and credit back; only the new meeting is left over.
+      await this.deleteZoomMeetingQuietly(meeting.meetingId, createdBooking.id);
+      throw new BadRequestException(
+        'This booking was cancelled while the session was being set up.',
+      );
+    }
 
-      // Enqueue recording job
-      await this.enqueueMentorRecordingJob(trx, {
-        id: createdBooking.id,
-        zoomMeetingId: meeting?.meetingId ?? null,
-        zoomMeetingUuid: meeting?.uuid ?? null,
-        isZoomMeet: true,
-      });
+    const updatedMetrics = saved.metrics;
 
-      // Fetch updated metrics for response
-      const [updatedMetrics] = await trx
-        .select()
-        .from(zuvyStudentBookingMetrics)
-        .where(eq(zuvyStudentBookingMetrics.userId, BigInt(studentId)))
+    // This response goes to the student who booked, so it must not carry
+    // the host start link (it used to, as `mentorJoinLink`).
+    const bookingResponse = {
+      ...withoutHostZoomFields(createdBooking),
+      meetingLink: meeting.joinUrl,
+      remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
+      nextEligible: updatedMetrics?.cooldownEndDate,
+    };
+
+    // Send notification email to team@zuvy after successful booking
+    const slotDateOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'Asia/Kolkata',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    };
+    const slotTimeOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    };
+    const slotDate =
+      new Date(slot.slotStartDateTime).toLocaleDateString(
+        'en-IN',
+        slotDateOptions,
+      ) +
+      ', ' +
+      new Date(slot.slotStartDateTime).toLocaleTimeString(
+        'en-IN',
+        slotTimeOptions,
+      ) +
+      ' - ' +
+      new Date(slot.slotEndDateTime).toLocaleTimeString(
+        'en-IN',
+        slotTimeOptions,
+      );
+
+    this.emailService
+      .sendEmail(
+        ['team@zuvy.org', 'join-zuvy@navgurukul.org'],
+        '📅 New Mentorship Session Booked',
+        `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
+          <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">
+            <img src="https://dev.app.zuvy.org/_next/image?url=%2Fzuvy-logo-horizontal.png&w=256&q=75" alt="Zuvy" style="height: 40px; display: block;" />
+          </div>
+          <div style="background: #ffffff; padding: 28px 24px; border-radius: 0 0 6px 6px; border: 1px solid #e5e7eb;">
+            <h3 style="color: #1a1a2e; margin: 0 0 6px;">New Session Booked</h3>
+            <p style="color: #6B7280; margin: 0 0 24px; font-size: 14px;">A mentorship session has been confirmed. Here are the details:</p>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 12px 8px; color: #6B7280; font-size: 14px; width: 130px;">Student</td>
+                <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{studentEmail}}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Mentor</td>
+                <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{mentorEmail}}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Session Time</td>
+                <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{slotDate}}</td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Meeting Link</td>
+                <td style="padding: 12px 8px;">
+                  <a href="{{meetingLink}}" style="background: #4ade80; color: #1a1a2e; padding: 8px 18px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: 700;">Join Zoom Meeting</a>
+                </td>
+              </tr>
+            </table>
+          </div>
+          <p style="text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 16px;">© Zuvy by NavGurukul</p>
+        </div>`,
+        {
+          studentEmail,
+          mentorEmail,
+          slotDate,
+          meetingLink: meeting.joinUrl ?? 'N/A',
+        },
+      )
+      .catch((err) => this.logger.error(`team email failed: ${err.message}`));
+
+    return bookingResponse;
+  }
+
+  /**
+   * After step 3 of bookSlot failed: did its transaction commit anyway? The
+   * booking carries this meeting only if it did.
+   */
+  private async readStep3Outcome(
+    bookingId: number,
+    meetingId: string | undefined,
+    studentUserId: bigint,
+  ): Promise<
+    | { state: 'saved'; metrics: any }
+    | { state: 'not-saved' }
+    | { state: 'unknown' }
+  > {
+    try {
+      const [row] = await db
+        .select({
+          zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+          meetingLink: zuvyMentorSlotBooking.meetingLink,
+        })
+        .from(zuvyMentorSlotBooking)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId))
         .limit(1);
+      if (
+        row?.meetingLink &&
+        row.zoomMeetingId &&
+        row.zoomMeetingId === meetingId
+      ) {
+        const [metrics] = await db
+          .select()
+          .from(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
+          .limit(1);
+        return { state: 'saved', metrics };
+      }
+      return { state: 'not-saved' };
+    } catch {
+      return { state: 'unknown' };
+    }
+  }
 
-      // This response goes to the student who booked, so it must not carry
-      // the host start link (it used to, as `mentorJoinLink`).
-      const bookingResponse = {
-        ...withoutHostZoomFields(createdBooking),
-        meetingLink: meeting.joinUrl,
-        remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
-        nextEligible: updatedMetrics?.cooldownEndDate,
-      };
+  private isNoLicenceError(error: any) {
+    return (
+      error instanceof BadRequestException &&
+      /No Zoom licen|transferable Zoom/i.test(error.message || '')
+    );
+  }
 
-      // Send notification email to team@zuvy after successful booking
-      const slotDateOptions: Intl.DateTimeFormatOptions = {
-        timeZone: 'Asia/Kolkata',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      };
-      const slotTimeOptions: Intl.DateTimeFormatOptions = {
-        timeZone: 'Asia/Kolkata',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      };
-      const slotDate =
-        new Date(slot.slotStartDateTime).toLocaleDateString(
-          'en-IN',
-          slotDateOptions,
-        ) +
-        ', ' +
-        new Date(slot.slotStartDateTime).toLocaleTimeString(
-          'en-IN',
-          slotTimeOptions,
-        ) +
-        ' - ' +
-        new Date(slot.slotEndDateTime).toLocaleTimeString(
-          'en-IN',
-          slotTimeOptions,
+  /** Same messages bookSlot gave before for a failed Zoom step. */
+  private toBookingZoomError(error: any) {
+    if (error instanceof BadRequestException) return error;
+    const errMsg = error?.message || '';
+    if (
+      errMsg.includes('User does not exist') ||
+      errMsg.includes('does not exist')
+    ) {
+      return new BadRequestException(
+        'This mentor is not available for booking right now. Please try another mentor.',
+      );
+    }
+    if (errMsg.includes('not licensed') || errMsg.includes('No permission')) {
+      return new BadRequestException(
+        'This mentor is not fully set up for sessions yet. Please choose another mentor.',
+      );
+    }
+    return new BadRequestException(
+      'Unable to schedule session at the moment. Please try again later.',
+    );
+  }
+
+  private async deleteZoomMeetingQuietly(
+    meetingId: string | undefined,
+    bookingId: number,
+  ) {
+    if (!meetingId) return;
+    try {
+      await this.zoomService.deleteMeeting(meetingId);
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to delete Zoom meeting ${meetingId} for booking ${bookingId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * The student's credit row with its values as text (timestamps exactly as
+   * stored, not converted through JS Date). Locks the row until the
+   * transaction ends.
+   */
+  private async readStudentMetricsForUndo(trx: any, studentUserId: bigint) {
+    const result = await trx.execute(sql`
+      SELECT total_bookings, quota_used, is_quota_exhausted,
+             last_booking_date::text AS last_booking_date,
+             cooldown_end_date::text AS cooldown_end_date,
+             quota_reset_date::text AS quota_reset_date
+      FROM ${zuvyStudentBookingMetrics}
+      WHERE ${zuvyStudentBookingMetrics.userId} = ${studentUserId}
+      FOR UPDATE`);
+    return (result.rows?.[0] as Record<string, any>) ?? null;
+  }
+
+  /**
+   * Undoes step 1 of bookSlot after the Zoom step failed (or never finished):
+   * removes the booking and gives back the slot seat, the licence and the
+   * credit. Does nothing if the booking was cancelled meanwhile
+   * (cancelBooking already did this) or is complete by now (step 3 saved its
+   * join link). Returns whether it undid the booking, and the Zoom meeting
+   * id recorded on it, if any, for the caller to delete.
+   */
+  private async undoReservedBooking(reserved: {
+    createdBooking: any;
+    slot: any;
+    metricsBefore: Record<string, any> | null;
+    metricsWritten: Record<string, any> | null;
+  }): Promise<{ undone: boolean; zoomMeetingId: string | null }> {
+    const notUndone = { undone: false, zoomMeetingId: null };
+    const bookingId = reserved.createdBooking.id as number;
+    const studentUserId = BigInt(reserved.createdBooking.studentUserId);
+    try {
+      return await db.transaction(async (trx) => {
+        const [booking] = await trx
+          .select({
+            status: zuvyMentorSlotBooking.status,
+            slotAvailabilityId: zuvyMentorSlotBooking.slotAvailabilityId,
+            zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+            meetingLink: zuvyMentorSlotBooking.meetingLink,
+          })
+          .from(zuvyMentorSlotBooking)
+          .where(eq(zuvyMentorSlotBooking.id, bookingId))
+          .for('update');
+
+        if (!booking || booking.status === 'cancelled') return notUndone;
+        if (booking.meetingLink) return notUndone;
+        const slotId = booking.slotAvailabilityId;
+
+        await trx
+          .delete(zuvyMentorSlotBooking)
+          .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+        await trx
+          .update(zuvyMentorSlotAvailability)
+          .set({
+            currentBookedCount: sql`GREATEST(${zuvyMentorSlotAvailability.currentBookedCount} - 1, 0)`,
+            status: sql`CASE WHEN ${zuvyMentorSlotAvailability.status} = 'full' THEN 'available' ELSE ${zuvyMentorSlotAvailability.status} END`,
+          } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+          .where(eq(zuvyMentorSlotAvailability.id, slotId));
+
+        await this.releaseSlotLicenceIfUnbooked(trx, slotId);
+
+        await this.undoStudentCredit(
+          trx,
+          studentUserId,
+          reserved.metricsBefore,
+          reserved.metricsWritten,
         );
+        return {
+          undone: true,
+          zoomMeetingId: booking.zoomMeetingId ?? null,
+        };
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Could not undo booking ${bookingId} after its Zoom step failed. Left for the abandoned-booking job (releaseAbandonedBookings) to retry: ${error.message}`,
+      );
+      return notUndone;
+    }
+  }
 
-      this.emailService
-        .sendEmail(
-          ['team@zuvy.org', 'join-zuvy@navgurukul.org'],
-          '📅 New Mentorship Session Booked',
-          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
-            <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">
-              <img src="https://dev.app.zuvy.org/_next/image?url=%2Fzuvy-logo-horizontal.png&w=256&q=75" alt="Zuvy" style="height: 40px; display: block;" />
-            </div>
-            <div style="background: #ffffff; padding: 28px 24px; border-radius: 0 0 6px 6px; border: 1px solid #e5e7eb;">
-              <h3 style="color: #1a1a2e; margin: 0 0 6px;">New Session Booked</h3>
-              <p style="color: #6B7280; margin: 0 0 24px; font-size: 14px;">A mentorship session has been confirmed. Here are the details:</p>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr style="border-bottom: 1px solid #f3f4f6;">
-                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px; width: 130px;">Student</td>
-                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{studentEmail}}</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #f3f4f6;">
-                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Mentor</td>
-                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{mentorEmail}}</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #f3f4f6;">
-                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Session Time</td>
-                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{slotDate}}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Meeting Link</td>
-                  <td style="padding: 12px 8px;">
-                    <a href="{{meetingLink}}" style="background: #4ade80; color: #1a1a2e; padding: 8px 18px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: 700;">Join Zoom Meeting</a>
-                  </td>
-                </tr>
-              </table>
-            </div>
-            <p style="text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 16px;">© Zuvy by NavGurukul</p>
-          </div>`,
-          {
-            studentEmail,
-            mentorEmail,
-            slotDate,
-            meetingLink: meeting.joinUrl ?? 'N/A',
-          },
-        )
-        .catch((err) => this.logger.error(`team email failed: ${err.message}`));
+  /**
+   * Bookings stuck between step 1 and step 3 of bookSlot: confirmed, but with
+   * no join link long after they were made (the app restarted while Zoom was
+   * being called, or the undo itself failed). Each is undone exactly like a
+   * failed Zoom step: booking removed, seat, licence and credit given back.
+   * Run by MentorSlotJob. Safe to run on several servers at once: each undo
+   * re-checks the booking under a row lock.
+   */
+  async releaseAbandonedBookings(
+    olderThanMinutes = ABANDONED_BOOKING_MINUTES,
+  ): Promise<number> {
+    const now = Date.now();
+    const stuck = await db
+      .select({
+        id: zuvyMentorSlotBooking.id,
+        slotAvailabilityId: zuvyMentorSlotBooking.slotAvailabilityId,
+        studentUserId: zuvyMentorSlotBooking.studentUserId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.status, 'confirmed'),
+          isNull(zuvyMentorSlotBooking.meetingLink),
+          isNull(zuvyMentorSlotBooking.googleEventId),
+          lt(
+            zuvyMentorSlotBooking.bookedAt,
+            new Date(now - olderThanMinutes * 60_000),
+          ),
+          // Bounded look-back. Bookings made before this change can't
+          // match: that code saved the booking and its meeting in one
+          // transaction, so a saved booking always had its join link.
+          gt(
+            zuvyMentorSlotBooking.bookedAt,
+            new Date(now - 7 * 24 * 60 * 60_000),
+          ),
+        ),
+      )
+      .limit(100);
 
-      return bookingResponse;
-    });
+    let released = 0;
+    for (const booking of stuck) {
+      const { undone, zoomMeetingId } = await this.undoReservedBooking({
+        createdBooking: booking,
+        slot: { id: booking.slotAvailabilityId },
+        metricsBefore: null,
+        metricsWritten: null,
+      });
+      if (undone) {
+        released += 1;
+        await this.deleteZoomMeetingQuietly(
+          zoomMeetingId ?? undefined,
+          booking.id,
+        );
+        this.logger.warn(
+          `Released abandoned booking ${booking.id} (no Zoom meeting ${olderThanMinutes}+ minutes after booking).`,
+        );
+      }
+    }
+    return released;
+  }
+
+  /**
+   * Puts the student's credit row back as it was before the booking, if
+   * nothing else changed it since; otherwise recounts it from bookings.
+   */
+  private async undoStudentCredit(
+    trx: any,
+    studentUserId: bigint,
+    before: Record<string, any> | null,
+    written: Record<string, any> | null,
+  ) {
+    const now = await this.readStudentMetricsForUndo(trx, studentUserId);
+    const unchangedSince =
+      !!now &&
+      !!written &&
+      [
+        'total_bookings',
+        'quota_used',
+        'last_booking_date',
+        'cooldown_end_date',
+      ].every((key) => String(now[key]) === String(written[key]));
+
+    if (unchangedSince) {
+      if (!before) {
+        await trx
+          .delete(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
+      } else {
+        await trx.execute(sql`
+          UPDATE ${zuvyStudentBookingMetrics} SET
+            total_bookings = ${before.total_bookings},
+            quota_used = ${before.quota_used},
+            is_quota_exhausted = ${before.is_quota_exhausted},
+            last_booking_date = ${before.last_booking_date}::timestamp,
+            cooldown_end_date = ${before.cooldown_end_date}::timestamp,
+            quota_reset_date = ${before.quota_reset_date}::timestamp
+          WHERE ${zuvyStudentBookingMetrics.userId} = ${studentUserId}`);
+      }
+      return;
+    }
+
+    // No snapshot to restore (the abandoned-booking job), or something else
+    // changed the row since (another booking or a cancel): recount from
+    // bookings. If that fails, the whole undo fails and the booking stays,
+    // so the abandoned-booking job retries it; removing the booking without
+    // giving the credit back would leave the student charged for nothing.
+    await this.recomputeStudentBookingMetrics(trx, studentUserId);
   }
 
   /* ==========================================================================
@@ -1412,23 +1791,31 @@ export class MentorSlotService {
         throw new BadRequestException('Booking already cancelled.');
       }
 
-      await this.notificationService.createNotification({
-        userId: booking.studentUserId,
-        type: NotificationType.BOOKING_CANCELLED,
-        title: 'Session cancelled',
-        message: ``,
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      await this.releaseSlotLicenceIfUnbooked(trx, booking.slotAvailabilityId);
 
-      await this.notificationService.createNotification({
-        userId: booking.mentorUserId,
-        type: NotificationType.BOOKING_CANCELLED,
-        title: 'Session cancelled',
-        message: ``,
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      await this.notificationService.createNotification(
+        {
+          userId: booking.studentUserId,
+          type: NotificationType.BOOKING_CANCELLED,
+          title: 'Session cancelled',
+          message: ``,
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
+
+      await this.notificationService.createNotification(
+        {
+          userId: booking.mentorUserId,
+          type: NotificationType.BOOKING_CANCELLED,
+          title: 'Session cancelled',
+          message: ``,
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
       const [mentorProfile] = await trx
         .select()
@@ -1531,6 +1918,23 @@ export class MentorSlotService {
 
     if (booking.slotAvailabilityId === newSlotId) {
       throw new BadRequestException('Cannot reschedule to the same slot.');
+    }
+
+    // No join link yet: still between booking steps, or abandoned there (the
+    // abandoned-booking job releases it after ABANDONED_BOOKING_MINUTES).
+    // Moving it would leave the meeting at the old time, or move a booking
+    // that has no meeting.
+    if (booking.isZoomMeet && !booking.meetingLink && !booking.googleEventId) {
+      // No booking time recorded: it can't be a booking in progress.
+      const stillSettingUp =
+        !!booking.bookedAt &&
+        Date.now() - new Date(booking.bookedAt).getTime() <
+          ABANDONED_BOOKING_MINUTES * 60_000;
+      throw new BadRequestException(
+        stillSettingUp
+          ? 'This session is still being set up. Please try again in a minute.'
+          : "This session's meeting was never set up, so it can't be rescheduled. Please cancel it and book again.",
+      );
     }
 
     // Only a session that hasn't happened yet can be rescheduled. Without
@@ -2134,6 +2538,22 @@ export class MentorSlotService {
         );
       }
 
+      // Lock both slot rows now, lowest id first, before the licence-pool
+      // lock below. bookSlot takes a slot row and then the licence-pool lock;
+      // taking them in the same order here means an accept and a booking on
+      // the old slot can't each hold one and wait for the other.
+      await trx
+        .select({ id: zuvyMentorSlotAvailability.id })
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          inArray(zuvyMentorSlotAvailability.id, [
+            booking.slotAvailabilityId,
+            booking.rescheduleProposedSlotId,
+          ]),
+        )
+        .orderBy(zuvyMentorSlotAvailability.id)
+        .for('update');
+
       const [proposedSlot] = await trx
         .select()
         .from(zuvyMentorSlotAvailability)
@@ -2169,11 +2589,25 @@ export class MentorSlotService {
         );
       }
 
-      await this.ensureMentorSlotLicenseAssignment(
-        trx,
-        proposedSlot,
-        mentorProfile,
-      );
+      // The proposed slot was open, so it holds no licence yet; it gets one
+      // now. If a class has taken the last one since, say so plainly.
+      try {
+        await this.ensureMentorSlotLicenseAssignment(
+          trx,
+          proposedSlot,
+          mentorProfile,
+        );
+      } catch (error: any) {
+        if (this.isNoLicenceError(error)) {
+          this.logger.warn(
+            `Reschedule of booking ${bookingId} refused, no Zoom licence free: ${error.message}`,
+          );
+          throw new BadRequestException(
+            "No meeting licence is free at the new time, so this reschedule can't be accepted. Decline it and the student can propose another time.",
+          );
+        }
+        throw error;
+      }
 
       /* Atomic capacity check + increment */
 
@@ -2250,14 +2684,20 @@ export class MentorSlotService {
         );
       }
 
-      await this.notificationService.createNotification({
-        userId: booking.studentUserId,
-        type: NotificationType.RESCHEDULE_ACCEPTED,
-        title: 'Reschedule accepted',
-        message: '',
-        referenceId: bookingId,
-        referenceType: 'booking',
-      });
+      // The original slot is open again; its licence goes back to the pool.
+      await this.releaseSlotLicenceIfUnbooked(trx, booking.slotAvailabilityId);
+
+      await this.notificationService.createNotification(
+        {
+          userId: booking.studentUserId,
+          type: NotificationType.RESCHEDULE_ACCEPTED,
+          title: 'Reschedule accepted',
+          message: '',
+          referenceId: bookingId,
+          referenceType: 'booking',
+        },
+        trx,
+      );
 
       externalUpdate = {
         isZoomMeet: booking.isZoomMeet,
@@ -2465,11 +2905,19 @@ export class MentorSlotService {
     }
 
     return db.transaction(async (trx) => {
-      const licenseId = await this.zoomLicenseService.assignLicense(trx, {
-        instructorId: userId,
-        startTime: start,
-        endTime: end,
-      });
+      // An open slot doesn't hold a Zoom licence (that only happens when a
+      // student books it, in ensureMentorSlotLicenseAssignment), so open
+      // slots never block classes. The slot is still refused here if no
+      // licence would be free at that time, so a student can book whatever
+      // slot is open.
+      const licence = await this.zoomLicenseService.checkLicenseAvailability(
+        trx,
+        { instructorId: userId, startTime: start, endTime: end },
+      );
+
+      if (!licence.available) {
+        throw new BadRequestException(licence.message);
+      }
 
       const createdSlots = await trx
         .insert(zuvyMentorSlotAvailability)
@@ -2485,17 +2933,46 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotAvailability.$inferInsert)
         .returning();
 
-      await this.zoomLicenseService.createLicenseAssignment(trx, {
-        licenseId,
-        instructorId: userId,
-        mentorSlotAvailabilityId: createdSlots[0].id,
-        sourceType: 'mentor_slot',
-        startTime: start,
-        endTime: end,
-      });
-
       return createdSlots;
     });
+  }
+
+  /**
+   * Lets the slot form check a time before saving: is a Zoom licence free for
+   * this mentor then? Reserves nothing.
+   */
+  async checkSlotLicenceAvailability(
+    userId: number,
+    slotStartDateTime: string,
+    slotEndDateTime: string,
+  ) {
+    await this.ensureUserIsMentor(userId);
+
+    const start = new Date(slotStartDateTime);
+    const end = new Date(slotEndDateTime);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      end <= start
+    ) {
+      throw new BadRequestException('Invalid time range.');
+    }
+
+    // Read only: no transaction and no licence-pool lock, so this check never
+    // queues behind, or holds up, a real allocation. Creating the slot runs
+    // the same check again under the lock.
+    const licence = await this.zoomLicenseService.checkLicenseAvailability(
+      db,
+      { instructorId: userId, startTime: start, endTime: end },
+      { lock: false },
+    );
+
+    return {
+      available: licence.available,
+      nextAvailableAt: licence.nextAvailableAt,
+      message: licence.message,
+    };
   }
 
   async getMySlots(
