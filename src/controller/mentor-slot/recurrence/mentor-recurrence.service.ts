@@ -169,34 +169,23 @@ export class MentorRecurrenceService {
 
       // Open slots don't hold a Zoom licence (one is reserved only when a
       // student books), but every slot time must have a licence free, so a
-      // student can book any open slot. The check reserves nothing and runs
-      // under the licence-pool lock. One mentor's slots in this batch never
-      // overlap each other, so they can't compete for licences.
-      const unavailable: string[] = [];
-
-      for (const slot of generatedSlots) {
-        const licence = await this.zoomLicenseService.checkLicenseAvailability(
+      // student can book any open slot. One batch check under the
+      // licence-pool lock: assignments and open slots are loaded once for the
+      // whole range, not once per slot.
+      const unavailableIndexes =
+        await this.zoomLicenseService.findUnavailableSlotTimes(
           trx,
-          {
-            instructorId: Number(mentorProfile.mentorUserId),
+          Number(mentorProfile.mentorUserId),
+          generatedSlots.map((slot) => ({
             startTime: slot.slotStartDateTime,
             endTime: slot.slotEndDateTime,
-          },
+          })),
         );
-
-        if (!licence.available) {
-          unavailable.push(
-            new Intl.DateTimeFormat('en-IN', {
-              day: 'numeric',
-              month: 'short',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true,
-              timeZone: 'Asia/Kolkata',
-            }).format(slot.slotStartDateTime),
-          );
-        }
-      }
+      const unavailable = unavailableIndexes.map((index) =>
+        this.zoomLicenseService.formatAvailabilityMessage(
+          generatedSlots[index].slotStartDateTime,
+        ),
+      );
 
       if (unavailable.length > 0) {
         throw new BadRequestException(

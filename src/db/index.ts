@@ -7,6 +7,34 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { ConfigIndex } from '../config/index';
 
+// A non-negative number of milliseconds from the environment; 0 is allowed
+// and means "no limit" in Postgres. Empty or invalid falls back to the default.
+function msFromEnv(value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+
+// Safety net: a statement waiting more than 30 s for a lock fails instead of
+// waiting for ever. Postgres can't see a wait that goes through the app (a
+// transaction waiting on a query that, on another pooled connection, waits on
+// that transaction's own lock), so without this such a request would hang
+// indefinitely. Override with DB_LOCK_TIMEOUT_MS.
+const LOCK_TIMEOUT_MS = msFromEnv(process.env.DB_LOCK_TIMEOUT_MS, 30_000);
+
+// Safety net: if a connection is cut in the middle of a transaction (network
+// blip, failover), the server keeps that transaction and its row locks until
+// it notices the dead link, which can take many minutes; meanwhile anything
+// needing those rows waits. A transaction sitting idle longer than this is
+// ended by the server instead. Transactions here don't wait on anything
+// outside the database (the one that does, the Zoom licence-transfer lock,
+// raises its own limit), so 2 minutes is generous. Override with
+// DB_IDLE_IN_TX_TIMEOUT_MS.
+const IDLE_IN_TX_TIMEOUT_MS = msFromEnv(
+  process.env.DB_IDLE_IN_TX_TIMEOUT_MS,
+  120_000,
+);
+
 // A pool, not one shared Client. With a single Client, drizzle runs every
 // db.transaction() on that same connection, so two requests at once
 // interleave inside one transaction: one request's COMMIT/ROLLBACK applies to
@@ -27,53 +55,50 @@ const pool = new Pool({
   // out to a request.
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
+  // Runs once per new connection, and the pool waits for it before handing
+  // the connection out (pg-pool >= 3.10), so the timeouts are in place for
+  // the first query. Older pg-pool ignores this option; the 'connect'
+  // listener below covers that case.
+  onConnect: (client) => prepareConnection(client),
 });
 
-// Safety net: a statement waiting more than 30 s for a lock fails instead of
-// waiting for ever. Postgres can't see a wait that goes through the app (a
-// transaction waiting on a query that, on another pooled connection, waits on
-// that transaction's own lock), so without this such a request would hang
-// indefinitely. Set per connection with a normal query (not a startup
-// option) so it also works behind a connection pooler such as PgBouncer.
-// Override with DB_LOCK_TIMEOUT_MS.
-const LOCK_TIMEOUT_MS = Number(process.env.DB_LOCK_TIMEOUT_MS) || 30_000;
+// Set up each new connection once:
+// - An 'error' listener, so a connection dropped by the server can't crash
+//   the process. The pool only listens for errors on idle connections; one
+//   that drops while a request holds it (e.g. between two statements of a
+//   transaction) emits an 'error' with no listener, which Node turns into a
+//   crash. The request using it still fails (its next query errors), and
+//   the pool discards the dead connection when it's released.
+// - The session timeouts, with a normal query (not startup options) so it
+//   also works behind a connection pooler such as PgBouncer. If that fails,
+//   it is logged and the connection is still used, without them.
+const preparedConnections = new WeakSet<object>();
+async function prepareConnection(client: any): Promise<void> {
+  if (preparedConnections.has(client)) return;
+  preparedConnections.add(client);
+  client.on('error', (error: Error) => {
+    console.error(`Postgres pool: connection error: ${error.message}`);
+  });
+  try {
+    await client.query(
+      `SET lock_timeout = ${LOCK_TIMEOUT_MS}; ` +
+        `SET idle_in_transaction_session_timeout = ${IDLE_IN_TX_TIMEOUT_MS}`,
+    );
+  } catch (error: any) {
+    console.error(
+      `Postgres pool: could not set session timeouts: ${error.message}`,
+    );
+  }
+}
 
-// Safety net: if a connection is cut in the middle of a transaction (network
-// blip, failover), the server keeps that transaction and its row locks until
-// it notices the dead link, which can take many minutes; meanwhile anything
-// needing those rows waits. A transaction sitting idle longer than this is
-// ended by the server instead. No transaction in this app waits on anything
-// outside the database, so 2 minutes is generous. Override with
-// DB_IDLE_IN_TX_TIMEOUT_MS.
-const IDLE_IN_TX_TIMEOUT_MS =
-  Number(process.env.DB_IDLE_IN_TX_TIMEOUT_MS) || 120_000;
-
-// A connection dropped by the server must not crash the process. The pool
-// only listens for errors on idle connections; a connection that drops while
-// a request holds it (e.g. between two statements of a transaction) emits an
-// 'error' with no listener, which Node turns into a crash. So every
-// connection gets its own listener. The request using it still fails (its
-// next query errors), and the pool discards the dead connection when it's
-// released.
 pool.on('error', (error) => {
   console.error(`Postgres pool: idle connection error: ${error.message}`);
 });
+// Fallback for pg-pool versions without onConnect (they skip it): set the
+// connection up here instead. With onConnect it is already done and this
+// does nothing.
 pool.on('connect', (client) => {
-  client.on('error', (error) => {
-    console.error(`Postgres pool: connection error: ${error.message}`);
-  });
-  // pg runs a client's queries in order, so this runs before the first query
-  // the pool hands this connection out for.
-  client
-    .query(
-      `SET lock_timeout = ${Math.max(0, Math.floor(LOCK_TIMEOUT_MS))}; ` +
-        `SET idle_in_transaction_session_timeout = ${Math.max(0, Math.floor(IDLE_IN_TX_TIMEOUT_MS))}`,
-    )
-    .catch((error) =>
-      console.error(
-        `Postgres pool: could not set session timeouts: ${error.message}`,
-      ),
-    );
+  void prepareConnection(client);
 });
 
 export const db = drizzle(pool, { schema: schema });

@@ -13,11 +13,16 @@ import { db } from 'src/db';
 import { eq, InferInsertModel } from 'drizzle-orm';
 @Injectable()
 export class AssignPermToRoleStrategy implements IAuditStrategy<any> {
-  async execute(dto: {
-    actorUserId: number | string | bigint;
-    roleId: number;
-    permissions: Record<string, boolean>;
-  }): Promise<void> {
+  async execute(
+    dto: {
+      actorUserId: number | string | bigint;
+      roleId: number;
+      permissions: Record<string, boolean>;
+    },
+    // The caller's transaction, if any: the entry is then saved (or rolled
+    // back) with the change it records.
+    executor: any = db,
+  ): Promise<void> {
     const { actorUserId, roleId, permissions } = dto ?? {};
     if (!actorUserId || !roleId || !permissions) {
       throw new BadRequestException(
@@ -26,7 +31,7 @@ export class AssignPermToRoleStrategy implements IAuditStrategy<any> {
     }
 
     try {
-      await db.transaction(async (tx) => {
+      await executor.transaction(async (tx) => {
         const [actor] = await tx
           .select({ id: users.id })
           .from(users)

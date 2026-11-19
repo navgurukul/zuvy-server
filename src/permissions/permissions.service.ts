@@ -532,6 +532,14 @@ export class PermissionsService {
             ),
           );
 
+        // The audit entry is saved with the change, in this transaction:
+        // both are saved, or neither.
+        await this.auditLogService.log(
+          'perm_to_role',
+          { actorUserId, roleId, permissions },
+          tx,
+        );
+
         return {
           status: 'success',
           message: 'Permissions updated',
@@ -543,20 +551,25 @@ export class PermissionsService {
         };
       });
 
-      // After the commit: the audit log runs its own transaction on another
-      // pooled connection, so it must not run while this one holds a
-      // connection. Before, on the single shared connection, its COMMIT also
-      // committed the permission change early.
-      await this.auditLogService.log('perm_to_role', {
-        actorUserId,
-        roleId,
-        permissions,
-      });
-
-      const invalidatedSessions = await this.invalidateRoleMemberSessions(
-        roleId,
-        orgId,
-      );
+      // The change is saved. Make it take effect by ending the role members'
+      // sessions, so they can't keep a revoked permission. If that fails,
+      // say so plainly: saving the same permissions again is safe and
+      // retries it.
+      let invalidatedSessions = 0;
+      try {
+        invalidatedSessions = await this.invalidateRoleMemberSessions(
+          roleId,
+          orgId,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Ending sessions of role ${roleId} members failed after a saved permission change`,
+          error as any,
+        );
+        throw new InternalServerErrorException(
+          "The permissions were saved, but signing out this role's members failed, so some may keep their old permissions until they sign in again. Please save again to retry.",
+        );
+      }
 
       return {
         ...result,

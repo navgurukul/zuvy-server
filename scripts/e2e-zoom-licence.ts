@@ -78,7 +78,7 @@ const report = (label: string, ok: boolean, detail?: string) => {
 // E2E_ONLY=G7 runs only the sections whose name starts with that prefix.
 const ONLY = process.env.E2E_ONLY;
 async function section(name: string, run: () => Promise<void>) {
-  if (ONLY && !name.startsWith(ONLY)) return;
+  if (ONLY && !ONLY.split(',').some((p) => name.startsWith(p))) return;
   console.log(`\n--- ${name} ---`);
   try {
     await run();
@@ -112,7 +112,7 @@ async function pickEmptyRange() {
     );
     d.setUTCHours(0, 0, 0, 0);
     const from = d;
-    const to = new Date(d.getTime() + 120 * 86_400_000);
+    const to = new Date(d.getTime() + 200 * 86_400_000);
     const busy = await db.execute(sql`
       SELECT (SELECT count(*) FROM main.zuvy_mentor_slot_availability
                 WHERE slot_start_date_time >= ${from} AND slot_start_date_time < ${to})
@@ -153,6 +153,7 @@ let poolSize: number;
 let N: number;
 let classBatch: any;
 let metricsSnapshot: string | null = null;
+let savedTotalLicences: string | undefined;
 
 /* ------------------------------------------------------------------ setup */
 
@@ -172,6 +173,7 @@ let meetingSeq = 0;
 let failNextMeeting = false;
 let failNextGetMeeting = false;
 let createMeetingDelayMs = 0;
+let omitJoinUrlNext = false;
 let onMeetingCreated: ((id: number) => void) | null = null;
 const deletedMeetingIds: string[] = [];
 const zoomStubs = {
@@ -188,11 +190,13 @@ const zoomStubs = {
     }
     meetingSeq += 1;
     onMeetingCreated?.(990000000 + meetingSeq);
+    const noJoinUrl = omitJoinUrlNext;
+    omitJoinUrlNext = false;
     return {
       success: true,
       data: {
         id: 990000000 + meetingSeq,
-        join_url: 'https://zoom.invalid/j',
+        join_url: noJoinUrl ? undefined : 'https://zoom.invalid/j',
         start_url: 'https://zoom.invalid/s',
         password: 'e2e',
       },
@@ -372,6 +376,7 @@ async function fixtureBooking(slotId: number, studentId = secondStudent) {
         status: 'confirmed',
         confirmedAt: new Date(),
         sessionLifecycleState: 'SCHEDULED',
+        meetingLink: 'https://zoom.invalid/fixture',
       })
       .returning();
     const count = slot.currentBookedCount + 1;
@@ -541,6 +546,18 @@ async function main() {
       .orderBy(schema.zuvyUserLicenses.id)
   ).map((r: any) => Number(r.id));
   N = realRows.length;
+  // Run with the configured pool matching the real licences, as production
+  // should be set up (ZOOM_TOTAL_LICENSES = transferable + protected). Dev's
+  // default (7) gives a pool of 2; R6 tests that case on its own.
+  savedTotalLicences = process.env.ZOOM_TOTAL_LICENSES;
+  const protectedSeatCount = Number(
+    (
+      await db.execute(
+        sql`SELECT count(*)::int AS n FROM main.zuvy_user_licenses WHERE is_protected AND status = 'active' AND license_type = 2`,
+      )
+    ).rows[0].n,
+  );
+  process.env.ZOOM_TOTAL_LICENSES = String(N + protectedSeatCount);
   poolSize = await lic.getTransferableLicensePoolCount(db);
 
   hosts = (
@@ -1658,118 +1675,358 @@ async function main() {
       },
     );
 
-    await section(
-      'G7. Licence transfer: donor check runs inside the booking transaction',
-      async () => {
+    await section('G7. Licence transfer between Zoom accounts', async () => {
+      // Both licence-moving code paths share one Zoom service object here;
+      // fake Zoom on every Zoom service instance the test can reach.
+      const zoomTargets = Array.from(
+        new Set([lic.zoomService, classes.zoomService].filter(Boolean)),
+      );
+      const saved = zoomTargets.map((z: any) => ({
+        z,
+        ensureLicensedUser: z.ensureLicensedUser,
+        getUser: z.getUser,
+        listAuthorizedUsers: z.listAuthorizedUsers,
+        downgradeUser: z.downgradeUser,
+      }));
+      // Zoom, faked: hosts start unlicensed; downgrading a donor frees one
+      // licence, which the next licensing attempt by a host takes. With
+      // `accountFull`, a host with no free licence gets Zoom's "still basic"
+      // answer instead of a licence error.
+      let licensedHosts = new Set<string>();
+      let freeSeats = 0;
+      let downgraded: string[] = [];
+      let donors: string[] = [];
+      let accountFull = false;
+      let licensingCalls = 0;
+      let slowDowngradeMs = 0;
+      const fake = {
+        ensureLicensedUser: async (email: string) => {
+          licensingCalls += 1;
+          const key = email.toLowerCase();
+          if (licensedHosts.has(key)) return { success: true, licensed: true };
+          if (freeSeats > 0) {
+            freeSeats -= 1;
+            licensedHosts.add(key);
+            return { success: true, licensed: true };
+          }
+          return accountFull
+            ? {
+                success: false,
+                step: 'verify',
+                error: `Zoom user ${key} is currently basic with status 'active'.`,
+              }
+            : { success: false, step: 'license', error: 'needs a license' };
+        },
+        getUser: async (email: string) => ({
+          success: true,
+          data: {
+            type: licensedHosts.has(email.toLowerCase()) ? 2 : 1,
+            status: 'active',
+          },
+        }),
+        listAuthorizedUsers: async () => {
+          // A little Zoom latency, so two transfers really overlap.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return {
+            success: true,
+            data: {
+              users: donors
+                .filter((d) => !downgraded.includes(d))
+                .map((email) => ({ email })),
+            },
+          };
+        },
+        downgradeUser: async (email: string) => {
+          downgraded.push(email.toLowerCase());
+          freeSeats += 1;
+          // The licence is free in the account from here until the host takes it.
+          if (slowDowngradeMs)
+            await new Promise((resolve) =>
+              setTimeout(resolve, slowDowngradeMs),
+            );
+          return { success: true };
+        },
+      };
+      zoomTargets.forEach((z: any) => Object.assign(z, fake));
+      const reset = (list: string[]) => {
+        licensedHosts = new Set();
+        freeSeats = 0;
+        downgraded = [];
+        donors = list;
+        accountFull = false;
+        licensingCalls = 0;
+        slowDowngradeMs = 0;
+      };
+      const ensure = (host: string, start: Date, end: Date) =>
+        lic.ensureHostLicensedForWindow(host, start, end);
+
+      try {
         const d = nextDay();
         const start = at(d, '10:00');
         const end = at(d, '11:00');
-        const host = hosts[N + 2];
-        const busyDonor = hosts[N + 3];
-        const freeDonor = hosts[N + 4];
-        const zoom = lic.zoomService;
-        const saved = {
-          ensureLicensedUser: zoom.ensureLicensedUser,
-          listAuthorizedUsers: zoom.listAuthorizedUsers,
-          downgradeUser: zoom.downgradeUser,
-        };
-        // The real method (the test replaced it on the instance at start-up).
-        const realEnsure =
-          Object.getPrototypeOf(lic).ensureHostLicensedForWindow;
-        const ROLLBACK = 'E2E: roll back the test transaction';
-        let licensed = false;
-        const downgraded: string[] = [];
-        zoom.ensureLicensedUser = async () =>
-          licensed
-            ? { success: true, licensed: true }
-            : { success: false, step: 'license', error: 'needs a license' };
-        zoom.downgradeUser = async (email: string) => {
-          downgraded.push(email);
-          licensed = true;
-          return { success: true };
-        };
+        const [hostA, hostB, busyDonor, freeDonor, freeDonor2, liveDonor] = [
+          hosts[N + 2],
+          hosts[N + 3],
+          hosts[N + 4],
+          hosts[N + 5],
+          hosts[N + 6],
+          hosts[N + 11],
+        ];
+        const [busy] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: realRows[0],
+            instructorId: busyDonor.id,
+            sourceType: 'mentor_slot',
+            startTime: start,
+            endTime: end,
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(busy.id));
+
+        reset([busyDonor.email, freeDonor.email]);
+        await ensure(hostA.email, start, end);
+        report(
+          'transfer skips the busy donor and takes the free one',
+          downgraded.length === 1 && downgraded[0] === freeDonor.email,
+          downgraded.join(','),
+        );
+        report(
+          'one licensing attempt before the transfer, one after (no repeat under the lock)',
+          licensingCalls === 2,
+          `${licensingCalls} calls`,
+        );
+
+        // A donor hosting a session right now (free at the new session's
+        // time) keeps its licence.
+        const now = Date.now();
+        const [live] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: realRows[0],
+            instructorId: liveDonor.id,
+            sourceType: 'mentor_slot',
+            startTime: new Date(now - 10 * 60_000),
+            endTime: new Date(now + 20 * 60_000),
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(live.id));
+        reset([liveDonor.email, freeDonor.email]);
+        await ensure(hostA.email, start, end);
+        report(
+          'a donor hosting right now is skipped',
+          downgraded.length === 1 && downgraded[0] === freeDonor.email,
+          downgraded.join(','),
+        );
+        reset([liveDonor.email]);
+        await expectRefused(
+          'only a live donor: refused, not downgraded',
+          () => ensure(hostA.email, start, end),
+          /No free licensed Zoom user/,
+        );
+        report('the live donor was not touched', downgraded.length === 0);
+        // It sits at the real current time, outside the test's date range:
+        // remove it at once so nothing else sees it.
+        await db
+          .delete(schema.licenseAssignments)
+          .where(eq(schema.licenseAssignments.id, live.id));
+
+        // A Zoom error that isn't about licences: reported as it is, with no
+        // donor lookup.
+        reset([freeDonor.email]);
+        const realEnsure = fake.ensureLicensedUser;
+        zoomTargets.forEach((z: any) => {
+          z.ensureLicensedUser = async () => ({
+            success: false,
+            step: 'fetch',
+            error: 'E2E: Zoom user lookup failed',
+          });
+        });
         try {
-          await db
-            .transaction(async (trx: any) => {
-              await lic.lockLicensePool(trx);
-              // The busy donor's session exists only inside this transaction.
-              await trx.insert(schema.licenseAssignments).values({
-                licenseId: realRows[0],
-                instructorId: busyDonor.id,
-                sourceType: 'mentor_slot',
-                startTime: start,
-                endTime: end,
-              });
-              report(
-                'donor check through the transaction sees its uncommitted session',
-                (await lic.isZoomEmailFreeForTimeRange(
-                  busyDonor.email,
-                  start,
-                  end,
-                  trx,
-                )) === false,
-              );
-              report(
-                'the same check on the global db does not (so the transaction is really used)',
-                (await lic.isZoomEmailFreeForTimeRange(
-                  busyDonor.email,
-                  start,
-                  end,
-                )) === true,
-              );
-
-              zoom.listAuthorizedUsers = async () => ({
-                success: true,
-                data: {
-                  users: [
-                    { email: busyDonor.email },
-                    { email: freeDonor.email },
-                  ],
-                },
-              });
-              await realEnsure.call(lic, host.email, start, end, trx);
-              report(
-                'transfer skips the busy donor and takes the free one',
-                downgraded.length === 1 && downgraded[0] === freeDonor.email,
-                downgraded.join(','),
-              );
-
-              licensed = false;
-              downgraded.length = 0;
-              zoom.listAuthorizedUsers = async () => ({
-                success: true,
-                data: { users: [{ email: busyDonor.email }] },
-              });
-              await expectRefused(
-                'no free donor: clear refusal',
-                () => realEnsure.call(lic, host.email, start, end, trx),
-                /No free licensed Zoom user/,
-              );
-              report(
-                'nothing was downgraded when no donor was free',
-                downgraded.length === 0,
-              );
-              throw new Error(ROLLBACK);
-            })
-            .catch((error: any) => {
-              if (error.message !== ROLLBACK) throw error;
-            });
-        } finally {
-          Object.assign(zoom, saved);
-        }
-        const [{ n }] = await db
-          .select({ n: sql`count(*)::int` })
-          .from(schema.licenseAssignments)
-          .where(
-            and(
-              eq(schema.licenseAssignments.instructorId, busyDonor.id),
-              gte(schema.licenseAssignments.startTime, start),
-              lt(schema.licenseAssignments.startTime, end),
-            ),
+          await expectRefused(
+            'a non-licence Zoom error is reported as it is',
+            () => ensure(hostA.email, start, end),
+            /Zoom user lookup failed/,
           );
-        report('test transaction rolled back, nothing saved', n === 0);
-      },
-    );
+          report('... and no licence moved', downgraded.length === 0);
+        } finally {
+          zoomTargets.forEach((z: any) => {
+            z.ensureLicensedUser = realEnsure;
+          });
+        }
+
+        // A licence a transfer has just freed (donor downgraded, host not yet
+        // upgraded) can't be taken by another request in between.
+        reset([freeDonor.email]);
+        slowDowngradeMs = 600;
+        const first = ensure(hostA.email, start, end).then(
+          () => 'ok',
+          (e: any) => e.message,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        const second = ensure(hostB.email, start, end).then(
+          () => 'ok',
+          (e: any) => e.message,
+        );
+        const [firstOutcome, secondOutcome] = await Promise.all([
+          first,
+          second,
+        ]);
+        report(
+          'the transfer that freed the licence gets it',
+          firstOutcome === 'ok',
+          `${firstOutcome} | ${secondOutcome}`,
+        );
+        report(
+          'the other request waits its turn instead of taking it',
+          /No free licensed Zoom user/.test(secondOutcome),
+          secondOutcome,
+        );
+        report(
+          'only one licence moved',
+          downgraded.length === 1,
+          downgraded.join(','),
+        );
+
+        // A licence that became free while waiting is used before any donor.
+        reset([freeDonor.email]);
+        freeSeats = 1;
+        await ensure(hostA.email, start, end);
+        report(
+          'a free licence in the account is used, no donor downgraded',
+          downgraded.length === 0,
+        );
+
+        // Alternative-host check: takes a free licence under the same lock.
+        reset([]);
+        freeSeats = 1;
+        const alt = await lic.ensureLicensedUnderTransferLock(hostB.email);
+        report(
+          'alternative-host check takes a free licence',
+          alt.success && alt.licensed && freeSeats === 0,
+        );
+
+        reset([busyDonor.email]);
+        await expectRefused(
+          'no free donor: clear refusal',
+          () => ensure(hostA.email, start, end),
+          /No free licensed Zoom user/,
+        );
+        report(
+          'nothing downgraded when no donor is free',
+          downgraded.length === 0,
+        );
+
+        // Zoom account has no licence left: bookings move one (as before),
+        // classes ask for one to be freed in Zoom (as before).
+        reset([freeDonor.email]);
+        accountFull = true;
+        await ensure(hostA.email, start, end);
+        report(
+          'account full: a booking still moves a licence',
+          downgraded.length === 1,
+          downgraded.join(','),
+        );
+        reset([freeDonor.email]);
+        accountFull = true;
+        await expectRefused(
+          'account full: a class is refused with the old message',
+          () =>
+            classes.ensureInstructorHasZoomLicenseForSession(
+              hostB.email,
+              start,
+              end,
+            ),
+          /reached the Business license limit/,
+        );
+        report('... and moves no licence', downgraded.length === 0);
+
+        reset([freeDonor.email, freeDonor2.email]);
+        const both = await Promise.allSettled([
+          ensure(hostA.email, start, end),
+          ensure(hostB.email, start, end),
+        ]);
+        report(
+          'two booking transfers at once both succeed',
+          both.every((r) => r.status === 'fulfilled'),
+          both
+            .map((r: any) =>
+              r.status === 'fulfilled' ? 'ok' : r.reason?.message,
+            )
+            .join(' | '),
+        );
+        report(
+          '... and take two different donors',
+          downgraded.length === 2 && new Set(downgraded).size === 2,
+          downgraded.join(','),
+        );
+
+        reset([freeDonor.email, freeDonor2.email]);
+        const mixed = await Promise.allSettled([
+          ensure(hostA.email, start, end),
+          classes.ensureInstructorHasZoomLicenseForSession(
+            hostB.email,
+            start,
+            end,
+          ),
+        ]);
+        report(
+          'a booking transfer and a class transfer at once both succeed',
+          mixed.every((r) => r.status === 'fulfilled'),
+          mixed
+            .map((r: any) =>
+              r.status === 'fulfilled' ? 'ok' : r.reason?.message,
+            )
+            .join(' | '),
+        );
+        report(
+          '... and take two different donors',
+          downgraded.length === 2 && new Set(downgraded).size === 2,
+          downgraded.join(','),
+        );
+
+        // Two transfers for the same host at once: the second finds the host
+        // already licensed under the lock and moves nothing.
+        reset([freeDonor.email, freeDonor2.email]);
+        const same = await Promise.allSettled([
+          ensure(hostA.email, start, end),
+          ensure(hostA.email, start, end),
+        ]);
+        report(
+          'two transfers for the same host: both succeed, one licence moved',
+          same.every((r) => r.status === 'fulfilled') &&
+            downgraded.length === 1,
+          `${downgraded.join(',')} | ${same.map((r: any) => (r.status === 'fulfilled' ? 'ok' : r.reason?.message)).join(' | ')}`,
+        );
+
+        // The lock is released afterwards, with no transaction left open.
+        const probe = await db.execute(
+          sql`SELECT pg_try_advisory_lock(hashtext('zuvy_zoom_license_transfer')) AS free`,
+        );
+        if (probe.rows[0].free)
+          await db.execute(
+            sql`SELECT pg_advisory_unlock(hashtext('zuvy_zoom_license_transfer'))`,
+          );
+        report(
+          'the transfer lock is released after use',
+          probe.rows[0].free === true,
+        );
+        const idleTx = await db.execute(
+          sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = current_user AND state LIKE 'idle in transaction%' AND query ILIKE '%advisory%transfer%'`,
+        );
+        report(
+          'no transaction left open by a transfer',
+          idleTx.rows[0].n === 0,
+        );
+      } finally {
+        saved.forEach((entry: any) => {
+          entry.z.ensureLicensedUser = entry.ensureLicensedUser;
+          entry.z.getUser = entry.getUser;
+          entry.z.listAuthorizedUsers = entry.listAuthorizedUsers;
+          entry.z.downgradeUser = entry.downgradeUser;
+        });
+      }
+    });
 
     /* ============================================ H. Clean-up script */
 
@@ -2370,6 +2627,702 @@ async function main() {
       },
     );
 
+    /* ============================================ R. Second review fixes */
+
+    await section(
+      'R1. A booking left half-made is released by the job',
+      async () => {
+        const d = nextDay();
+        const makeReserved = async (
+          slot: any,
+          minutesAgo: number,
+          withMeeting: boolean,
+        ) => {
+          const id = await fixtureBooking(slot.id);
+          await db
+            .update(schema.zuvyMentorSlotBooking)
+            .set({
+              meetingLink: withMeeting ? 'https://zoom.invalid/done' : null,
+              bookedAt: new Date(Date.now() - minutesAgo * MIN),
+            })
+            .where(eq(schema.zuvyMentorSlotBooking.id, id));
+          return id;
+        };
+        const stuckSlot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        const freshSlot = await createSlot(at(d, '12:00'), at(d, '12:30'));
+        const doneSlot = await createSlot(at(d, '14:00'), at(d, '14:30'));
+        const stuck = await makeReserved(stuckSlot, 20, false);
+        // Zoom had created its meeting before the request died.
+        await db
+          .update(schema.zuvyMentorSlotBooking)
+          .set({ zoomMeetingId: '990777001' })
+          .where(eq(schema.zuvyMentorSlotBooking.id, stuck));
+        const fresh = await makeReserved(freshSlot, 2, false);
+        const done = await makeReserved(doneSlot, 20, true);
+        const outside = await db.execute(sql`
+        SELECT count(*)::int AS n FROM main.zuvy_mentor_slot_booking b
+        JOIN main.zuvy_mentor_slot_availability s ON s.id = b.slot_availability_id
+        WHERE b.status = 'confirmed' AND b.zoom_meeting_id IS NULL AND b.meeting_link IS NULL
+          AND b.google_event_id IS NULL AND b.booked_at < now() - interval '15 minutes'
+          AND b.booked_at > now() - interval '7 days'
+          AND NOT (s.slot_start_date_time >= ${new Date(BASE)} AND s.slot_start_date_time < ${RANGE_END})`);
+        if (outside.rows[0].n > 0) {
+          report(
+            'no stuck bookings in dev outside this test (would be released too)',
+            false,
+            `${outside.rows[0].n} found`,
+          );
+          return;
+        }
+        const released = await svc.releaseAbandonedBookings();
+        report(
+          'the stuck booking (no meeting, 20 min old) is released',
+          !(await bookingRow(stuck)),
+          `${released} released`,
+        );
+        report(
+          'its recorded Zoom meeting is deleted',
+          deletedMeetingIds.includes('990777001'),
+        );
+        report(
+          'its seat and licence are given back',
+          (await holdsFor(stuckSlot.id)).length === 0 &&
+            (await slotRow(stuckSlot.id)).currentBookedCount === 0 &&
+            (await slotRow(stuckSlot.id)).status === 'available',
+        );
+        report(
+          'a booking still within the 15 minutes is left alone',
+          !!(await bookingRow(fresh)) &&
+            (await holdsFor(freshSlot.id)).length === 1,
+        );
+        report(
+          'a finished booking is left alone',
+          !!(await bookingRow(done)) &&
+            (await holdsFor(doneSlot.id)).length === 1,
+        );
+        report(
+          'running it again releases nothing more',
+          (await svc.releaseAbandonedBookings()) === 0,
+        );
+      },
+    );
+
+    await section(
+      'R2. No reschedule request while a booking is still being set up',
+      async () => {
+        const d = nextDay();
+        const from = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        const to = await createSlot(at(d, '12:00'), at(d, '12:30'));
+        const b = await fixtureBooking(from.id, STUDENT);
+        await db
+          .update(schema.zuvyMentorSlotBooking)
+          .set({ meetingLink: null })
+          .where(eq(schema.zuvyMentorSlotBooking.id, b));
+        await expectRefused(
+          'proposing a new time is refused with a clear message',
+          () =>
+            svc.proposeReschedule(
+              b,
+              to.id,
+              'E2E reschedule while setting up',
+              STUDENT,
+            ),
+          /still being set up/,
+        );
+        // Past the abandoned-booking threshold it is not "being set up" any
+        // more, and still can't be moved.
+        await db
+          .update(schema.zuvyMentorSlotBooking)
+          .set({ bookedAt: new Date(Date.now() - 20 * 60_000) })
+          .where(eq(schema.zuvyMentorSlotBooking.id, b));
+        await expectRefused(
+          'an abandoned booking (no link after 15 min) is refused too',
+          () =>
+            svc.proposeReschedule(
+              b,
+              to.id,
+              'E2E reschedule abandoned',
+              STUDENT,
+            ),
+          /never set up/,
+        );
+        await db
+          .update(schema.zuvyMentorSlotBooking)
+          .set({ meetingLink: 'https://zoom.invalid/done' })
+          .where(eq(schema.zuvyMentorSlotBooking.id, b));
+        await svc.proposeReschedule(
+          b,
+          to.id,
+          'E2E reschedule once set up',
+          STUDENT,
+        );
+        report(
+          'once the meeting exists, proposing works',
+          (await bookingRow(b)).rescheduleStatus === 'pending',
+        );
+      },
+    );
+
+    await section(
+      'R11. Zoom returns no join link: the booking is undone',
+      async () => {
+        const d = nextDay();
+        const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        await restoreStudentMetrics();
+        const creditBefore = await readStudentMetricsJson();
+        const deletedBefore = deletedMeetingIds.length;
+        omitJoinUrlNext = true;
+        await expectRefused(
+          'the booking fails',
+          () => svc.bookSlot(STUDENT, slot.id),
+          /./,
+        );
+        omitJoinUrlNext = false;
+        report(
+          'no booking is left',
+          (await bookingsOnSlot(slot.id)).filter(
+            (b: any) => b.status !== 'cancelled',
+          ).length === 0,
+        );
+        report(
+          'the seat and licence are free again',
+          (await holdsFor(slot.id)).length === 0 &&
+            (await slotRow(slot.id)).status === 'available',
+        );
+        report(
+          'the half-made Zoom meeting is deleted',
+          deletedMeetingIds.length === deletedBefore + 1,
+        );
+        report(
+          'the student keeps the credit',
+          (await readStudentMetricsJson()) === creditBefore,
+        );
+      },
+    );
+
+    await section(
+      "R3. Allocator: prefers the host's own licence, respects the cooldown tail",
+      async () => {
+        const d = nextDay();
+        const host = hosts[N + 7];
+        const ownLicence = realRows[N - 1];
+        const [own] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: ownLicence,
+            instructorId: host.id,
+            sourceType: 'mentor_slot',
+            startTime: at(d, '10:00'),
+            endTime: at(d, '10:30'),
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(own.id));
+        const picked = await allocate(
+          db,
+          host.id,
+          at(d, '10:30'),
+          at(d, '11:00'),
+        );
+        report(
+          "a host's back-to-back session gets the same licence",
+          picked === ownLicence,
+          `own ${ownLicence}, picked ${picked}`,
+        );
+
+        // An adjacent assignment that holds no licence (here a class row not
+        // on Zoom) doesn't steer the choice: the first free licence is used.
+        const g = nextDay();
+        const host2 = hosts[N + 12];
+        const [ghost] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: realRows[N - 1],
+            instructorId: host2.id,
+            sourceType: 'class_session',
+            sessionId: null,
+            startTime: at(g, '10:00'),
+            endTime: at(g, '10:30'),
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(ghost.id));
+        const picked2 = await allocate(
+          db,
+          host2.id,
+          at(g, '10:30'),
+          at(g, '11:00'),
+        );
+        report(
+          "an adjacent assignment that holds no licence isn't preferred",
+          picked2 === realRows[0],
+          `first ${realRows[0]}, picked ${picked2}`,
+        );
+
+        const e = nextDay();
+        const tailLicence = realRows[0];
+        for (let i = 1; i < N; i++)
+          await filler(i, at(e, '10:00'), at(e, '11:00'));
+        const [later] = await db
+          .insert(schema.licenseAssignments)
+          .values({
+            licenseId: tailLicence,
+            instructorId: hosts[N + 8].id,
+            sourceType: 'mentor_slot',
+            startTime: at(e, '11:01'),
+            endTime: at(e, '11:30'),
+          })
+          .returning({ id: schema.licenseAssignments.id });
+        fillerIds.push(Number(later.id));
+        const result = await allocate(
+          db,
+          hosts[N + 9].id,
+          at(e, '10:00'),
+          at(e, '11:00'),
+        ).then(
+          (id: number) => `picked ${id}`,
+          (error: any) => error.message,
+        );
+        report(
+          'a licence needed again within the cooldown is not handed out',
+          !/^picked/.test(result),
+          result,
+        );
+      },
+    );
+
+    await section(
+      'R4. No Zoom sync inside an allocation; sync before it when rows look empty',
+      async () => {
+        const realCount = lic.getActiveLicensePoolCount;
+        const realSync = lic.syncLicensedUsersFromZoom;
+        let syncCalls = 0;
+        lic.syncLicensedUsersFromZoom = async () => {
+          syncCalls += 1;
+          return 0;
+        };
+        try {
+          // Allocation itself never syncs, even if the rows look empty.
+          lic.getActiveLicensePoolCount = async () => 0;
+          const d = nextDay();
+          await allocate(
+            db,
+            hosts[N + 10].id,
+            at(d, '10:00'),
+            at(d, '10:30'),
+          ).catch(() => undefined);
+          report(
+            'assignLicense makes no Zoom sync call',
+            syncCalls === 0,
+            `${syncCalls} calls`,
+          );
+
+          // The pre-transaction helper does, when the rows look empty...
+          await lic.ensureLicencePoolSynced(hosts[N + 10].email);
+          report(
+            'ensureLicencePoolSynced syncs when no licence row is active',
+            syncCalls === 1,
+          );
+
+          // ...and not otherwise.
+          lic.getActiveLicensePoolCount = realCount;
+          syncCalls = 0;
+          await lic.ensureLicencePoolSynced(hosts[N + 10].email);
+          report(
+            'and does nothing when licence rows are active',
+            syncCalls === 0,
+          );
+        } finally {
+          lic.getActiveLicensePoolCount = realCount;
+          lic.syncLicensedUsersFromZoom = realSync;
+        }
+      },
+    );
+
+    await section(
+      'R8. Step 3 committed but its acknowledgement was lost',
+      async () => {
+        const d = nextDay();
+        const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        await restoreStudentMetrics();
+        const realTransaction = db.transaction;
+        let calls = 0;
+        // The booking's 2nd transaction (step 3) commits, then reports an error.
+        db.transaction = async function (...args: any[]) {
+          calls += 1;
+          const result = await realTransaction.apply(this, args);
+          if (calls === 2) throw new Error('E2E: connection lost after COMMIT');
+          return result;
+        };
+        const deletedBefore = deletedMeetingIds.length;
+        let response: any = null;
+        let failure: string | null = null;
+        try {
+          response = await svc.bookSlot(STUDENT, slot.id);
+          bookingIds.push(response.id);
+        } catch (error: any) {
+          failure = error.message;
+        } finally {
+          db.transaction = realTransaction;
+        }
+        report(
+          'the booking is reported as made (not an error)',
+          !!response?.id && !failure,
+          failure ?? `booking ${response?.id}`,
+        );
+        const row = response ? await bookingRow(response.id) : null;
+        report(
+          'its meeting is kept, not deleted',
+          !!row?.zoomMeetingId && deletedMeetingIds.length === deletedBefore,
+        );
+        report(
+          'seat and licence stay with it',
+          (await holdsFor(slot.id)).length === 1 &&
+            (await slotRow(slot.id)).status === 'full',
+        );
+      },
+    );
+
+    await section(
+      'R9. ZOOM_TOTAL_LICENSES unset or invalid: a fixed 7, not a live count',
+      async () => {
+        const saved = process.env.ZOOM_TOTAL_LICENSES;
+        try {
+          process.env.ZOOM_TOTAL_LICENSES = '7';
+          const poolAt7 = await lic.getTransferableLicensePoolCount(db);
+          delete process.env.ZOOM_TOTAL_LICENSES;
+          report(
+            'unset: same pool as ZOOM_TOTAL_LICENSES=7',
+            (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
+            `pool ${poolAt7}`,
+          );
+          for (const bad of ['   ', 'abc', '0', '-3', '7.5']) {
+            process.env.ZOOM_TOTAL_LICENSES = bad;
+            report(
+              `"${bad}" falls back to 7`,
+              (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
+            );
+          }
+          process.env.ZOOM_TOTAL_LICENSES = '9';
+          report(
+            'a valid value is used as is',
+            (await lic.getTransferableLicensePoolCount(db)) === poolAt7 + 2,
+          );
+          // The pool doesn't move when the licence rows do (a sync marking
+          // rows inactive mid-run must not shrink it).
+          delete process.env.ZOOM_TOTAL_LICENSES;
+          const realCount = lic.getActiveLicensePoolCount;
+          lic.getActiveLicensePoolCount = async () => 0;
+          try {
+            report(
+              'unaffected by the licence rows',
+              (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
+            );
+          } finally {
+            lic.getActiveLicensePoolCount = realCount;
+          }
+        } finally {
+          if (saved === undefined) delete process.env.ZOOM_TOTAL_LICENSES;
+          else process.env.ZOOM_TOTAL_LICENSES = saved;
+        }
+      },
+    );
+
+    await section('R10. Licence-transfer lock', async () => {
+      const other = new Client(ConfigIndex.database);
+      await other.connect();
+      try {
+        // Another server is in the middle of a transfer.
+        await other.query('BEGIN');
+        await other.query(
+          `SELECT pg_advisory_xact_lock(hashtext('zuvy_zoom_license_transfer'))`,
+        );
+        const started = Date.now();
+        await expectRefused(
+          'a transfer waiting too long gives up with a clear message',
+          () => lic.withLicenceTransferLock(async () => 'ran', 3000),
+          /busy being moved between accounts/,
+        );
+        const secs = (Date.now() - started) / 1000;
+        report(
+          'it gave up after about the limit',
+          secs >= 2.5 && secs < 10,
+          `${secs.toFixed(1)}s`,
+        );
+        const waiting = lic.withLicenceTransferLock(async () => 'ran', 20_000);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await other.query('COMMIT');
+        report(
+          'it goes ahead once the other server finishes',
+          (await waiting) === 'ran',
+        );
+      } finally {
+        await other.query('ROLLBACK').catch(() => undefined);
+        await other.end();
+      }
+
+      // Queued in memory behind a slow transfer: the wait is bounded, queue
+      // included. It gives up at its limit and its transfer never runs; the
+      // queue keeps working for the next one.
+      let queuedRan = false;
+      const queueStarted = Date.now();
+      const slow = lic.withLicenceTransferLock(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        return 'slow';
+      }, 30_000);
+      const queued = lic.withLicenceTransferLock(async () => {
+        queuedRan = true;
+        return 'queued';
+      }, 1000);
+      const queuedOutcome = await queued.then(
+        () => 'ran',
+        (error: any) => error.message,
+      );
+      const queuedSecs = (Date.now() - queueStarted) / 1000;
+      report(
+        'a queued transfer gives up at its limit, not when the queue clears',
+        /busy being moved/.test(queuedOutcome) && queuedSecs < 2.5,
+        `${queuedOutcome} after ${queuedSecs.toFixed(1)}s`,
+      );
+      report('the slow transfer ahead still finishes', (await slow) === 'slow');
+      report('the one that gave up never ran', queuedRan === false);
+      report(
+        'the queue still works afterwards',
+        (await lic.withLicenceTransferLock(async () => 'next', 5000)) ===
+          'next',
+      );
+
+      // The transfer finishes, then its lock connection is lost before the
+      // lock's transaction ends: the transfer is still reported done.
+      let killed = 0;
+      let lostResult: any = null;
+      let lostError: string | null = null;
+      try {
+        lostResult = await lic.withLicenceTransferLock(async () => {
+          const holder = await db.execute(sql`
+            SELECT pid FROM pg_stat_activity
+            WHERE usename = current_user AND pid <> pg_backend_pid()
+              AND state LIKE 'idle in transaction%'
+              AND query ILIKE '%idle_in_transaction_session_timeout%'`);
+          for (const row of holder.rows) {
+            await db.execute(sql`SELECT pg_terminate_backend(${row.pid}::int)`);
+            killed += 1;
+          }
+          return 'transferred';
+        });
+      } catch (error: any) {
+        lostError = error.message;
+      }
+      report(
+        'lock connection lost after the transfer: still reported done',
+        killed === 1 && lostResult === 'transferred',
+        lostError ?? `killed ${killed}, result ${lostResult}`,
+      );
+      report(
+        'the app keeps working after that connection was cut',
+        (await db.execute(sql`SELECT 1 AS one`)).rows[0].one === 1,
+      );
+
+      const open = await db.execute(
+        sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = current_user AND state LIKE 'idle in transaction%'`,
+      );
+      report(
+        'no transaction left open afterwards',
+        open.rows[0].n === 0,
+        `${open.rows[0].n}`,
+      );
+    });
+
+    await section(
+      'R5. Clean-up script waits for a booking in progress',
+      async () => {
+        const d = nextDay();
+        const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
+        await legacyHold(slot);
+        const booker = new Client(ConfigIndex.database);
+        await booker.connect();
+        let scriptOut = '';
+        try {
+          // A booking under way: slot row locked, booking row not committed yet.
+          await booker.query('BEGIN');
+          await booker.query(
+            'SELECT id FROM main.zuvy_mentor_slot_availability WHERE id = $1 FOR UPDATE',
+            [slot.id],
+          );
+          const inserted = await booker.query(
+            `INSERT INTO main.zuvy_mentor_slot_booking (slot_availability_id, student_user_id, mentor_user_id, organization_id, status, session_lifecycle_state, meeting_link, confirmed_at)
+           VALUES ($1, $2, $3, $4, 'confirmed', 'SCHEDULED', 'https://zoom.invalid/fixture', now()) RETURNING id`,
+            [slot.id, secondStudent, MENTOR, mgmt.organizationId],
+          );
+          bookingIds.push(Number(inserted.rows[0].id));
+          const { exec } = require('child_process');
+          const script = new Promise<string>((resolve) =>
+            exec(
+              `npx ts-node -r tsconfig-paths/register --transpile-only scripts/release-unbooked-mentor-slot-licences.ts --apply --slot-ids=${slot.id}`,
+              { timeout: 300_000 },
+              (_e: any, out: string, err: string) => resolve(`${out}${err}`),
+            ),
+          );
+          // Commit only once the script is waiting on the locked slot row.
+          let waited = false;
+          for (let i = 0; i < 240 && !waited; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const w =
+              await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE usename = current_user AND wait_event_type = 'Lock' AND query ILIKE '%zuvy_mentor_slot_availability%for update%'`);
+            waited = w.rows[0].n > 0;
+          }
+          report('the script waited for the booking in progress', waited);
+          await booker.query('COMMIT');
+          scriptOut = await script;
+        } finally {
+          await booker.query('ROLLBACK').catch(() => undefined);
+          await booker.end();
+        }
+        report(
+          'the hold of the slot booked meanwhile is kept',
+          (await holdsFor(slot.id)).length === 1,
+        );
+        report(
+          'the script removed nothing',
+          /Removed 0 licence hold\(s\)/.test(scriptOut),
+          scriptOut
+            .split('\n')
+            .filter((l) => /hold\(s\)/.test(l))
+            .join(' / '),
+        );
+      },
+    );
+
+    await section(
+      'R6. Slot creation, booking and classes use the same capacity',
+      async () => {
+        const saved = process.env.ZOOM_TOTAL_LICENSES;
+        const protectedSeats = Number(
+          (
+            await db.execute(
+              sql`SELECT count(*)::int AS n FROM main.zuvy_user_licenses WHERE is_protected AND status = 'active' AND license_type = 2`,
+            )
+          ).rows[0].n,
+        );
+        // A pool configured smaller than the real licences, as dev's default
+        // is: the real licences count (classes get them anyway).
+        process.env.ZOOM_TOTAL_LICENSES = String(protectedSeats + 2);
+        try {
+          const d = nextDay();
+          await filler(0, at(d, '10:00'), at(d, '11:00'));
+          await filler(1, at(d, '10:00'), at(d, '11:00'));
+          const fits = await createSlot(at(d, '10:00'), at(d, '10:30'));
+          report(
+            'configured pool full but real licences free: slot allowed',
+            !!fits?.id,
+          );
+          report(
+            'capacity is the real licence count',
+            (
+              await lic.checkLicenseAvailability(
+                db,
+                {
+                  instructorId: hosts[N + 1].id,
+                  startTime: at(d, '13:00'),
+                  endTime: at(d, '13:30'),
+                },
+                { lock: false },
+              )
+            ).poolSize === N,
+          );
+
+          const e = nextDay();
+          for (let i = 0; i < N; i++)
+            await filler(i, at(e, '10:00'), at(e, '11:00'));
+          await expectRefused(
+            'slot refused once every real licence is in use',
+            () => createSlot(at(e, '10:00'), at(e, '10:30')),
+            /No Zoom licence is free/,
+          );
+          const classResult = await allocate(
+            db,
+            hosts[N + 13].id,
+            at(e, '10:00'),
+            at(e, '10:30'),
+          ).then(
+            (id: number) => `picked ${id}`,
+            (error: any) => error.message,
+          );
+          report(
+            '... and a class is refused at the same point',
+            !/^picked/.test(classResult),
+            classResult,
+          );
+
+          const g = nextDay();
+          for (let i = 0; i < N - 1; i++)
+            await filler(i, at(g, '10:00'), at(g, '11:00'));
+          const slot = await createSlot(at(g, '10:00'), at(g, '10:30'));
+          await restoreStudentMetrics();
+          const booked = await svc.bookSlot(STUDENT, slot.id);
+          bookingIds.push(booked.id);
+          report(
+            'a slot that passed creation can be booked (last licence)',
+            !!booked?.id,
+          );
+        } finally {
+          if (saved === undefined) delete process.env.ZOOM_TOTAL_LICENSES;
+          else process.env.ZOOM_TOTAL_LICENSES = saved;
+        }
+      },
+    );
+
+    await section('R7. Recurring slots: one batch check', async () => {
+      const d = nextDay();
+      dayCounter += 25;
+      const rule = (start: Date, count: number) =>
+        `DTSTART:${iso(start).replace(/[-:]/g, '').slice(0, 15)}Z\nRRULE:FREQ=DAILY;COUNT=${count}`;
+      await fillPool(at(d + 3, '18:00'), at(d + 3, '19:00'));
+      await fillPool(at(d + 7, '18:00'), at(d + 7, '19:00'));
+      const started = Date.now();
+      await expectRefused(
+        '20 daily slots, 2 days full: refused listing exactly those 2',
+        () =>
+          recurrence.generateRecurringSlots(
+            {
+              mentorSlotManagementId: mgmt.id,
+              slotStart: at(d, '18:15'),
+              slotEnd: at(d, '18:45'),
+              recurrenceRule: rule(at(d, '18:15'), 20),
+              recurrenceEndDate: at(d + 21, '00:00'),
+            },
+            MENTOR,
+          ),
+        /No Zoom licence is free for 2 of these slot times/,
+      );
+      const secs = (Date.now() - started) / 1000;
+      report(
+        'the whole check is quick (one load, not one per slot)',
+        secs < 15,
+        `${secs.toFixed(1)}s`,
+      );
+      const e = d + 22;
+      await recurrence.generateRecurringSlots(
+        {
+          mentorSlotManagementId: mgmt.id,
+          slotStart: at(e, '18:15'),
+          slotEnd: at(e, '18:45'),
+          recurrenceRule: rule(at(e, '18:15'), 3),
+          recurrenceEndDate: at(e + 3, '00:00'),
+        },
+        MENTOR,
+      );
+      const made = [
+        ...(await slotsInDay(e)),
+        ...(await slotsInDay(e + 1)),
+        ...(await slotsInDay(e + 2)),
+      ];
+      report(
+        'when all times are free, all are created',
+        made.length === 3,
+        `${made.length}`,
+      );
+    });
+
     await section('H. Clean-up script', async () => {
       const d = nextDay();
       const unbooked = await createSlot(at(d, '10:00'), at(d, '10:30'));
@@ -2543,6 +3496,9 @@ async function main() {
     console.log(
       `Removed ${allSlotIds.length} slot(s), ${fillerIds.length} filler hold(s), ${allBookingIds.length} booking(s), ${classSessionIds.length} class session(s).`,
     );
+    if (savedTotalLicences === undefined)
+      delete process.env.ZOOM_TOTAL_LICENSES;
+    else process.env.ZOOM_TOTAL_LICENSES = savedTotalLicences;
     await app.close();
   }
 

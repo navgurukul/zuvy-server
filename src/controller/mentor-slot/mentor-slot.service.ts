@@ -51,6 +51,11 @@ import { ZoomService } from 'src/services/zoom/zoom.service';
 import { NotificationEmailService } from 'src/notification/email/email.service';
 import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 
+// A booking still without its join link this long after it was made is
+// treated as abandoned between bookSlot's steps: the abandoned-booking job
+// releases it, and it can't be rescheduled.
+export const ABANDONED_BOOKING_MINUTES = 15;
+
 @Injectable()
 export class MentorSlotService {
   private readonly logger = new Logger(MentorSlotService.name);
@@ -1133,6 +1138,29 @@ export class MentorSlotService {
         meetingId: zoomResponse.data.id.toString(),
       };
 
+      // A booking without a join link is useless to the student, and a saved
+      // booking with no link is what the abandoned-booking job looks for, so
+      // treat a missing link as a failed Zoom step.
+      if (!meeting.joinUrl) {
+        throw new Error('Zoom did not return a join link for the meeting');
+      }
+
+      // Record the meeting id on the booking at once (the booking is only
+      // complete once step 3 saves the join link). If this request dies
+      // before step 3, the abandoned-booking job finds the id here and
+      // deletes the meeting along with the booking.
+      await db
+        .update(zuvyMentorSlotBooking)
+        .set({ zoomMeetingId: meeting.meetingId } as Partial<
+          typeof zuvyMentorSlotBooking.$inferInsert
+        >)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.id, createdBooking.id),
+            eq(zuvyMentorSlotBooking.status, 'confirmed'),
+          ),
+        );
+
       // Fetch UUID explicitly
       const meetingDetails = await this.zoomService.getMeeting(
         meeting.meetingId,
@@ -1226,11 +1254,37 @@ export class MentorSlotService {
       this.logger.error(
         `Saving the Zoom meeting for booking ${createdBooking.id} failed: ${error.message}`,
       );
-      await this.deleteZoomMeetingQuietly(meeting.meetingId, createdBooking.id);
-      await this.undoReservedBooking(reserved);
-      throw new BadRequestException(
-        'Unable to schedule session at the moment. Please try again later.',
+      // The error may have come after the COMMIT reached the database (the
+      // acknowledgement was lost). Look before deleting anything.
+      const outcome = await this.readStep3Outcome(
+        createdBooking.id,
+        meeting.meetingId,
+        BigInt(studentId),
       );
+      if (outcome.state === 'saved') {
+        // Step 3 did commit: the booking is complete.
+        saved = { cancelled: false, metrics: outcome.metrics };
+      } else if (outcome.state === 'not-saved') {
+        await this.deleteZoomMeetingQuietly(
+          meeting.meetingId,
+          createdBooking.id,
+        );
+        await this.undoReservedBooking(reserved);
+        throw new BadRequestException(
+          'Unable to schedule session at the moment. Please try again later.',
+        );
+      } else {
+        // Can't tell (the database is unreachable). Keep the meeting: if the
+        // booking was saved it needs it; if not, the abandoned-booking job
+        // undoes the booking later and deletes the meeting, whose id was
+        // recorded on the booking right after Zoom created it.
+        this.logger.error(
+          `Booking ${createdBooking.id}: could not tell whether its Zoom meeting ${meeting.meetingId} was saved; left for the abandoned-booking job.`,
+        );
+        throw new BadRequestException(
+          'Unable to schedule session at the moment. Please try again later.',
+        );
+      }
     }
 
     if (saved.cancelled) {
@@ -1328,6 +1382,46 @@ export class MentorSlotService {
     return bookingResponse;
   }
 
+  /**
+   * After step 3 of bookSlot failed: did its transaction commit anyway? The
+   * booking carries this meeting only if it did.
+   */
+  private async readStep3Outcome(
+    bookingId: number,
+    meetingId: string | undefined,
+    studentUserId: bigint,
+  ): Promise<
+    | { state: 'saved'; metrics: any }
+    | { state: 'not-saved' }
+    | { state: 'unknown' }
+  > {
+    try {
+      const [row] = await db
+        .select({
+          zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+          meetingLink: zuvyMentorSlotBooking.meetingLink,
+        })
+        .from(zuvyMentorSlotBooking)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId))
+        .limit(1);
+      if (
+        row?.meetingLink &&
+        row.zoomMeetingId &&
+        row.zoomMeetingId === meetingId
+      ) {
+        const [metrics] = await db
+          .select()
+          .from(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
+          .limit(1);
+        return { state: 'saved', metrics };
+      }
+      return { state: 'not-saved' };
+    } catch {
+      return { state: 'unknown' };
+    }
+  }
+
   private isNoLicenceError(error: any) {
     return (
       error instanceof BadRequestException &&
@@ -1389,27 +1483,38 @@ export class MentorSlotService {
   }
 
   /**
-   * Undoes step 1 of bookSlot after the Zoom step failed: removes the
-   * booking and gives back the slot seat, the licence and the credit. If the
-   * booking was cancelled meanwhile, cancelBooking already did this.
+   * Undoes step 1 of bookSlot after the Zoom step failed (or never finished):
+   * removes the booking and gives back the slot seat, the licence and the
+   * credit. Does nothing if the booking was cancelled meanwhile
+   * (cancelBooking already did this) or is complete by now (step 3 saved its
+   * join link). Returns whether it undid the booking, and the Zoom meeting
+   * id recorded on it, if any, for the caller to delete.
    */
   private async undoReservedBooking(reserved: {
     createdBooking: any;
     slot: any;
     metricsBefore: Record<string, any> | null;
     metricsWritten: Record<string, any> | null;
-  }) {
+  }): Promise<{ undone: boolean; zoomMeetingId: string | null }> {
+    const notUndone = { undone: false, zoomMeetingId: null };
     const bookingId = reserved.createdBooking.id as number;
     const studentUserId = BigInt(reserved.createdBooking.studentUserId);
     try {
-      await db.transaction(async (trx) => {
+      return await db.transaction(async (trx) => {
         const [booking] = await trx
-          .select({ status: zuvyMentorSlotBooking.status })
+          .select({
+            status: zuvyMentorSlotBooking.status,
+            slotAvailabilityId: zuvyMentorSlotBooking.slotAvailabilityId,
+            zoomMeetingId: zuvyMentorSlotBooking.zoomMeetingId,
+            meetingLink: zuvyMentorSlotBooking.meetingLink,
+          })
           .from(zuvyMentorSlotBooking)
           .where(eq(zuvyMentorSlotBooking.id, bookingId))
           .for('update');
 
-        if (!booking || booking.status === 'cancelled') return;
+        if (!booking || booking.status === 'cancelled') return notUndone;
+        if (booking.meetingLink) return notUndone;
+        const slotId = booking.slotAvailabilityId;
 
         await trx
           .delete(zuvyMentorSlotBooking)
@@ -1421,9 +1526,9 @@ export class MentorSlotService {
             currentBookedCount: sql`GREATEST(${zuvyMentorSlotAvailability.currentBookedCount} - 1, 0)`,
             status: sql`CASE WHEN ${zuvyMentorSlotAvailability.status} = 'full' THEN 'available' ELSE ${zuvyMentorSlotAvailability.status} END`,
           } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
-          .where(eq(zuvyMentorSlotAvailability.id, reserved.slot.id));
+          .where(eq(zuvyMentorSlotAvailability.id, slotId));
 
-        await this.releaseSlotLicenceIfUnbooked(trx, reserved.slot.id);
+        await this.releaseSlotLicenceIfUnbooked(trx, slotId);
 
         await this.undoStudentCredit(
           trx,
@@ -1431,12 +1536,78 @@ export class MentorSlotService {
           reserved.metricsBefore,
           reserved.metricsWritten,
         );
+        return {
+          undone: true,
+          zoomMeetingId: booking.zoomMeetingId ?? null,
+        };
       });
     } catch (error: any) {
       this.logger.error(
-        `Could not undo booking ${bookingId} after its Zoom step failed. The booking, its slot seat, licence or credit may need fixing by hand: ${error.message}`,
+        `Could not undo booking ${bookingId} after its Zoom step failed. Left for the abandoned-booking job (releaseAbandonedBookings) to retry: ${error.message}`,
       );
+      return notUndone;
     }
+  }
+
+  /**
+   * Bookings stuck between step 1 and step 3 of bookSlot: confirmed, but with
+   * no join link long after they were made (the app restarted while Zoom was
+   * being called, or the undo itself failed). Each is undone exactly like a
+   * failed Zoom step: booking removed, seat, licence and credit given back.
+   * Run by MentorSlotJob. Safe to run on several servers at once: each undo
+   * re-checks the booking under a row lock.
+   */
+  async releaseAbandonedBookings(
+    olderThanMinutes = ABANDONED_BOOKING_MINUTES,
+  ): Promise<number> {
+    const now = Date.now();
+    const stuck = await db
+      .select({
+        id: zuvyMentorSlotBooking.id,
+        slotAvailabilityId: zuvyMentorSlotBooking.slotAvailabilityId,
+        studentUserId: zuvyMentorSlotBooking.studentUserId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.status, 'confirmed'),
+          isNull(zuvyMentorSlotBooking.meetingLink),
+          isNull(zuvyMentorSlotBooking.googleEventId),
+          lt(
+            zuvyMentorSlotBooking.bookedAt,
+            new Date(now - olderThanMinutes * 60_000),
+          ),
+          // Bounded look-back. Bookings made before this change can't
+          // match: that code saved the booking and its meeting in one
+          // transaction, so a saved booking always had its join link.
+          gt(
+            zuvyMentorSlotBooking.bookedAt,
+            new Date(now - 7 * 24 * 60 * 60_000),
+          ),
+        ),
+      )
+      .limit(100);
+
+    let released = 0;
+    for (const booking of stuck) {
+      const { undone, zoomMeetingId } = await this.undoReservedBooking({
+        createdBooking: booking,
+        slot: { id: booking.slotAvailabilityId },
+        metricsBefore: null,
+        metricsWritten: null,
+      });
+      if (undone) {
+        released += 1;
+        await this.deleteZoomMeetingQuietly(
+          zoomMeetingId ?? undefined,
+          booking.id,
+        );
+        this.logger.warn(
+          `Released abandoned booking ${booking.id} (no Zoom meeting ${olderThanMinutes}+ minutes after booking).`,
+        );
+      }
+    }
+    return released;
   }
 
   /**
@@ -1753,6 +1924,23 @@ export class MentorSlotService {
 
     if (booking.slotAvailabilityId === newSlotId) {
       throw new BadRequestException('Cannot reschedule to the same slot.');
+    }
+
+    // No join link yet: still between booking steps, or abandoned there (the
+    // abandoned-booking job releases it after ABANDONED_BOOKING_MINUTES).
+    // Moving it would leave the meeting at the old time, or move a booking
+    // that has no meeting.
+    if (booking.isZoomMeet && !booking.meetingLink && !booking.googleEventId) {
+      // No booking time recorded: it can't be a booking in progress.
+      const stillSettingUp =
+        !!booking.bookedAt &&
+        Date.now() - new Date(booking.bookedAt).getTime() <
+          ABANDONED_BOOKING_MINUTES * 60_000;
+      throw new BadRequestException(
+        stillSettingUp
+          ? 'This session is still being set up. Please try again in a minute.'
+          : "This session's meeting was never set up, so it can't be rescheduled. Please cancel it and book again.",
+      );
     }
 
     // Only a session that hasn't happened yet can be rescheduled. Without

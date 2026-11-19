@@ -14,7 +14,6 @@ import {
   blacklistedTokens,
   zuvyUserRolesAssigned,
   zuvyUserRoles,
-  userTokens,
   zuvyOrganizations,
   zuvyUserOrganizations,
   zuvyPermissions,
@@ -545,7 +544,13 @@ export class AuthService {
     }
   }
 
-  async logout(userId: bigint, token: string) {
+  // `token`: the caller's own token, if any. `otherTokens`: more tokens to
+  // revoke (e.g. a refresh token the caller already looked up).
+  async logout(
+    userId: bigint,
+    token?: string,
+    ...otherTokens: Array<string | null | undefined>
+  ) {
     try {
       // Global Logout: Invalidate all tokens for the user across all organizations
 
@@ -560,8 +565,10 @@ export class AuthService {
 
       const tokensToBlacklist = [];
 
-      // Add the current token just in case
-      tokensToBlacklist.push(token);
+      // Add the current token (and any others given) just in case
+      for (const t of [token, ...otherTokens]) {
+        if (t) tokensToBlacklist.push(t);
+      }
 
       for (const session of activeSessions) {
         if (session.accessToken) tokensToBlacklist.push(session.accessToken);

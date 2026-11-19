@@ -17,11 +17,15 @@ import {
   sql,
   lt,
   gt,
+  exists,
   notExists,
   notInArray,
+  inArray,
 } from 'drizzle-orm';
 import { ZoomService } from '../../services/zoom/zoom.service';
 import {
+  LICENSE_POOL_LOCK_KEY,
+  LICENSE_TRANSFER_LOCK_KEY,
   ZOOM_LICENSE_COOLDOWN_MS,
   buildZoomLicenseCooldownIntervalSql,
 } from '../../common/constants/zoom-license.constants';
@@ -31,10 +35,14 @@ import {
   peakConcurrentLicenses,
 } from './license-usage.util';
 
-// Key for the transaction-level advisory lock that serialises every licence
-// allocation (classes, mentor bookings, mentor slot checks), so two
-// allocations can never both see the last free licence.
-const LICENSE_POOL_LOCK_KEY = 'zuvy_zoom_license_pool';
+// Total Zoom licences assumed when ZOOM_TOTAL_LICENSES is not set (the value
+// this code has always used).
+const DEFAULT_TOTAL_LICENSES = 7;
+
+// How long the licence-transfer lock may be held while its Zoom calls run.
+// The lock's transaction sits idle meanwhile, so it needs more than the
+// pool's general idle-in-transaction limit; past this the server ends it.
+const TRANSFER_LOCK_MAX_HOLD_MS = 10 * 60 * 1000;
 
 export interface LicenseAvailability {
   available: boolean;
@@ -49,6 +57,11 @@ export interface LicenseAvailability {
 export class ZoomLicenseService {
   private readonly logger = new Logger(ZoomLicenseService.name);
   private readonly licenseCooldownMs = ZOOM_LICENSE_COOLDOWN_MS;
+  // In-process queue in front of the licence-transfer lock: transfers from
+  // this server wait here in memory, so only one of them at a time polls the
+  // database lock (which still serialises transfers across servers).
+  private transferQueue: Promise<unknown> = Promise.resolve();
+  private warnedTotalLicencesDefault = false;
 
   constructor(private readonly zoomService: ZoomService) {}
 
@@ -65,9 +78,29 @@ export class ZoomLicenseService {
     );
   }
 
-  private getConfiguredTotalLicenseCount() {
-    const configured = Number(process.env.ZOOM_TOTAL_LICENSES || 7);
-    return Number.isFinite(configured) && configured > 0 ? configured : 7;
+  /**
+   * Total Zoom licences in the account, protected ones included, as
+   * configured: ZOOM_TOTAL_LICENSES when set to a positive whole number,
+   * otherwise 7 (as before). A missing or invalid value is logged once.
+   * It is the floor of the shared pool; getSharedPoolCapacity raises it to
+   * the real licence rows when Zoom has more (it never shrinks with them,
+   * since the rows change while a sync or a transfer runs).
+   */
+  private getTotalLicenceCount(): number {
+    const raw = (process.env.ZOOM_TOTAL_LICENSES || '').trim();
+    const configured = Number(raw);
+    if (raw && Number.isInteger(configured) && configured > 0) {
+      return configured;
+    }
+    if (!this.warnedTotalLicencesDefault) {
+      this.warnedTotalLicencesDefault = true;
+      this.logger.warn(
+        raw
+          ? `ZOOM_TOTAL_LICENSES="${raw}" is not a positive whole number; assuming ${DEFAULT_TOTAL_LICENSES} Zoom licences.`
+          : `ZOOM_TOTAL_LICENSES is not set; assuming ${DEFAULT_TOTAL_LICENSES} Zoom licences. Set it to the account's real total (protected included).`,
+      );
+    }
+    return DEFAULT_TOTAL_LICENSES;
   }
 
   private async getInstructorEmail(trx: any, instructorId: number) {
@@ -259,10 +292,11 @@ export class ZoomLicenseService {
   }
 
   /**
-   * How many licences can be in use at once for a booking in this pool: the
-   * larger of the active transferable licences and the configured pool size
-   * (assignLicense can hand out either a free licence or a shared pool seat).
-   * A protected instructor has a pool of one: their own seat.
+   * How many licences can be in use at once in this pool: the configured
+   * transferable pool size (ZOOM_TOTAL_LICENSES minus protected licences),
+   * the same number booking and class admission check against. Using one
+   * capacity everywhere is what makes a slot that passed the creation check
+   * bookable later. A protected instructor has a pool of one: their own seat.
    */
   private async getBookingCapacity(
     trx: any,
@@ -273,15 +307,29 @@ export class ZoomLicenseService {
       ? protectedEmails.has(instructorEmail)
       : false;
     if (instructorIsProtected) return { capacity: 1, instructorIsProtected };
-    const poolSize = await this.getTransferableLicensePoolCount(trx);
-    const activeLicences = await this.getActiveLicensePoolCount(trx, {
-      instructorEmail: instructorEmail ?? '',
-      protectedEmails,
-    });
     return {
-      capacity: Math.max(poolSize, activeLicences),
+      capacity: await this.getSharedPoolCapacity(trx, protectedEmails),
       instructorIsProtected,
     };
+  }
+
+  /**
+   * Licences non-protected hosts can use at once: the configured pool
+   * (ZOOM_TOTAL_LICENSES minus protected), or the active non-protected
+   * licence rows when Zoom has more. assignLicense hands out any free licence
+   * row, so every check counts the same number; the configured value is a
+   * floor that a sync briefly emptying the rows can't push below.
+   */
+  private async getSharedPoolCapacity(
+    trx: any,
+    protectedEmails: Set<string>,
+  ): Promise<number> {
+    const configured = await this.getTransferableLicensePoolCount(trx);
+    const activeRows = await this.getActiveLicensePoolCount(trx, {
+      instructorEmail: '',
+      protectedEmails,
+    });
+    return Math.max(configured, activeRows);
   }
 
   /**
@@ -324,15 +372,16 @@ export class ZoomLicenseService {
   private async getPoolSizeForInstructor(
     trx: any,
     instructorEmail: string | null,
+    preloadedProtectedEmails?: Set<string>,
   ): Promise<{ poolSize: number; instructorIsProtected: boolean }> {
-    const protectedEmails = await this.getProtectedLicenseEmails(trx);
-    const instructorIsProtected = instructorEmail
-      ? protectedEmails.has(instructorEmail)
-      : false;
-    const poolSize = instructorIsProtected
-      ? 1
-      : await this.getTransferableLicensePoolCount(trx);
-    return { poolSize, instructorIsProtected };
+    const protectedEmails =
+      preloadedProtectedEmails ?? (await this.getProtectedLicenseEmails(trx));
+    const { capacity, instructorIsProtected } = await this.getBookingCapacity(
+      trx,
+      instructorEmail,
+      protectedEmails,
+    );
+    return { poolSize: capacity, instructorIsProtected };
   }
 
   /**
@@ -344,12 +393,20 @@ export class ZoomLicenseService {
     trx: any,
     dto: { startTime: Date; endTime: Date },
     instructorEmail: string | null,
+    preloaded: { protectedEmails?: Set<string>; poolSize?: number } = {},
   ): Promise<{ fits: boolean; poolSize: number; peakInUse: number }> {
     const hostKey = (instructorEmail || '').toLowerCase();
-    const { poolSize } = await this.getPoolSizeForInstructor(
-      trx,
-      hostKey || null,
-    );
+    const protectedEmails =
+      preloaded.protectedEmails ?? (await this.getProtectedLicenseEmails(trx));
+    const poolSize =
+      preloaded.poolSize ??
+      (
+        await this.getPoolSizeForInstructor(
+          trx,
+          hostKey || null,
+          protectedEmails,
+        )
+      ).poolSize;
     // Up to the end of the new session's cooldown: its licence is busy
     // until then, so sessions starting in that tail count too.
     const busyUntil = this.getBufferedEndTime(dto.endTime);
@@ -357,6 +414,7 @@ export class ZoomLicenseService {
       trx,
       { from: dto.startTime, to: busyUntil },
       hostKey || null,
+      protectedEmails,
     );
     const window = { start: dto.startTime, end: busyUntil };
 
@@ -450,7 +508,7 @@ export class ZoomLicenseService {
   }
 
   async getTransferableLicensePoolCount(trx: any = db): Promise<number> {
-    const total = this.getConfiguredTotalLicenseCount();
+    const total = this.getTotalLicenceCount();
     const protectedSeats = await this.getProtectedSeatReservationCount(trx);
     return Math.max(total - protectedSeats, 0);
   }
@@ -462,15 +520,19 @@ export class ZoomLicenseService {
     instructorEmail: string | null,
     context: string,
   ) {
-    const totalLicenses = this.getConfiguredTotalLicenseCount();
+    const totalLicenses = this.getTotalLicenceCount();
     const protectedLicenses = await this.getProtectedSeatReservationCount(trx);
-    const transferableLicenses = Math.max(totalLicenses - protectedLicenses, 0);
+    const protectedEmails = await this.getProtectedLicenseEmails(trx);
+    // The same shared-pool capacity the checks use.
+    const transferableLicenses = await this.getSharedPoolCapacity(
+      trx,
+      protectedEmails,
+    );
     const usedLicenses = await this.getOverlappingAssignmentCountForPool(
       trx,
       dto,
       instructorEmail,
     );
-    const protectedEmails = await this.getProtectedLicenseEmails(trx);
     const instructorIsProtected = instructorEmail
       ? protectedEmails.has(instructorEmail)
       : false;
@@ -660,19 +722,66 @@ export class ZoomLicenseService {
                 and(
                   this.blockingAssignmentCondition(),
                   eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
-                  sql`${licenseAssignments.startTime} < ${dto.endTime}`,
-                  sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
-                  // The same host's session that ends before this one starts
-                  // (only its cooldown overlaps) runs on the same licence, so
-                  // it doesn't make the licence busy for this host.
-                  sql`NOT (${licenseAssignments.instructorId} = ${dto.instructorId} AND ${licenseAssignments.endTime} <= ${dto.startTime})`,
+                  // Until the end of the new session's own cooldown.
+                  this.assignmentWithinCooldownOf(dto, 'overlapping'),
+                  // The same host's sessions right before or after this one
+                  // (only a cooldown overlaps) run on the same licence, so
+                  // they don't make the licence busy for this host.
+                  sql`NOT (${licenseAssignments.instructorId} = ${dto.instructorId} AND (${licenseAssignments.endTime} <= ${dto.startTime} OR ${licenseAssignments.startTime} >= ${dto.endTime}))`,
                 ),
               ),
           ),
         ),
       )
+      // Prefer the licence this host uses right before or after, so the
+      // host's back-to-back sessions really share one licence (the pool
+      // count assumes they do), then a stable order.
+      .orderBy(
+        sql`CASE WHEN ${exists(
+          db
+            .select({ one: sql`1` })
+            .from(licenseAssignments)
+            .leftJoin(
+              zuvySessions,
+              eq(licenseAssignments.sessionId, zuvySessions.id),
+            )
+            .where(
+              and(
+                // Only assignments that really hold the licence (not a
+                // merged or Google Meet class).
+                this.blockingAssignmentCondition(),
+                eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
+                eq(licenseAssignments.instructorId, dto.instructorId),
+                this.assignmentWithinCooldownOf(dto, 'touching'),
+              ),
+            ),
+        )} THEN 0 ELSE 1 END`,
+        zuvyUserLicenses.id,
+      )
       .limit(1)
       .for('update');
+  }
+
+  /**
+   * Licence assignments within one cooldown of the window: 'overlapping'
+   * (they would share the licence at some moment, cooldowns included) or
+   * 'touching' (also counts ones that end or start exactly at that edge, for
+   * finding a host's back-to-back sessions).
+   */
+  private assignmentWithinCooldownOf(
+    dto: { startTime: Date; endTime: Date },
+    mode: 'overlapping' | 'touching',
+  ) {
+    const cooldown = buildZoomLicenseCooldownIntervalSql();
+    return mode === 'overlapping'
+      ? and(
+          sql`${licenseAssignments.startTime} < ${dto.endTime}::timestamptz + ${cooldown}`,
+          sql`${licenseAssignments.endTime} + ${cooldown} > ${dto.startTime}`,
+        )
+      : and(
+          sql`${licenseAssignments.startTime} <= ${dto.endTime}::timestamptz + ${cooldown}`,
+          sql`${licenseAssignments.endTime} + ${cooldown} >= ${dto.startTime}`,
+        );
   }
 
   async getActiveLicensePoolCount(
@@ -714,11 +823,7 @@ export class ZoomLicenseService {
     return Number(totalLicenseCount[0]?.count || 0);
   }
 
-  /**
-   * `executor`: the caller's transaction when called inside one (assignLicense),
-   * so these writes don't need a second pooled connection.
-   */
-  async syncLicensedUsersFromZoom(executor: any = db) {
+  async syncLicensedUsersFromZoom() {
     const zoomUsers = await this.zoomService.listAuthorizedUsers({
       status: 'active',
       hostType: 'all',
@@ -741,16 +846,13 @@ export class ZoomLicenseService {
       .filter((email): email is string => Boolean(email));
 
     for (const user of activeZoomUsers) {
-      await this.zoomService.syncZoomLicenseUser(
-        {
-          email: user.email,
-          zoomUserId: user.id,
-          userName: user.displayName || user.name || user.email,
-          licenseType: user.userType,
-          status: user.status,
-        },
-        executor,
-      );
+      await this.zoomService.syncZoomLicenseUser({
+        email: user.email,
+        zoomUserId: user.id,
+        userName: user.displayName || user.name || user.email,
+        licenseType: user.userType,
+        status: user.status,
+      });
     }
 
     const staleUserCondition = activeZoomEmails.length
@@ -772,7 +874,7 @@ export class ZoomLicenseService {
         )
       : this.alwaysTrueCondition();
 
-    await executor
+    await db
       .update(zuvyUserLicenses)
       .set({
         licenseType: 1,
@@ -782,7 +884,7 @@ export class ZoomLicenseService {
       } as any)
       .where(staleUserCondition);
 
-    await executor
+    await db
       .update(zuvyUserLicenses)
       .set({
         isProtected: false,
@@ -798,6 +900,30 @@ export class ZoomLicenseService {
   }
 
   /**
+   * Refreshes the licence rows from Zoom when they look empty: no active
+   * licence at all, or (for a protected instructor) none of their own. Call
+   * before opening the transaction that allocates a licence, never inside
+   * it: this is a Zoom HTTP call.
+   */
+  async ensureLicencePoolSynced(instructorEmail?: string | null) {
+    const email = (instructorEmail || '').trim().toLowerCase();
+    const protectedEmails = await this.getProtectedLicenseEmails();
+    const ownPoolEmpty =
+      email && protectedEmails.has(email)
+        ? (await this.getActiveLicensePoolCount(db, {
+            instructorEmail: email,
+            protectedEmails,
+          })) === 0
+        : false;
+    if (ownPoolEmpty || (await this.getActiveLicensePoolCount(db)) === 0) {
+      this.logger.warn(
+        'Active Zoom licence rows look empty in the DB. Syncing from Zoom before allocating.',
+      );
+      await this.syncLicensedUsersFromZoom();
+    }
+  }
+
+  /**
    * Internal method to find and reserve a license for a specific time range.
    * Should be called within a transaction.
    */
@@ -805,6 +931,9 @@ export class ZoomLicenseService {
     trx: any,
     dto: { instructorId: number; startTime: Date; endTime: Date },
   ): Promise<number> {
+    // No Zoom calls in here: callers refresh the licence rows from Zoom
+    // before opening their transaction (ensureLicencePoolSynced, or the full
+    // sync mentor flows run first).
     await this.lockLicensePool(trx);
 
     const instructorEmail = await this.getInstructorEmail(
@@ -817,7 +946,7 @@ export class ZoomLicenseService {
       : false;
     const transferablePoolCapacity = instructorIsProtected
       ? 1
-      : await this.getTransferableLicensePoolCount(trx);
+      : await this.getSharedPoolCapacity(trx, protectedEmails);
 
     if (!instructorIsProtected && transferablePoolCapacity <= 0) {
       throw new BadRequestException(
@@ -835,59 +964,24 @@ export class ZoomLicenseService {
     // Each overlapping Zoom session consumes one license. Even if the same
     // instructor already has another overlapping session, we must allocate a
     // distinct free license or reject the new session once the pool is exhausted.
-    let availableLicenses = await this.fetchAvailableLicenseIds(trx, {
+    const availableLicenses = await this.fetchAvailableLicenseIds(trx, {
       ...dto,
       instructorEmail,
     });
 
     if (availableLicenses.length === 0) {
-      let poolCapacity = transferablePoolCapacity;
-      let totalCount = instructorIsProtected
+      const poolCapacity = transferablePoolCapacity;
+      const totalCount = instructorIsProtected
         ? await this.getActiveLicensePoolCount(trx, {
             instructorEmail,
           })
         : poolCapacity;
-      if (totalCount === 0) {
-        this.logger.warn(
-          'Active Zoom license pool is empty in DB. Attempting one-time sync from Zoom before rejecting allocation.',
-        );
-        await this.syncLicensedUsersFromZoom(trx);
-        availableLicenses = await this.fetchAvailableLicenseIds(trx, {
-          ...dto,
-          instructorEmail,
-        });
-        totalCount = instructorIsProtected
-          ? await this.getActiveLicensePoolCount(trx, {
-              instructorEmail,
-            })
-          : await this.getTransferableLicensePoolCount(trx);
-        poolCapacity = instructorIsProtected ? 1 : Number(totalCount);
-
-        if (!instructorIsProtected && poolCapacity <= 0) {
-          throw new BadRequestException(
-            'No transferable Zoom Business licenses are available. All Business licenses are protected.',
-          );
-        }
-      }
-
-      if (availableLicenses.length > 0) {
-        const assignedLicenseId = availableLicenses[0].id as number;
-        this.logger.log(
-          `Recovered Zoom license allocation after pool sync. Assigned license ${assignedLicenseId} to instructor ${dto.instructorId}.`,
-        );
-        await this.logLicensePoolSnapshot(
-          trx,
-          dto,
-          instructorEmail,
-          'after-sync-recovery',
-        );
-        return assignedLicenseId;
-      }
 
       const { fits, peakInUse: usedCount } = await this.canFitInPool(
         trx,
         dto,
         instructorEmail,
+        { protectedEmails, poolSize: transferablePoolCapacity },
       );
 
       if (!instructorIsProtected && instructorEmail && fits) {
@@ -980,34 +1074,41 @@ export class ZoomLicenseService {
     return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
   }
 
-  private async isZoomEmailFreeForTimeRange(
-    email: string,
-    startTime: Date,
-    endTime: Date,
-    executor: any = db,
-  ) {
-    const overlapping = await executor
-      .select({ count: sql<number>`count(*)` })
+  /**
+   * Which of `emails` hold a licence (a blocking assignment, cooldown
+   * included) at any moment of any of `windows`.
+   */
+  private async findBusyEmails(
+    emails: string[],
+    windows: Array<{ startTime: Date; endTime: Date }>,
+  ): Promise<Set<string>> {
+    const normalizedEmail = sql<string>`lower(${users.email})`;
+    const rows = await db
+      .selectDistinct({ email: normalizedEmail })
       .from(licenseAssignments)
       .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
           this.blockingAssignmentCondition(),
-          eq(sql<string>`lower(${users.email})`, email.toLowerCase()),
-          sql`${licenseAssignments.startTime} < ${endTime}`,
-          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${startTime}`,
+          inArray(normalizedEmail, emails),
+          or(
+            ...windows.map((w) =>
+              and(
+                sql`${licenseAssignments.startTime} < ${w.endTime}`,
+                sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${w.startTime}`,
+              ),
+            ),
+          ),
         ),
       );
-
-    return Number(overlapping[0]?.count || 0) === 0;
+    return new Set(rows.map((r: any) => String(r.email)));
   }
 
   private async findAvailableLicensedDonor(
     instructorEmail: string,
     startTime: Date,
     endTime: Date,
-    executor: any = db,
   ) {
     const licensedUsers = await this.zoomService.listAuthorizedUsers({
       status: 'active',
@@ -1028,7 +1129,7 @@ export class ZoomLicenseService {
       );
     }
 
-    const protectedEmails = await this.getProtectedLicenseEmails(executor);
+    const protectedEmails = await this.getProtectedLicenseEmails();
     const donors = (licensedUsers.data?.users || [])
       .filter(
         (user) =>
@@ -1038,56 +1139,229 @@ export class ZoomLicenseService {
         (user) => !protectedEmails.has(user.email?.trim().toLowerCase() || ''),
       );
 
-    for (const donor of donors) {
-      const donorEmail = donor.email?.trim().toLowerCase();
+    const candidates = donors
+      .map((donor) => donor.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email));
+    if (!candidates.length) return null;
 
-      if (
-        donorEmail &&
-        (await this.isZoomEmailFreeForTimeRange(
-          donorEmail,
-          startTime,
-          endTime,
-          executor,
-        ))
-      ) {
-        return donorEmail;
-      }
-    }
-
-    return null;
+    // Free for the new session's time, and not hosting right now: taking
+    // the licence away mid-session would cut the donor's live meeting down
+    // to a Basic one. One query for every candidate.
+    const busy = await this.findBusyEmails(candidates, [
+      { startTime, endTime },
+      { startTime: new Date(), endTime: new Date() },
+    ]);
+    return candidates.find((email) => !busy.has(email)) ?? null;
   }
 
   /**
-   * `executor`: the caller's transaction when called inside one (a booking),
-   * so the donor lookup doesn't need a second pool connection while the
-   * transaction holds the licence-pool lock.
+   * Makes sure the host's Zoom account is licensed for this session. If it
+   * isn't and the account has no free licence, moves one from a free donor
+   * account, holding the licence-transfer lock so two transfers at once can't
+   * pick the same donor. Call it outside any transaction.
+   *
+   * `transferWhenAccountFull`: when Zoom says every licence in the account is
+   * in use, move one from a donor (mentor bookings, as before) or refuse
+   * with a message to free one in Zoom (classes, as before).
    */
   async ensureHostLicensedForWindow(
     hostEmail: string,
     startTime: Date,
     endTime: Date,
-    executor: any = db,
+    options: { transferWhenAccountFull?: boolean } = {},
   ) {
-    let licenseResult = await this.zoomService.ensureLicensedUser(
-      hostEmail,
-      '',
-      '',
-    );
+    // Already licensed (the usual case): one read, no lock, nothing changed.
+    if (await this.isLicensedNow(hostEmail)) return;
 
-    if (licenseResult.success && licenseResult.licensed) {
-      return;
+    // Anything that can take a licence from the account runs under the
+    // transfer lock, so a licence a transfer has just freed (donor
+    // downgraded, host not yet upgraded) can't be taken by someone else, and
+    // a licence that became free while this request waited is used before
+    // any donor is touched.
+    await this.withLicenceTransferLock(async () => {
+      const licenseResult = await this.zoomService.ensureLicensedUser(
+        hostEmail,
+        '',
+        '',
+      );
+      if (licenseResult.success && licenseResult.licensed) return;
+
+      // Anything other than a missing licence is reported as it is.
+      if (!this.isLicenceShortage(licenseResult)) {
+        throw new BadRequestException(
+          `Failed to assign Zoom license to ${hostEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
+        );
+      }
+      if (
+        options.transferWhenAccountFull === false &&
+        this.isZoomAccountFull(licenseResult)
+      ) {
+        throw new BadRequestException(
+          `Cannot assign a Zoom Business license to ${hostEmail}: your Zoom account has reached the Business license limit. ` +
+            `Please free up a Business license in the Zoom admin panel before creating this session.`,
+        );
+      }
+      await this.transferLicenceToHost(
+        hostEmail,
+        startTime,
+        endTime,
+        licenseResult,
+      );
+    });
+  }
+
+  /**
+   * Makes sure `email` is licensed (taking a free licence if the account
+   * has one, never moving one from a donor), under the transfer lock so it
+   * can't take a licence a transfer is moving. For checks such as verifying
+   * an alternative host.
+   */
+  async ensureLicensedUnderTransferLock(email: string) {
+    if (await this.isLicensedNow(email)) {
+      return { success: true, licensed: true };
     }
+    return this.withLicenceTransferLock(() =>
+      this.zoomService.ensureLicensedUser(email, '', ''),
+    );
+  }
 
-    const needsSeatTransfer =
+  private async isLicensedNow(email: string) {
+    const current = await this.zoomService.getUser(email);
+    return (
+      current.success &&
+      current.data?.type === 2 &&
+      current.data?.status === 'active'
+    );
+  }
+
+  /** The host has no licence and Zoom gave none: a transfer can fix it. */
+  private isLicenceShortage(licenseResult: { step?: string; error?: string }) {
+    return (
       licenseResult.step === 'license' ||
       /license/i.test(licenseResult.error || '') ||
-      /maximum number of .* paying users/i.test(licenseResult.error || '');
+      /maximum number of .* paying users/i.test(licenseResult.error || '') ||
+      this.isZoomAccountFull(licenseResult)
+    );
+  }
 
-    const isZoomLicensePoolFull =
+  /**
+   * Zoom accepted the licence change but the user is still Basic: every
+   * licence in the account is in use.
+   */
+  private isZoomAccountFull(licenseResult: { step?: string; error?: string }) {
+    return (
       licenseResult.step === 'verify' &&
-      /currently basic/i.test(licenseResult.error || '');
+      /currently basic/i.test(licenseResult.error || '')
+    );
+  }
 
-    if (!needsSeatTransfer && !isZoomLicensePoolFull) {
+  /**
+   * Runs `work` (a licence transfer: Zoom calls plus licence-row updates)
+   * while holding the licence-transfer lock. Every code path that moves a
+   * licence between Zoom accounts goes through ensureHostLicensedForWindow,
+   * which uses this, so two transfers never pick the same donor.
+   *
+   * Transfers from this server queue in memory first. The one at the front
+   * then takes a transaction-level advisory lock with pg_try_advisory_xact_lock
+   * in a short transaction, retrying every 500 ms (holding no connection
+   * between tries). `maxWaitMs` bounds the whole wait, queue included: a
+   * request that is still queued when it runs out fails at once and leaves
+   * the queue (its transfer never runs); one that reaches the front in time
+   * tries the lock at least once.
+   *
+   * A transaction-level lock also works behind a transaction-mode pooler
+   * such as PgBouncer, and the server releases it when that transaction ends
+   * for any reason. The holding transaction only holds the lock (it may stay
+   * idle up to TRANSFER_LOCK_MAX_HOLD_MS while Zoom answers): `work` writes
+   * through the normal pool, so its licence-row updates are kept whatever
+   * happens to the lock. For the same reason, once `work` has finished, a
+   * failure to end the lock's transaction doesn't fail the transfer.
+   */
+  async withLicenceTransferLock<T>(
+    work: () => Promise<T>,
+    maxWaitMs = 30_000,
+  ): Promise<T> {
+    const deadline = Date.now() + maxWaitMs;
+    // The queue is a chain of turns: each request waits for the one before
+    // it, and ends its own turn when done (succeeded, failed or gave up).
+    const before = this.transferQueue;
+    let endTurn: () => void = () => undefined;
+    const turn = new Promise<void>((resolve) => (endTurn = resolve));
+    this.transferQueue = before.then(() => turn);
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const outcome = await Promise.race([
+        before.then(() => 'front' as const),
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), maxWaitMs);
+        }),
+      ]);
+      clearTimeout(timer);
+      if (outcome === 'timeout') throw this.transferBusyError();
+      return await this.runWithTransferLock(work, deadline);
+    } finally {
+      clearTimeout(timer);
+      endTurn();
+    }
+  }
+
+  private transferBusyError() {
+    return new BadRequestException(
+      'Zoom licences are busy being moved between accounts right now. Please try again in a moment.',
+    );
+  }
+
+  private async runWithTransferLock<T>(
+    work: () => Promise<T>,
+    deadline: number,
+  ): Promise<T> {
+    for (;;) {
+      let acquired = false;
+      let finished = false;
+      let result: T | undefined;
+      try {
+        await db.transaction(async (trx) => {
+          const attempt = await trx.execute(
+            sql`SELECT pg_try_advisory_xact_lock(hashtext(${LICENSE_TRANSFER_LOCK_KEY})) AS acquired`,
+          );
+          if (attempt.rows?.[0]?.acquired !== true) return;
+          acquired = true;
+          await trx.execute(
+            sql`SELECT set_config('idle_in_transaction_session_timeout', ${String(TRANSFER_LOCK_MAX_HOLD_MS)}, true)`,
+          );
+          result = await work();
+          finished = true;
+        });
+      } catch (error: any) {
+        if (finished) {
+          // The transfer is done; only ending the lock's transaction failed
+          // (the lock is released with the connection either way).
+          this.logger.warn(
+            `Licence transfer finished, but releasing its lock reported: ${error?.message}`,
+          );
+          return result as T;
+        }
+        if (acquired && /terminat|connection/i.test(error?.message || '')) {
+          this.logger.error(
+            `Licence transfer lost its lock connection mid-transfer: ${error.message}`,
+          );
+        }
+        throw error;
+      }
+      if (acquired) return result as T;
+      if (Date.now() >= deadline) throw this.transferBusyError();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  private async transferLicenceToHost(
+    hostEmail: string,
+    startTime: Date,
+    endTime: Date,
+    licenseResult: { success: boolean; step?: string; error?: string },
+  ) {
+    if (!this.isLicenceShortage(licenseResult)) {
       throw new BadRequestException(
         `Failed to assign Zoom license to ${hostEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
       );
@@ -1097,7 +1371,6 @@ export class ZoomLicenseService {
       hostEmail,
       startTime,
       endTime,
-      executor,
     );
 
     if (!donorEmail) {
@@ -1123,13 +1396,13 @@ export class ZoomLicenseService {
       );
     }
 
-    licenseResult = await this.zoomService.ensureLicensedUser(
+    const afterTransfer = await this.zoomService.ensureLicensedUser(
       hostEmail,
       '',
       '',
     );
 
-    if (licenseResult.success && licenseResult.licensed) {
+    if (afterTransfer.success && afterTransfer.licensed) {
       this.logger.log(
         `Transferred Zoom license from ${donorEmail} to ${hostEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
       );
@@ -1149,7 +1422,7 @@ export class ZoomLicenseService {
     }
 
     throw new BadRequestException(
-      `Failed to assign Zoom license to ${hostEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
+      `Failed to assign Zoom license to ${hostEmail}: ${afterTransfer.error || 'Unknown Zoom licensing error'}`,
     );
   }
 
@@ -1217,39 +1490,19 @@ export class ZoomLicenseService {
       await this.lockLicensePool(executor);
     }
 
-    const instructorEmail = await this.getInstructorEmail(
-      executor,
-      dto.instructorId,
-    );
-    const hostKey = (instructorEmail || '').toLowerCase();
-    const protectedEmails = await this.getProtectedLicenseEmails(executor);
-    const { capacity } = await this.getBookingCapacity(
-      executor,
-      hostKey || null,
-      protectedEmails,
-    );
-
     // Everything in use from the slot's start until the end of its own
     // cooldown.
     const range = {
       from: dto.startTime,
       to: this.getBufferedEndTime(dto.endTime),
     };
-    const existing: LicenseInterval[] = [
-      ...(await this.loadPoolIntervals(
+    const { hostKey, protectedEmails, capacity, existing } =
+      await this.loadSlotCheckContext(
         executor,
+        dto.instructorId,
         range,
-        hostKey || null,
-        protectedEmails,
-      )),
-      ...(await this.loadOpenSlotIntervals(
-        executor,
-        range,
-        hostKey || null,
-        protectedEmails,
         options.excludeSlotIds,
-      )),
-    ];
+      );
     const requested = { hostKey, start: dto.startTime, end: dto.endTime };
     const peakInUse = peakConcurrentLicenses(
       existing,
@@ -1271,22 +1524,13 @@ export class ZoomLicenseService {
     }
 
     // Only on the refusal path: look ahead for the next time that fits.
-    const ahead = { from: dto.startTime, to: null };
-    const future: LicenseInterval[] = [
-      ...(await this.loadPoolIntervals(
-        executor,
-        ahead,
-        hostKey || null,
-        protectedEmails,
-      )),
-      ...(await this.loadOpenSlotIntervals(
-        executor,
-        ahead,
-        hostKey || null,
-        protectedEmails,
-        options.excludeSlotIds,
-      )),
-    ];
+    const future = await this.loadSlotCheckIntervals(
+      executor,
+      { from: dto.startTime, to: null },
+      hostKey,
+      protectedEmails,
+      options.excludeSlotIds,
+    );
     const nextAvailableAt =
       capacity > 0 ? this.nextFreeStart(future, hostKey, dto, capacity) : null;
 
@@ -1300,6 +1544,109 @@ export class ZoomLicenseService {
           ? `No Zoom licence is free at this time. The next free time is ${this.formatNextAvailableTime(nextAvailableAt)}.`
           : 'No Zoom licence is free at this time. Please choose another time.',
     };
+  }
+
+  /**
+   * Same rule as checkLicenseAvailability for many slot times of one mentor
+   * at once (recurring slots): takes the pool lock and loads assignments and
+   * open slots ONCE for the whole range, then checks each time in memory.
+   * Slots accepted earlier in the list count for the later ones. Returns the
+   * indexes of the times that don't fit.
+   */
+  async findUnavailableSlotTimes(
+    trx: any,
+    instructorId: number,
+    windows: Array<{ startTime: Date; endTime: Date }>,
+  ): Promise<number[]> {
+    if (!windows.length) return [];
+    await this.lockLicensePool(trx);
+
+    const range = {
+      from: new Date(Math.min(...windows.map((w) => w.startTime.getTime()))),
+      to: this.getBufferedEndTime(
+        new Date(Math.max(...windows.map((w) => w.endTime.getTime()))),
+      ),
+    };
+    const { hostKey, capacity, existing } = await this.loadSlotCheckContext(
+      trx,
+      instructorId,
+      range,
+    );
+
+    const unavailable: number[] = [];
+    windows.forEach((window, index) => {
+      const requested = {
+        hostKey,
+        start: window.startTime,
+        end: window.endTime,
+      };
+      if (
+        capacity > 0 &&
+        fitsInPool(existing, requested, capacity, this.licenseCooldownMs)
+      ) {
+        existing.push(requested);
+      } else {
+        unavailable.push(index);
+      }
+    });
+    return unavailable;
+  }
+
+  /**
+   * What a mentor-slot check needs: the mentor's host key, the protected
+   * accounts, the licences the mentor can use, and everything that already
+   * uses one in `range` (licence assignments and other open slots).
+   */
+  private async loadSlotCheckContext(
+    executor: any,
+    instructorId: number,
+    range: { from: Date; to: Date | null },
+    excludeSlotIds?: number[],
+  ) {
+    const instructorEmail = await this.getInstructorEmail(
+      executor,
+      instructorId,
+    );
+    const hostKey = (instructorEmail || '').toLowerCase();
+    const protectedEmails = await this.getProtectedLicenseEmails(executor);
+    const { capacity } = await this.getBookingCapacity(
+      executor,
+      hostKey || null,
+      protectedEmails,
+    );
+    const existing = await this.loadSlotCheckIntervals(
+      executor,
+      range,
+      hostKey,
+      protectedEmails,
+      excludeSlotIds,
+    );
+    return { hostKey, protectedEmails, capacity, existing };
+  }
+
+  /** Licence assignments plus open mentor slots in `range`. */
+  private async loadSlotCheckIntervals(
+    executor: any,
+    range: { from: Date; to: Date | null },
+    hostKey: string,
+    protectedEmails: Set<string>,
+    excludeSlotIds?: number[],
+  ): Promise<LicenseInterval[]> {
+    return [
+      ...(await this.loadPoolIntervals(
+        executor,
+        range,
+        hostKey || null,
+        protectedEmails,
+      )),
+      ...(await this.loadOpenSlotIntervals(
+        executor,
+        range,
+        hostKey || null,
+        protectedEmails,
+        excludeSlotIds,
+      )),
+    ];
   }
 
   /**
@@ -1529,7 +1876,7 @@ export class ZoomLicenseService {
           .filter((email): email is string => Boolean(email)),
       );
       const transferableCapacity = Math.max(
-        this.getConfiguredTotalLicenseCount() - protectedLicenses.length,
+        this.getTotalLicenceCount() - protectedLicenses.length,
         0,
       );
       const reservedProtectedAssignments = activeAssignments.filter(
@@ -1575,7 +1922,7 @@ export class ZoomLicenseService {
 
       this.logger.log(`
   === LICENSE STATUS DETAIL [${context}] ===
-  Configured total seats       : ${this.getConfiguredTotalLicenseCount()}
+  Configured total seats       : ${this.getTotalLicenceCount()}
   Active licensed rows in DB   : ${activeLicensePool.length}
   Protected licenses           : ${protectedLicenses.length} -> ${formatEmails(protectedLicenses)}
   Transferable seat capacity   : ${transferableCapacity}

@@ -27,6 +27,7 @@ import {
   zuvyMentorSlotManagement,
 } from '../drizzle/schema';
 import { and, eq, gt, inArray, ne, notExists, sql } from 'drizzle-orm';
+import { LICENSE_POOL_LOCK_KEY } from '../src/common/constants/zoom-license.constants';
 
 const apply = process.argv.includes('--apply');
 const slotIdsArg = process.argv.find((a) => a.startsWith('--slot-ids='));
@@ -42,7 +43,10 @@ if (slotIdsArg && !onlySlotIds?.length) {
   process.exit(1);
 }
 
-function findUnbookedFutureSlotAssignments(executor: any) {
+function findUnbookedFutureSlotAssignments(
+  executor: any,
+  restrictToSlotIds: number[] | null = onlySlotIds,
+) {
   return executor
     .select({
       assignmentId: licenseAssignments.id,
@@ -72,8 +76,8 @@ function findUnbookedFutureSlotAssignments(executor: any) {
       and(
         eq(licenseAssignments.sourceType, 'mentor_slot'),
         gt(zuvyMentorSlotAvailability.slotStartDateTime, new Date()),
-        onlySlotIds
-          ? inArray(zuvyMentorSlotAvailability.id, onlySlotIds)
+        restrictToSlotIds
+          ? inArray(zuvyMentorSlotAvailability.id, restrictToSlotIds)
           : undefined,
         notExists(
           executor
@@ -102,13 +106,31 @@ async function main() {
   );
 
   const removed = await db.transaction(async (trx) => {
-    // Same lock every licence allocation takes, so nothing books one of
-    // these slots between the read and the delete.
+    // Same lock every licence allocation takes.
     await trx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext('zuvy_zoom_license_pool'))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext(${LICENSE_POOL_LOCK_KEY}))`,
     );
 
-    const rows = await findUnbookedFutureSlotAssignments(trx);
+    // A booking locks its slot row first, and doesn't take the pool lock at
+    // all when the slot already holds a licence. So lock these slots' rows
+    // too (lowest id first, like other paths): a booking already under way
+    // finishes first, a new one waits for us. Then look again, so a slot
+    // that just got booked is left alone.
+    const candidates = await findUnbookedFutureSlotAssignments(trx);
+    const candidateSlotIds: number[] = Array.from(
+      new Set<number>(candidates.map((row: any) => Number(row.slotId))),
+    );
+    if (candidateSlotIds.length) {
+      await trx
+        .select({ id: zuvyMentorSlotAvailability.id })
+        .from(zuvyMentorSlotAvailability)
+        .where(inArray(zuvyMentorSlotAvailability.id, candidateSlotIds))
+        .orderBy(zuvyMentorSlotAvailability.id)
+        .for('update');
+    }
+    const rows = candidateSlotIds.length
+      ? await findUnbookedFutureSlotAssignments(trx, candidateSlotIds)
+      : [];
 
     console.table(
       rows.map((row) => ({

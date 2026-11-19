@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { db } from 'src/db';
 import {
@@ -8,9 +8,55 @@ import {
 } from '../../../../drizzle/schema';
 
 import { and, eq, lt, gte, ne, inArray, isNull } from 'drizzle-orm';
+import { MentorSlotService } from '../mentor-slot.service';
+
+// On unless MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false. It is the safety net
+// for bookSlot's three steps, so it should normally run; the switch is there
+// to stop it quickly if it ever misbehaves.
+export function abandonedBookingJobEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return (env.MENTOR_ABANDONED_BOOKING_JOB_ENABLED || '').trim() !== 'false';
+}
 
 @Injectable()
-export class MentorSlotJob {
+export class MentorSlotJob implements OnModuleInit {
+  private readonly logger = new Logger(MentorSlotJob.name);
+  private releasingAbandoned = false;
+
+  constructor(private readonly mentorSlotService: MentorSlotService) {}
+
+  onModuleInit() {
+    if (!abandonedBookingJobEnabled()) {
+      this.logger.warn(
+        'Abandoned-booking release is off (MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false).',
+      );
+    }
+  }
+
+  /* ==========================================================================
+       RUN EVERY 5 MINUTES — RELEASE ABANDONED BOOKINGS
+       A booking whose Zoom step never finished (app restart, failed undo)
+       would otherwise keep its seat, licence and the student's credit.
+    ========================================================================== */
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async releaseAbandonedBookings() {
+    if (!abandonedBookingJobEnabled()) return;
+    // A slow run (Zoom calls) must not overlap the next tick.
+    if (this.releasingAbandoned) return;
+    this.releasingAbandoned = true;
+    try {
+      await this.mentorSlotService.releaseAbandonedBookings();
+    } catch (error: any) {
+      this.logger.error(
+        `Releasing abandoned bookings failed: ${error.message}`,
+      );
+    } finally {
+      this.releasingAbandoned = false;
+    }
+  }
+
   /* ==========================================================================
        RUN EVERY MINUTE — HANDLE SESSION STATE TRANSITIONS
     ========================================================================== */
