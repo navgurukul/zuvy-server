@@ -135,6 +135,9 @@ const at = (day: number, hhmm: string, plusMs = 0) => {
   return new Date(BASE + day * 86_400_000 + (h * 60 + m) * MIN + plusMs);
 };
 const iso = (d: Date) => d.toISOString();
+// Gap between the starts of 6-minute sessions that must never be in use at
+// the same time: each one's cooldown ends 4 minutes before the next starts.
+const STAGGER_MS = 6 * MIN + ZOOM_LICENSE_COOLDOWN_MS + 4 * MIN;
 
 const fillerIds: number[] = [];
 const bookingIds: number[] = [];
@@ -178,6 +181,9 @@ let onMeetingCreated: ((id: number) => void) | null = null;
 const deletedMeetingIds: string[] = [];
 const zoomStubs = {
   getUser: async () => ({ success: true, data: { status: 'active', type: 2 } }),
+  // Licensed-host bookkeeping on the fast path: no Zoom call, no row write.
+  applyLicensedUserSettings: async () => ({ success: true }),
+  syncZoomLicenseUser: async () => undefined,
   // The real ensureHostLicensedForWindow runs; Zoom says the host is licensed.
   ensureLicensedUser: async () => ({ success: true, licensed: true }),
   createMeetingForUser: async () => {
@@ -686,9 +692,12 @@ async function main() {
         () => createSlot(at(d, '09:00'), at(d, '10:00')),
         /No Zoom licence is free/,
       );
+      const endsOneCooldownBefore = new Date(
+        at(d, '10:00').getTime() - ZOOM_LICENSE_COOLDOWN_MS,
+      );
       const ending = await createSlot(
-        at(d, '09:00'),
-        new Date(at(d, '10:00').getTime() - ZOOM_LICENSE_COOLDOWN_MS),
+        new Date(endsOneCooldownBefore.getTime() - 30 * MIN),
+        endsOneCooldownBefore,
       );
       report(
         'slot ending one cooldown before the busy hour is created',
@@ -728,7 +737,7 @@ async function main() {
 
       // Two of three days full: nothing created, both days listed.
       const e = nextDay() + 3;
-      dayCounter += 3;
+      dayCounter += 5;
       await fillPool(at(e, '12:00'), at(e, '13:00'));
       await fillPool(at(e + 2, '12:00'), at(e + 2, '13:00'));
       await expectRefused(
@@ -1296,12 +1305,12 @@ async function main() {
     await section('F1. Peak count instead of touching count', async () => {
       const d = nextDay();
       for (let i = 0; i < N; i++) {
-        const start = at(d, '10:00', i * 10 * MIN);
+        const start = at(d, '10:00', i * STAGGER_MS);
         await filler(i, start, new Date(start.getTime() + 6 * MIN));
       }
       const window = {
         start: at(d, '10:00'),
-        end: at(d, '10:00', N * 10 * MIN),
+        end: at(d, '10:00', N * STAGGER_MS),
       };
       const teacher = hosts[N + 1];
       const fit = await db.transaction((trx: any) =>
@@ -1906,6 +1915,39 @@ async function main() {
           alt.success && alt.licensed && freeSeats === 0,
         );
 
+        // Already licensed: no licensing call, but the licence row is
+        // recorded and the licensed-user settings applied (as before).
+        reset([]);
+        licensedHosts.add(hostA.email.toLowerCase());
+        let settingsApplied = 0;
+        let rowsSynced = 0;
+        const realApply = zoomTargets.map(
+          (z: any) => z.applyLicensedUserSettings,
+        );
+        const realSync = zoomTargets.map((z: any) => z.syncZoomLicenseUser);
+        zoomTargets.forEach((z: any) => {
+          z.applyLicensedUserSettings = async () => {
+            settingsApplied += 1;
+            return { success: true };
+          };
+          z.syncZoomLicenseUser = async () => {
+            rowsSynced += 1;
+          };
+        });
+        try {
+          await ensure(hostA.email, start, end);
+          report(
+            'licensed host: settings applied and row recorded, nothing licensed',
+            settingsApplied === 1 && rowsSynced === 1 && licensingCalls === 0,
+            `settings ${settingsApplied}, rows ${rowsSynced}, licensing ${licensingCalls}`,
+          );
+        } finally {
+          zoomTargets.forEach((z: any, i: number) => {
+            z.applyLicensedUserSettings = realApply[i];
+            z.syncZoomLicenseUser = realSync[i];
+          });
+        }
+
         reset([busyDonor.email]);
         await expectRefused(
           'no free donor: clear refusal',
@@ -2487,7 +2529,7 @@ async function main() {
         // Every licence is touched once in the class's time but never two at
         // once, so the class gets a shared pool seat (the placeholder path).
         for (let i = 0; i < N; i++) {
-          const start = at(d, '10:00', i * 10 * MIN);
+          const start = at(d, '10:00', i * STAGGER_MS);
           await filler(i, start, new Date(start.getTime() + 6 * MIN));
         }
         const teacher = (
@@ -2512,7 +2554,7 @@ async function main() {
             {
               title,
               startDateTime: iso(at(d, '10:00')),
-              endDateTime: iso(at(d, '10:00', N * 10 * MIN)),
+              endDateTime: iso(at(d, '10:00', N * STAGGER_MS)),
               timeZone: 'Asia/Kolkata',
               batchId: classBatch.batch_id,
               bootcampId: classBatch.bootcamp_id,
@@ -3006,29 +3048,29 @@ async function main() {
     );
 
     await section(
-      'R9. ZOOM_TOTAL_LICENSES unset or invalid: a fixed 7, not a live count',
+      'R9. ZOOM_TOTAL_LICENSES unset or invalid: a fixed 12, not a live count',
       async () => {
         const saved = process.env.ZOOM_TOTAL_LICENSES;
         try {
-          process.env.ZOOM_TOTAL_LICENSES = '7';
-          const poolAt7 = await lic.getTransferableLicensePoolCount(db);
+          process.env.ZOOM_TOTAL_LICENSES = '12';
+          const poolAt12 = await lic.getTransferableLicensePoolCount(db);
           delete process.env.ZOOM_TOTAL_LICENSES;
           report(
-            'unset: same pool as ZOOM_TOTAL_LICENSES=7',
-            (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
-            `pool ${poolAt7}`,
+            'unset: same pool as ZOOM_TOTAL_LICENSES=12',
+            (await lic.getTransferableLicensePoolCount(db)) === poolAt12,
+            `pool ${poolAt12}`,
           );
           for (const bad of ['   ', 'abc', '0', '-3', '7.5']) {
             process.env.ZOOM_TOTAL_LICENSES = bad;
             report(
-              `"${bad}" falls back to 7`,
-              (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
+              `"${bad}" falls back to 12`,
+              (await lic.getTransferableLicensePoolCount(db)) === poolAt12,
             );
           }
-          process.env.ZOOM_TOTAL_LICENSES = '9';
+          process.env.ZOOM_TOTAL_LICENSES = '14';
           report(
             'a valid value is used as is',
-            (await lic.getTransferableLicensePoolCount(db)) === poolAt7 + 2,
+            (await lic.getTransferableLicensePoolCount(db)) === poolAt12 + 2,
           );
           // The pool doesn't move when the licence rows do (a sync marking
           // rows inactive mid-run must not shrink it).
@@ -3038,7 +3080,7 @@ async function main() {
           try {
             report(
               'unaffected by the licence rows',
-              (await lic.getTransferableLicensePoolCount(db)) === poolAt7,
+              (await lic.getTransferableLicensePoolCount(db)) === poolAt12,
             );
           } finally {
             lic.getActiveLicensePoolCount = realCount;
@@ -3113,6 +3155,32 @@ async function main() {
         (await lic.withLicenceTransferLock(async () => 'next', 5000)) ===
           'next',
       );
+
+      // A transfer whose Zoom call never answers fails at the time limit,
+      // and the queue moves on instead of stalling every later transfer.
+      const savedLimit = lic.transferWorkTimeoutMs;
+      lic.transferWorkTimeoutMs = 1000;
+      try {
+        const hungStarted = Date.now();
+        const hung = await lic
+          .withLicenceTransferLock(() => new Promise(() => undefined), 30_000)
+          .then(
+            () => 'returned',
+            (error: any) => error.message,
+          );
+        report(
+          'a hung transfer fails at its time limit',
+          /took too long/.test(hung) && Date.now() - hungStarted < 5000,
+          `${hung} after ${((Date.now() - hungStarted) / 1000).toFixed(1)}s`,
+        );
+        report(
+          '... and the next transfer still runs',
+          (await lic.withLicenceTransferLock(async () => 'after', 5000)) ===
+            'after',
+        );
+      } finally {
+        lic.transferWorkTimeoutMs = savedLimit;
+      }
 
       // The transfer finishes, then its lock connection is lost before the
       // lock's transaction ends: the transfer is still reported done.
@@ -3232,45 +3300,38 @@ async function main() {
           ).rows[0].n,
         );
         // A pool configured smaller than the real licences, as dev's default
-        // is: the real licences count (classes get them anyway).
+        // is: the configured number is the limit for everything (licence
+        // rows lag behind Zoom, so they are not counted).
         process.env.ZOOM_TOTAL_LICENSES = String(protectedSeats + 2);
         try {
-          const d = nextDay();
-          await filler(0, at(d, '10:00'), at(d, '11:00'));
-          await filler(1, at(d, '10:00'), at(d, '11:00'));
-          const fits = await createSlot(at(d, '10:00'), at(d, '10:30'));
           report(
-            'configured pool full but real licences free: slot allowed',
-            !!fits?.id,
-          );
-          report(
-            'capacity is the real licence count',
+            'capacity is the configured pool, not the licence rows',
             (
               await lic.checkLicenseAvailability(
                 db,
                 {
                   instructorId: hosts[N + 1].id,
-                  startTime: at(d, '13:00'),
-                  endTime: at(d, '13:30'),
+                  startTime: at(nextDay(), '13:00'),
+                  endTime: at(nextDay(), '13:30'),
                 },
                 { lock: false },
               )
-            ).poolSize === N,
+            ).poolSize === 2,
           );
 
-          const e = nextDay();
-          for (let i = 0; i < N; i++)
-            await filler(i, at(e, '10:00'), at(e, '11:00'));
+          const d = nextDay();
+          await filler(0, at(d, '10:00'), at(d, '11:00'));
+          await filler(1, at(d, '10:00'), at(d, '11:00'));
           await expectRefused(
-            'slot refused once every real licence is in use',
-            () => createSlot(at(e, '10:00'), at(e, '10:30')),
+            'slot refused once the configured pool is full, even with licence rows free',
+            () => createSlot(at(d, '10:00'), at(d, '10:30')),
             /No Zoom licence is free/,
           );
           const classResult = await allocate(
             db,
             hosts[N + 13].id,
-            at(e, '10:00'),
-            at(e, '10:30'),
+            at(d, '10:00'),
+            at(d, '10:30'),
           ).then(
             (id: number) => `picked ${id}`,
             (error: any) => error.message,
@@ -3294,6 +3355,8 @@ async function main() {
               isProtected: false,
             } as any)
             .returning({ id: schema.zuvyUserLicenses.id });
+          // With the pool configured to all N licences.
+          process.env.ZOOM_TOTAL_LICENSES = String(protectedSeats + N);
           try {
             for (let i = 0; i < N - 1; i++)
               await filler(i, at(p, '10:00'), at(p, '11:00'));
@@ -3331,11 +3394,12 @@ async function main() {
             await db
               .delete(schema.zuvyUserLicenses)
               .where(eq(schema.zuvyUserLicenses.id, Number(placeholder.id)));
+            process.env.ZOOM_TOTAL_LICENSES = String(protectedSeats + 2);
           }
 
+          // The configured pool's last licence (1 of 2 in use).
           const g = nextDay();
-          for (let i = 0; i < N - 1; i++)
-            await filler(i, at(g, '10:00'), at(g, '11:00'));
+          await filler(0, at(g, '10:00'), at(g, '11:00'));
           const slot = await createSlot(at(g, '10:00'), at(g, '10:30'));
           await restoreStudentMetrics();
           const booked = await svc.bookSlot(STUDENT, slot.id);

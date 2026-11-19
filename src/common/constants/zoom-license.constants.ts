@@ -1,16 +1,32 @@
+import { Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 
-const DEFAULT_ZOOM_LICENSE_COOLDOWN_MINUTES = 2; //60
+// How long a licence stays with its host after a session ends, so Zoom can
+// finish processing and uploading the cloud recording before the licence
+// moves to someone else. Never less than 60 minutes;
+// ZOOM_LICENSE_COOLDOWN_MINUTES can only make it longer.
+const MIN_ZOOM_LICENSE_COOLDOWN_MINUTES = 60;
 
-const parsedCooldownMinutes = Number(
-  process.env.ZOOM_LICENSE_COOLDOWN_MINUTES ||
-    DEFAULT_ZOOM_LICENSE_COOLDOWN_MINUTES,
-);
+const configuredCooldown = (
+  process.env.ZOOM_LICENSE_COOLDOWN_MINUTES || ''
+).trim();
+const parsedCooldownMinutes = Number(configuredCooldown);
 
 export const ZOOM_LICENSE_COOLDOWN_MINUTES =
-  Number.isFinite(parsedCooldownMinutes) && parsedCooldownMinutes >= 0
+  configuredCooldown &&
+  Number.isFinite(parsedCooldownMinutes) &&
+  parsedCooldownMinutes >= MIN_ZOOM_LICENSE_COOLDOWN_MINUTES
     ? parsedCooldownMinutes
-    : DEFAULT_ZOOM_LICENSE_COOLDOWN_MINUTES;
+    : MIN_ZOOM_LICENSE_COOLDOWN_MINUTES;
+
+if (
+  configuredCooldown &&
+  ZOOM_LICENSE_COOLDOWN_MINUTES !== parsedCooldownMinutes
+) {
+  new Logger('ZoomLicense').warn(
+    `ZOOM_LICENSE_COOLDOWN_MINUTES="${configuredCooldown}" is not a number of at least ${MIN_ZOOM_LICENSE_COOLDOWN_MINUTES} minutes (Zoom needs the time to process recordings); using ${MIN_ZOOM_LICENSE_COOLDOWN_MINUTES}.`,
+  );
+}
 
 export const ZOOM_LICENSE_COOLDOWN_MS =
   ZOOM_LICENSE_COOLDOWN_MINUTES * 60 * 1000;

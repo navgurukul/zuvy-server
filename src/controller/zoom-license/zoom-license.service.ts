@@ -35,14 +35,23 @@ import {
   peakConcurrentLicenses,
 } from './license-usage.util';
 
-// Total Zoom licences assumed when ZOOM_TOTAL_LICENSES is not set (the value
-// this code has always used).
-const DEFAULT_TOTAL_LICENSES = 7;
+// Total Zoom licences assumed when ZOOM_TOTAL_LICENSES is not set: the
+// account's 12 (5 of them protected, so 7 shared).
+const DEFAULT_TOTAL_LICENSES = 12;
 
-// How long the licence-transfer lock may be held while its Zoom calls run.
-// The lock's transaction sits idle meanwhile, so it needs more than the
-// pool's general idle-in-transaction limit; past this the server ends it.
-const TRANSFER_LOCK_MAX_HOLD_MS = 10 * 60 * 1000;
+// Longest a licence transfer (its Zoom calls) may take. Past it the
+// transfer fails and the queue moves on, so one hung Zoom call can't stop
+// every later transfer on this server.
+const TRANSFER_WORK_TIMEOUT_MS = 2 * 60 * 1000;
+
+// How long the licence-transfer lock's transaction may sit idle while the
+// transfer's Zoom calls run: a little more than the transfer may take. It
+// needs more than the pool's general idle-in-transaction limit.
+const TRANSFER_LOCK_MAX_HOLD_MS = TRANSFER_WORK_TIMEOUT_MS + 60 * 1000;
+
+// How far ahead "the next free time" is searched for when a time is
+// refused. Bounded so a refusal never scans every future session.
+const NEXT_FREE_LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
 
 export interface LicenseAvailability {
   available: boolean;
@@ -62,6 +71,11 @@ export class ZoomLicenseService {
   // database lock (which still serialises transfers across servers).
   private transferQueue: Promise<unknown> = Promise.resolve();
   private warnedTotalLicencesDefault = false;
+  private warnedRowsAboveConfigured = false;
+  // Longest a licence transfer may take (a field so tests can shorten it).
+  private transferWorkTimeoutMs = TRANSFER_WORK_TIMEOUT_MS;
+  // Transactions that already hold the licence-pool lock.
+  private readonly poolLockedTransactions = new WeakSet<object>();
   // Detailed pool-state logs on every allocation (extra queries under the
   // pool lock): ZOOM_LICENSE_VERBOSE_LOGS=true.
   private readonly verbosePoolLogs =
@@ -85,10 +99,10 @@ export class ZoomLicenseService {
   /**
    * Total Zoom licences in the account, protected ones included, as
    * configured: ZOOM_TOTAL_LICENSES when set to a positive whole number,
-   * otherwise 7 (as before). A missing or invalid value is logged once.
-   * It is the floor of the shared pool; getSharedPoolCapacity raises it to
-   * the real licence rows when Zoom has more (it never shrinks with them,
-   * since the rows change while a sync or a transfer runs).
+   * otherwise 12. A missing or invalid value is logged once.
+   * The shared pool is this minus the protected licences
+   * (getSharedPoolCapacity); the licence rows are not counted, as they lag
+   * behind Zoom.
    */
   private getTotalLicenceCount(): number {
     const raw = (process.env.ZOOM_TOTAL_LICENSES || '').trim();
@@ -156,6 +170,9 @@ export class ZoomLicenseService {
    * released as soon as the statement finishes.
    */
   async lockLicensePool(trx: any) {
+    // Already held by this transaction (e.g. once per session when saving a
+    // recurring class): nothing more to do.
+    if (this.poolLockedTransactions.has(trx)) return;
     // Wait at most 20 s for the lock, then fail the request with a clear
     // error. A waiter holds a pool connection, so waiting forever could
     // starve the lock holder of a connection.
@@ -181,6 +198,7 @@ export class ZoomLicenseService {
     await trx.execute(
       sql`SELECT set_config('lock_timeout', ${String(previous.rows?.[0]?.value ?? '0')}, true)`,
     );
+    this.poolLockedTransactions.add(trx);
   }
 
   /**
@@ -314,22 +332,30 @@ export class ZoomLicenseService {
   }
 
   /**
-   * Licences non-protected hosts can use at once: the configured pool
-   * (ZOOM_TOTAL_LICENSES minus protected), or the active non-protected
-   * licence rows when Zoom has more. assignLicense hands out any free licence
-   * row, so every check counts the same number; the configured value is a
-   * floor that a sync briefly emptying the rows can't push below.
+   * Licences non-protected hosts can use at once: ZOOM_TOTAL_LICENSES minus
+   * the protected ones. Not the licence rows: they lag behind Zoom (a
+   * transfer doesn't mark the donor's row Basic), so counting them could let
+   * more sessions run at once than there are licences. assignLicense and
+   * every check enforce this same number. Logs once if the rows show more.
    */
   private async getSharedPoolCapacity(
     trx: any,
     protectedEmails: Set<string>,
   ): Promise<number> {
     const configured = await this.getTransferableLicensePoolCount(trx);
-    const activeRows = await this.getActiveLicensePoolCount(trx, {
-      instructorEmail: '',
-      protectedEmails,
-    });
-    return Math.max(configured, activeRows);
+    if (!this.warnedRowsAboveConfigured) {
+      const activeRows = await this.getActiveLicensePoolCount(trx, {
+        instructorEmail: '',
+        protectedEmails,
+      });
+      if (activeRows > configured) {
+        this.warnedRowsAboveConfigured = true;
+        this.logger.warn(
+          `The licence rows show ${activeRows} non-protected Zoom licences, but ZOOM_TOTAL_LICENSES allows ${configured} at once. Classes and mentor sessions are limited to ${configured}; if the account really has more, raise ZOOM_TOTAL_LICENSES.`,
+        );
+      }
+    }
+    return configured;
   }
 
   /**
@@ -350,7 +376,12 @@ export class ZoomLicenseService {
       requested.startTime,
       ...existing.map((interval) => this.getBufferedEndTime(interval.end)),
     ]
-      .filter((date) => date.getTime() >= requested.startTime.getTime())
+      .filter(
+        (date) =>
+          date.getTime() >= requested.startTime.getTime() &&
+          date.getTime() + durationMs <=
+            requested.startTime.getTime() + NEXT_FREE_LOOKAHEAD_MS,
+      )
       .sort((a, b) => a.getTime() - b.getTime());
 
     for (const candidateStart of candidateTimes) {
@@ -369,21 +400,6 @@ export class ZoomLicenseService {
     return null;
   }
 
-  private async getPoolSizeForInstructor(
-    trx: any,
-    instructorEmail: string | null,
-    preloadedProtectedEmails?: Set<string>,
-  ): Promise<{ poolSize: number; instructorIsProtected: boolean }> {
-    const protectedEmails =
-      preloadedProtectedEmails ?? (await this.getProtectedLicenseEmails(trx));
-    const { capacity, instructorIsProtected } = await this.getBookingCapacity(
-      trx,
-      instructorEmail,
-      protectedEmails,
-    );
-    return { poolSize: capacity, instructorIsProtected };
-  }
-
   /**
    * Whether a new session for this host fits in the pool at the real peak
    * (see license-usage.util). The host's own back-to-back sessions share one
@@ -400,13 +416,8 @@ export class ZoomLicenseService {
       preloaded.protectedEmails ?? (await this.getProtectedLicenseEmails(trx));
     const poolSize =
       preloaded.poolSize ??
-      (
-        await this.getPoolSizeForInstructor(
-          trx,
-          hostKey || null,
-          protectedEmails,
-        )
-      ).poolSize;
+      (await this.getBookingCapacity(trx, hostKey || null, protectedEmails))
+        .capacity;
     // Up to the end of the new session's cooldown: its licence is busy
     // until then, so sessions starting in that tail count too.
     const busyUntil = this.getBufferedEndTime(dto.endTime);
@@ -631,16 +642,21 @@ export class ZoomLicenseService {
     instructorEmail: string | null,
   ): Promise<Date | null> {
     const hostKey = (instructorEmail || '').toLowerCase();
-    const { poolSize } = await this.getPoolSizeForInstructor(
+    const protectedEmails = await this.getProtectedLicenseEmails(trx);
+    const { capacity: poolSize } = await this.getBookingCapacity(
       trx,
       hostKey || null,
+      protectedEmails,
     );
-    // Only assignments still in use at or after the requested start matter
-    // (this used to load every assignment ever made).
+    // Assignments in use from the requested start, up to the look-ahead.
     const existing = await this.loadPoolIntervals(
       trx,
-      { from: dto.startTime, to: null },
+      {
+        from: dto.startTime,
+        to: new Date(dto.startTime.getTime() + NEXT_FREE_LOOKAHEAD_MS),
+      },
       hostKey || null,
+      protectedEmails,
     );
     return this.nextFreeStart(existing, hostKey, dto, poolSize);
   }
@@ -1252,13 +1268,33 @@ export class ZoomLicenseService {
     );
   }
 
+  /**
+   * Whether `email` is a licensed, active Zoom user right now (one read; no
+   * licence is taken). When it is, also does what ensureLicensedUser does
+   * for a licensed user: records the licence row and applies the licensed-
+   * user meeting settings.
+   */
   private async isLicensedNow(email: string) {
     const current = await this.zoomService.getUser(email);
-    return (
+    const licensed =
       current.success &&
       current.data?.type === 2 &&
-      current.data?.status === 'active'
-    );
+      current.data?.status === 'active';
+    if (licensed) {
+      const data = current.data;
+      await this.zoomService.syncZoomLicenseUser({
+        email,
+        zoomUserId: data?.id || null,
+        userName:
+          `${data?.first_name || ''} ${data?.last_name || ''}`.trim() ||
+          data?.display_name ||
+          email,
+        licenseType: data.type,
+        status: data.status,
+      });
+      await this.zoomService.applyLicensedUserSettings(email);
+    }
+    return licensed;
   }
 
   /** The host has no licence and Zoom gave none: a transfer can fix it. */
@@ -1333,6 +1369,31 @@ export class ZoomLicenseService {
     }
   }
 
+  /**
+   * `promise`, or a failure after `ms`. The work itself isn't cancelled
+   * (an HTTP call can't be); this only stops waiting for it.
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    message: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            this.logger.error(`Licence transfer timed out after ${ms} ms.`);
+            reject(new BadRequestException(message));
+          }, ms);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private transferBusyError() {
     return new BadRequestException(
       'Zoom licences are busy being moved between accounts right now. Please try again in a moment.',
@@ -1357,7 +1418,11 @@ export class ZoomLicenseService {
           await trx.execute(
             sql`SELECT set_config('idle_in_transaction_session_timeout', ${String(TRANSFER_LOCK_MAX_HOLD_MS)}, true)`,
           );
-          result = await work();
+          result = await this.withTimeout(
+            work(),
+            this.transferWorkTimeoutMs,
+            'Zoom took too long to answer while moving a licence. Please try again.',
+          );
           finished = true;
         });
       } catch (error: any) {
@@ -1543,7 +1608,10 @@ export class ZoomLicenseService {
     // Only on the refusal path: look ahead for the next time that fits.
     const future = await this.loadSlotCheckIntervals(
       executor,
-      { from: dto.startTime, to: null },
+      {
+        from: dto.startTime,
+        to: new Date(dto.startTime.getTime() + NEXT_FREE_LOOKAHEAD_MS),
+      },
       hostKey,
       protectedEmails,
     );

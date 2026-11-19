@@ -874,32 +874,31 @@ export class ClassesService {
         // Refresh the licence rows from Zoom if they look empty, before the
         // transaction: assignLicense makes no Zoom calls itself.
         await this.zoomLicenseService.ensureLicencePoolSynced(instructorEmail);
-        assignedLicenseId = await db.transaction(async (trx) => {
-          const licenseId = await this.zoomLicenseService.assignLicense(trx, {
+        // A pre-check, so a class that can't get a licence fails before any
+        // Zoom call. The licence is allocated for real when the session is
+        // saved (saveSessionsToDatabase), in the transaction that writes its
+        // assignment.
+        assignedLicenseId = await db.transaction((trx) =>
+          this.zoomLicenseService.assignLicense(trx, {
             instructorId: Number(instructorId),
             startTime: startDate,
             endTime: endDate,
-          });
-          try {
-            // In a savepoint: if this advisory check hits a database error,
-            // only the savepoint rolls back. Without it the error would leave
-            // the whole transaction aborted and the COMMIT below would
-            // silently roll back the licence assignLicense just made.
-            mentorSlotsAtRisk = await trx.transaction((savepoint) =>
-              this.zoomLicenseService.findOpenMentorSlotsAtRisk(
-                savepoint,
-                { startTime: startDate, endTime: endDate },
-                instructorEmail,
-              ),
+          }),
+        );
+        // Advisory only, so after the transaction: it doesn't hold the
+        // licence-pool lock, and a failure here can't affect the class.
+        try {
+          mentorSlotsAtRisk =
+            await this.zoomLicenseService.findOpenMentorSlotsAtRisk(
+              db,
+              { startTime: startDate, endTime: endDate },
+              instructorEmail,
             );
-          } catch (warnError: any) {
-            // The warning is advisory; never block a class on it.
-            this.logger.warn(
-              `Could not check open mentor slots for licence pressure: ${warnError.message}`,
-            );
-          }
-          return licenseId;
-        });
+        } catch (warnError: any) {
+          this.logger.warn(
+            `Could not check open mentor slots for licence pressure: ${warnError.message}`,
+          );
+        }
         // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
         await this.zoomLicenseService.logLicenseStatus(
           `After assigning license for ${instructorEmail}`,
@@ -1525,10 +1524,6 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
-            // Serialise with every other licence allocation until this
-            // transaction commits, so the check below and the assignment
-            // insert can't interleave with another booking or class.
-            await this.zoomLicenseService.lockLicensePool(trx);
             const batch = await trx
               .select({
                 instructorId: zuvyBatches.instructorId,
@@ -1539,52 +1534,36 @@ export class ClassesService {
               .where(eq(zuvyBatches.id, original.batchId))
               .limit(1);
 
-            const instructorEmail = batch[0]?.instructorEmail
-              ? String(batch[0].instructorEmail).toLowerCase()
-              : null;
-            // Peak licences in use at one moment (not every assignment that
-            // touches the window), with this instructor's back-to-back
-            // sessions sharing one licence. See license-usage.util.
-            const {
-              fits,
-              poolSize: activePoolCount,
-              peakInUse,
-            } = await this.zoomLicenseService.canFitInPool(
-              trx,
-              {
-                startTime: new Date(original.startTime),
-                endTime: new Date(original.endTime),
-              },
-              instructorEmail,
-            );
-
-            if (!fits) {
-              const nextAvailableAt =
-                await this.zoomLicenseService.getNextAvailableLicenseTimeForInstructor(
-                  trx,
-                  {
-                    startTime: new Date(original.startTime),
-                    endTime: new Date(original.endTime),
-                  },
-                  instructorEmail,
-                );
-
-              throw new Error(
-                nextAvailableAt &&
-                  nextAvailableAt.getTime() >
-                    new Date(original.startTime).getTime()
-                  ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
-                  : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, licences in use at the busiest moment: ${peakInUse}.`,
-              );
-            }
-
             if (batch[0]?.instructorId) {
+              // Allocate the licence here, in the transaction that writes
+              // its assignment: assignLicense takes the pool lock (held until
+              // commit), checks the pool at the peak and picks a licence row
+              // that is free now. So two classes saved at once can neither
+              // overfill the pool nor get the same licence row. Earlier
+              // sessions of this same save count, as their assignments are
+              // already written in this transaction.
+              const startTime = new Date(original.startTime);
+              const endTime = new Date(original.endTime);
+              const licenseId = await this.zoomLicenseService.assignLicense(
+                trx,
+                {
+                  instructorId: Number(batch[0].instructorId),
+                  startTime,
+                  endTime,
+                },
+              );
+              if (licenseId !== original.licenseId) {
+                await trx
+                  .update(zuvySessions)
+                  .set({ licenseId } as any)
+                  .where(eq(zuvySessions.id, results[i].id));
+              }
               await this.zoomLicenseService.createLicenseAssignment(trx, {
-                licenseId: original.licenseId,
+                licenseId,
                 instructorId: Number(batch[0].instructorId),
                 sessionId: Number(results[i].id),
-                startTime: new Date(original.startTime),
-                endTime: new Date(original.endTime),
+                startTime,
+                endTime,
               });
             }
           }
