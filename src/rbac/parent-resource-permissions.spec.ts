@@ -32,6 +32,7 @@ import {
   RbacResourcesService,
 } from './rbac.resources.service';
 import { RbacPermissionService } from './rbac.permission.service';
+import { coveringPermissionNames } from './utility';
 import { PermissionsService } from 'src/permissions/permissions.service';
 
 const { mockClient } = jest.requireMock('src/db');
@@ -982,3 +983,118 @@ describe('GET /permissions/:roleId/permissions/:resourceId organization', () => 
     );
   });
 });
+
+describe('coveringPermissionNames', () => {
+  it.each([
+    [[], []],
+    [['view'], ['view']],
+    [
+      ['view', 'edit'],
+      ['view', 'edit'],
+    ],
+    [['delete'], ['view', 'delete']],
+    [
+      ['edit', 'delete'],
+      ['view', 'edit', 'delete'],
+    ],
+    [['create'], ['view', 'create', 'edit']],
+    [
+      ['create', 'delete'],
+      ['view', 'create', 'edit', 'delete'],
+    ],
+    [['VIEW', 'read_test_1'], ['view']],
+    [['viewOrg'], []],
+  ])('%j -> %j', (granted, covering) => {
+    expect([...coveringPermissionNames(granted)].sort()).toEqual(
+      [...covering].sort(),
+    );
+  });
+});
+
+describe.each(PARENTS)(
+  'GET /permissions/:roleId/permissions/:resourceId for $title with nothing saved on it',
+  (p: Parent) => {
+    const service = new PermissionsService({} as any, {} as any, {} as any);
+    const ROLE_ID = 40;
+    const ORG_ID = 5;
+    // The role has saved nothing on the parent; `below` is what it has under it.
+    const respondWith = (below: string[], parentGranted = false) => {
+      mockClient.respond = (text) => {
+        if (/WITH RECURSIVE below/.test(text))
+          return below.map((name) => ({ name }));
+        if (/from "main"\."zuvy_user_roles"/.test(text)) return [[ROLE_ID]];
+        if (/from "main"\."zuvy_resources"/.test(text))
+          return [resourceRow(parentRow(p))];
+        if (/from "main"\."zuvy_permissions"/.test(text))
+          return Object.entries(p.perms).map(([name, id]) => [
+            id,
+            name,
+            null,
+            p.id,
+            null,
+            null,
+            parentGranted && name === 'view',
+          ]);
+        return [];
+      };
+    };
+    const granted = (result: any[]) =>
+      Object.fromEntries(
+        result.map((r) => [r.name, [r.granted, r.derived ?? false]]),
+      );
+
+    it('reports the level that covers the children, marked derived', async () => {
+      respondWith(['view', 'edit']);
+      const result = await service.getPermissionsByRoleAndResource(
+        ROLE_ID,
+        p.id,
+        ORG_ID,
+      );
+      expect(granted(result)).toEqual({
+        view: [true, true],
+        edit: [true, true],
+        create: [false, false],
+        delete: [false, false],
+      });
+      const [below] = queriesMatching(/WITH RECURSIVE below/);
+      expect(below.text).toContain('"main"."zuvy_resources"');
+      expect(below.params).toEqual(
+        expect.arrayContaining([ROLE_ID, ORG_ID, p.id]),
+      );
+    });
+
+    it('uses what was saved on the parent, when anything was', async () => {
+      respondWith(['view', 'edit', 'create', 'delete'], true);
+      const result = await service.getPermissionsByRoleAndResource(
+        ROLE_ID,
+        p.id,
+        ORG_ID,
+      );
+      expect(granted(result)).toEqual({
+        view: [true, false],
+        edit: [false, false],
+        create: [false, false],
+        delete: [false, false],
+      });
+      expect(queriesMatching(/WITH RECURSIVE below/)).toHaveLength(0);
+    });
+
+    it('stays No access when nothing below is granted either', async () => {
+      respondWith([]);
+      const result = await service.getPermissionsByRoleAndResource(
+        ROLE_ID,
+        p.id,
+        ORG_ID,
+      );
+      expect(
+        result.every((r: any) => !r.granted && r.derived === undefined),
+      ).toBe(true);
+    });
+
+    it('writes nothing', async () => {
+      respondWith(['view', 'create']);
+      await service.getPermissionsByRoleAndResource(ROLE_ID, p.id, ORG_ID);
+      expect(queriesMatching(/^(insert|update|delete)/i)).toHaveLength(0);
+    });
+  },
+);

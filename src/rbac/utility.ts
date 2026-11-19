@@ -186,3 +186,27 @@ export const ResourceList = {
     delete: 'deleteOrg',
   },
 } as const;
+
+// The smallest Role Management level that covers a set of granted permission
+// names (view, create, edit, delete): a parent at this level hides none of
+// the children it was computed from.
+//   create and delete -> view, create, edit, delete
+//   create            -> view, create, edit
+//   edit and delete   -> view, edit, delete
+//   edit              -> view, edit
+//   delete            -> view, delete
+//   view only         -> view
+export function coveringPermissionNames(
+  granted: Iterable<string>,
+): Set<string> {
+  const names = new Set([...granted].map((name) => name.toLowerCase()));
+  const covering = new Set<string>();
+  if (!['view', 'create', 'edit', 'delete'].some((name) => names.has(name))) {
+    return covering;
+  }
+  covering.add('view');
+  if (names.has('create')) covering.add('create');
+  if (names.has('create') || names.has('edit')) covering.add('edit');
+  if (names.has('delete')) covering.add('delete');
+  return covering;
+}

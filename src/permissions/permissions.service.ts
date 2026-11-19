@@ -39,6 +39,7 @@ import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuthService } from 'src/auth/auth.service';
 import { applyRolePermissions } from 'src/rbac/role-permissions';
+import { coveringPermissionNames } from 'src/rbac/utility';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
@@ -535,6 +536,33 @@ export class PermissionsService {
     if (!role) throw new NotFoundException('Role not found');
   }
 
+  // Names of the permissions the role holds on any resource below `resource`:
+  // every resource in its group for a group's own row, and everything nested
+  // under it (parent_id), at any depth, for any other resource.
+  private async grantedBelow(
+    resource: typeof zuvyResources.$inferSelect,
+    roleId: number,
+    orgId?: number,
+  ): Promise<string[]> {
+    const result = await db.execute(sql`
+      WITH RECURSIVE below(id) AS (
+        SELECT r.id FROM ${zuvyResources} r
+        WHERE (${resource.isParent} AND NOT r.is_parent
+                 AND r.parent_resource_id = ${resource.parentResourceId})
+           OR r.parent_id = ${resource.id}
+        UNION
+        SELECT r.id FROM ${zuvyResources} r JOIN below b ON r.parent_id = b.id
+      )
+      SELECT DISTINCT p.name
+      FROM below b
+      JOIN ${zuvyPermissions} p ON p.resource_id = b.id
+      JOIN ${zuvyPermissionsRoles} g ON g.permission_id = p.id
+      WHERE g.role_id = ${roleId}
+        AND (${orgId ?? null}::integer IS NULL OR g.org_id = ${orgId ?? null})
+    `);
+    return (result.rows as { name: string }[]).map((row) => row.name);
+  }
+
   // Only permissions belonging to `resourceId` are returned, so a parent
   // resource's response never includes its children's permissions.
   async getPermissionsByRoleAndResource(
@@ -582,7 +610,24 @@ export class PermissionsService {
         .where(eq(zuvyPermissions.resourcesId, resourceId))
         .orderBy(zuvyPermissions.id);
 
-      return permissions;
+      if (permissions.some((permission) => permission.granted)) {
+        return permissions;
+      }
+
+      // Nothing saved on this resource for the role. If it is a parent (a
+      // group's own row, or a resource with nested children such as
+      // Curriculum), report the smallest level that covers what the role has
+      // below it, so Role Management does not hide those child grants. These
+      // are marked derived; nothing is written and access is unchanged.
+      const implied = coveringPermissionNames(
+        await this.grantedBelow(resource, roleId, orgId),
+      );
+      if (!implied.size) return permissions;
+      return permissions.map((permission) =>
+        implied.has(permission.name.toLowerCase())
+          ? { ...permission, granted: true, derived: true }
+          : permission,
+      );
     } catch (error) {
       this.logger.error(
         'Error getting permissions for role and resource:',
