@@ -251,7 +251,7 @@ export class AdminMentorSessionsService {
    * must remain selectable. The mapping is unique per mentor + organisation,
    * so it cannot produce duplicate mentors.
    */
-  async listMentors(user: AdminRequester, query: AdminMentorsQueryDto) {
+  async listAllMentors(user: AdminRequester, query: AdminMentorsQueryDto) {
     const orgId = await this.resolveOrganizationScope(user, query.orgId);
 
     // orgId is mandatory in this endpoint's DTO. Keep this defensive check so
@@ -300,7 +300,10 @@ export class AdminMentorSessionsService {
      LIST SESSIONS
   ========================================================================== */
 
-  async listSessions(user: AdminRequester, query: AdminMentorSessionsQueryDto) {
+  async listMentorSessions(
+    user: AdminRequester,
+    query: AdminMentorSessionsQueryDto,
+  ) {
     const limit = query.limit ?? 10;
     const offset = query.offset ?? 0;
 
@@ -533,7 +536,7 @@ export class AdminMentorSessionsService {
     return { data, total: Number(total) };
   }
 
-  async exportSessions(
+  async exportSessionsData(
     user: AdminRequester,
     query: AdminMentorSessionsFilterDto,
   ) {
@@ -649,7 +652,10 @@ export class AdminMentorSessionsService {
    * same filters (no pagination), in a single SQL aggregate. Uses the
    * listing's many-to-one joins only, so each booking is counted once.
    */
-  async getMetrics(user: AdminRequester, query: AdminMentorSessionsFilterDto) {
+  async getMentorSessionMetrics(
+    user: AdminRequester,
+    query: AdminMentorSessionsFilterDto,
+  ) {
     const where = await this.buildSessionsWhere(user, query);
 
     const booking = zuvyMentorSlotBooking;
@@ -729,7 +735,10 @@ export class AdminMentorSessionsService {
      SESSION DETAIL
   ========================================================================== */
 
-  async getSession(user: AdminRequester, bookingId: number) {
+  async getMentorSessionBookingDetails(
+    user: AdminRequester,
+    bookingId: number,
+  ) {
     const orgId = await this.resolveOrganizationScope(user);
     const [row] = await db
       .select({

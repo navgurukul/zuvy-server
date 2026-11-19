@@ -51,8 +51,14 @@ export class AdminMentorSessionsController {
       forbidNonWhitelisted: true,
     }),
   )
-  async listSessions(@Req() req, @Query() query: AdminMentorSessionsQueryDto) {
-    return this.adminMentorSessionsService.listSessions(req.user[0], query);
+  async listMentorSessions(
+    @Req() req,
+    @Query() query: AdminMentorSessionsQueryDto,
+  ) {
+    return this.adminMentorSessionsService.listMentorSessions(
+      req.user[0],
+      query,
+    );
   }
 
   @Get('mentor-sessions/export')
@@ -66,12 +72,12 @@ export class AdminMentorSessionsController {
       forbidNonWhitelisted: true,
     }),
   )
-  async exportSessions(
+  async exportSessionsData(
     @Req() req,
     @Query() query: AdminMentorSessionsFilterDto,
     @Res() res: Response,
   ) {
-    const csv = await this.adminMentorSessionsService.exportSessions(
+    const csv = await this.adminMentorSessionsService.exportSessionsData(
       req.user[0],
       query,
     );
@@ -98,8 +104,14 @@ export class AdminMentorSessionsController {
       forbidNonWhitelisted: true,
     }),
   )
-  async getMetrics(@Req() req, @Query() query: AdminMentorSessionsFilterDto) {
-    return this.adminMentorSessionsService.getMetrics(req.user[0], query);
+  async getMentorSessionMetrics(
+    @Req() req,
+    @Query() query: AdminMentorSessionsFilterDto,
+  ) {
+    return this.adminMentorSessionsService.getMentorSessionMetrics(
+      req.user[0],
+      query,
+    );
   }
 
   @Get('mentors')
@@ -115,8 +127,8 @@ export class AdminMentorSessionsController {
       forbidNonWhitelisted: true,
     }),
   )
-  async listMentors(@Req() req, @Query() query: AdminMentorsQueryDto) {
-    return this.adminMentorSessionsService.listMentors(req.user[0], query);
+  async listAllMentors(@Req() req, @Query() query: AdminMentorsQueryDto) {
+    return this.adminMentorSessionsService.listAllMentors(req.user[0], query);
   }
 
   @Get('mentor-sessions/:bookingId')
@@ -129,10 +141,13 @@ export class AdminMentorSessionsController {
     description: 'Insufficient permissions or mentorship disabled',
   })
   @ApiResponse({ status: 404, description: 'Booking not found' })
-  async getSession(
+  async getMentorSessionBookingDetails(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
   ) {
-    return this.adminMentorSessionsService.getSession(req.user[0], bookingId);
+    return this.adminMentorSessionsService.getMentorSessionBookingDetails(
+      req.user[0],
+      bookingId,
+    );
   }
 }
