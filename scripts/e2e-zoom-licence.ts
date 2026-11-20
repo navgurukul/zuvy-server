@@ -10,10 +10,12 @@
  * ahead so they never meet real data. Everything created is deleted at the
  * end, and the test student's credit row is restored byte for byte.
  *
- * Cancel note: the dev database's `zuvy_mentor_session_attendance` table is a
- * different, older table (see the plan doc), so the credit recount inside
- * cancelBooking fails on dev. Cancel cases run with that recount replaced by
- * a no-op (CANCEL_RECOUNT_STUBBED below). Everything else in cancel is real.
+ * Credits: the run counts only its own bookings (credits_counted_from is set
+ * to the run's start through MentorshipConfigService's test override, never
+ * written to the table), with no gap and plenty of credits, so the licence
+ * cases can book as often as they need. The credit rules themselves are
+ * checked in scripts/e2e-mentorship-credits.ts. The credit recount is real;
+ * RECOUNT_FAULTS lets a case make it fail once.
  *
  * Override the dev users with E2E_MENTOR_ID / E2E_STUDENT_ID / E2E_ORG_ID.
  */
@@ -60,6 +62,7 @@ const MENTOR = Number(process.env.E2E_MENTOR_ID ?? 66142);
 const STUDENT = Number(process.env.E2E_STUDENT_ID ?? 65757);
 const ORG = Number(process.env.E2E_ORG_ID ?? 1);
 const REASON = 'E2E licence test clean-up';
+// The credit recount is the real one; a case can make it fail once.
 const CANCEL_RECOUNT_STUBBED = true;
 const MIN = 60_000;
 const LOG_DIR = process.env.E2E_LOG_DIR || '.';
@@ -233,6 +236,11 @@ async function readStudentMetricsJson(): Promise<string | null> {
     sql`SELECT row_to_json(m)::text AS j FROM main.zuvy_student_booking_metrics m WHERE m.user_id = ${STUDENT}`,
   );
   return result.rows[0]?.j ?? null;
+}
+// The student's credits as the app works them out.
+async function creditStateJson(): Promise<string> {
+  const e = await svc.getBookingEligibility(STUDENT);
+  return JSON.stringify(e.credits);
 }
 async function restoreStudentMetrics() {
   await db
@@ -514,15 +522,22 @@ async function main() {
 
   const realRecount = svc.recomputeStudentBookingMetrics.bind(svc);
   let recountShouldThrow = false;
-  if (CANCEL_RECOUNT_STUBBED) {
-    svc.recomputeStudentBookingMetrics = async () => {
-      if (recountShouldThrow) {
-        recountShouldThrow = false;
-        throw new Error('E2E: forced failure late in cancel');
-      }
-    };
-  }
-  void realRecount;
+  svc.recomputeStudentBookingMetrics = async (...args: any[]) => {
+    if (recountShouldThrow) {
+      recountShouldThrow = false;
+      throw new Error('E2E: forced failure late in cancel');
+    }
+    return realRecount(...args);
+  };
+
+  // Only this run's bookings use a credit, with no gap and plenty of
+  // credits, so the licence cases can book as often as they need.
+  svc.mentorshipConfig.setOverridesForTesting({
+    creditsCountedFrom: new Date(),
+    totalCredits: 100000,
+    gapDays: 0,
+    noticeHours: 72,
+  });
 
   [mgmt] = await db
     .select()
@@ -943,7 +958,7 @@ async function main() {
         const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
         await fillPool(at(d, '10:00'), at(d, '11:00'));
         await restoreStudentMetrics();
-        const before = await readStudentMetricsJson();
+        const before = await creditStateJson();
         await expectRefused(
           'student gets the clear "no meeting licence" message',
           () => svc.bookSlot(STUDENT, slot.id),
@@ -958,7 +973,7 @@ async function main() {
         report('no hold', (await holdsFor(slot.id)).length === 0);
         report(
           'student credits unchanged',
-          (await readStudentMetricsJson()) === before,
+          (await creditStateJson()) === before,
         );
       },
     );
@@ -969,7 +984,7 @@ async function main() {
         const d = nextDay();
         const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
         await restoreStudentMetrics();
-        const before = await readStudentMetricsJson();
+        const before = await creditStateJson();
         const [{ maxAlert }] = await db
           .select({ maxAlert: sql`coalesce(max(id),0)::int` })
           .from(schema.zuvyNotifications);
@@ -988,7 +1003,7 @@ async function main() {
         );
         report(
           'student credits unchanged',
-          (await readStudentMetricsJson()) === before,
+          (await creditStateJson()) === before,
         );
         const [{ newAlerts }] = await db
           .select({ newAlerts: sql`count(*)::int` })
@@ -2202,7 +2217,7 @@ async function main() {
       const d = nextDay();
       const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
       await restoreStudentMetrics();
-      const before = await readStudentMetricsJson();
+      const before = await creditStateJson();
       let createdId: number | null = null;
       onMeetingCreated = (id) => {
         createdId = id;
@@ -2230,7 +2245,7 @@ async function main() {
       );
       report(
         'student credits exactly as before',
-        (await readStudentMetricsJson()) === before,
+        (await creditStateJson()) === before,
       );
     });
 
@@ -2238,7 +2253,7 @@ async function main() {
       const d = nextDay();
       const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
       await restoreStudentMetrics();
-      const before = await readStudentMetricsJson();
+      const before = await creditStateJson();
       let createdId: number | null = null;
       onMeetingCreated = (id) => {
         createdId = id;
@@ -2266,7 +2281,7 @@ async function main() {
       report('licence given back', (await holdsFor(slot.id)).length === 0);
       report(
         'student credits exactly as before',
-        (await readStudentMetricsJson()) === before,
+        (await creditStateJson()) === before,
       );
     });
 
@@ -2835,7 +2850,7 @@ async function main() {
         const d = nextDay();
         const slot = await createSlot(at(d, '10:00'), at(d, '10:30'));
         await restoreStudentMetrics();
-        const creditBefore = await readStudentMetricsJson();
+        const creditBefore = await creditStateJson();
         const deletedBefore = deletedMeetingIds.length;
         omitJoinUrlNext = true;
         await expectRefused(
@@ -2861,7 +2876,7 @@ async function main() {
         );
         report(
           'the student keeps the credit',
-          (await readStudentMetricsJson()) === creditBefore,
+          (await creditStateJson()) === creditBefore,
         );
       },
     );
@@ -3640,6 +3655,7 @@ async function main() {
     console.log(
       `Removed ${allSlotIds.length} slot(s), ${fillerIds.length} filler hold(s), ${allBookingIds.length} booking(s), ${classSessionIds.length} class session(s).`,
     );
+    svc.mentorshipConfig.setOverridesForTesting(null);
     if (savedTotalLicences === undefined)
       delete process.env.ZOOM_TOTAL_LICENSES;
     else process.env.ZOOM_TOTAL_LICENSES = savedTotalLicences;

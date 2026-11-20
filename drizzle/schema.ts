@@ -3272,6 +3272,21 @@ export const zuvyStudentBookingMetrics = main.table(
   }),
 );
 
+/* Mentorship rules Ops can change without a release (migration 0050).
+   Read through MentorshipConfigService; see that file for the keys. */
+export const zuvyMentorshipConfig = main.table('zuvy_mentorship_config', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: jsonb('value').notNull(),
+  description: text('description'),
+  updatedBy: bigint('updated_by', { mode: 'bigint' }).references(
+    () => users.id,
+    { onDelete: 'set null' },
+  ),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const zuvyNotifications = main.table(
   'zuvy_notifications',
   {

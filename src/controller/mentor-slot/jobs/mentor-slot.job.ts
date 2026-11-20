@@ -4,10 +4,9 @@ import { db } from 'src/db';
 import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
-  zuvyStudentBookingMetrics,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, gte, ne, inArray, isNull } from 'drizzle-orm';
+import { and, eq, lt, ne, inArray, isNull } from 'drizzle-orm';
 import { MentorSlotService } from '../mentor-slot.service';
 
 // On unless MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false. It is the safety net
@@ -230,32 +229,5 @@ export class MentorSlotJob implements OnModuleInit {
           ne(zuvyMentorSlotBooking.status, 'cancelled'),
         ),
       );
-  }
-
-  /* ==========================================================================
-       RUN DAILY AT MIDNIGHT — RESET STUDENT QUOTAS
-    ========================================================================== */
-
-  @Cron('0 0 * * *') // Daily at midnight
-  async resetStudentQuotas() {
-    const now = new Date();
-    const currentYear = now.getUTCFullYear();
-    const nextQuotaStart = new Date(Date.UTC(currentYear, 3, 15)); // April 15
-
-    // Only reset if today is April 15
-    if (now.getUTCMonth() === 3 && now.getUTCDate() === 15) {
-      const nextQuotaReset = new Date(Date.UTC(currentYear + 1, 3, 15));
-
-      await db
-        .update(zuvyStudentBookingMetrics)
-        .set({
-          quotaUsed: 0,
-          isQuotaExhausted: false,
-          quotaResetDate: nextQuotaReset,
-        } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>)
-        .where(lt(zuvyStudentBookingMetrics.quotaResetDate, now));
-
-      console.log('Student booking quotas reset for the new year');
-    }
   }
 }

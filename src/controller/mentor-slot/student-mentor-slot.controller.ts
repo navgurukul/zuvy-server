@@ -97,6 +97,16 @@ export class StudentMentorSlotController {
     return this.mentorSlotService.bookSlot(Number(req.user[0].id), dto.slotId);
   }
 
+  @Get('mentorship/eligibility')
+  @ApiOperation({
+    summary: "The student's mentorship credits and the booking rules",
+    description:
+      'credits: creditsAssigned, creditsUsed, creditsLeft, nextEligibleDate (when the 2-week gap ends, null when the student can book now or has no credits left), canBook, blockReason (NO_CREDITS | GAP_ACTIVE | null). rules: the numbers in force. earliestBookableStart: slots starting before this cannot be booked. serverTime: use it instead of the device clock.',
+  })
+  async getBookingEligibility(@Req() req) {
+    return this.mentorSlotService.getBookingEligibility(Number(req.user[0].id));
+  }
+
   @Get('mentor-slots/my')
   @ApiOperation({ summary: 'Get all mentor slot bookings for the student' })
   async getStudentBookings(@Req() req) {

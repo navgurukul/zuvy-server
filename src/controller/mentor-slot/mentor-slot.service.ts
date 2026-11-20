@@ -50,6 +50,20 @@ import { NotificationType } from '../notification/notification.types';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { NotificationEmailService } from 'src/notification/email/email.service';
 import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
+import {
+  MentorshipConfig,
+  MentorshipConfigService,
+} from './mentorship-rules/mentorship-config.service';
+import { CreditService } from './mentorship-rules/credit.service';
+import {
+  CreditState,
+  assertCreditsAllowBooking,
+  assertSlotHasNotice,
+  computeCreditState,
+  creditData,
+  earliestBookableStart,
+  gapEndsAfter,
+} from './mentorship-rules/mentorship-rules';
 
 // A booking still without its join link this long after it was made is
 // treated as abandoned between bookSlot's steps: the abandoned-booking job
@@ -66,6 +80,8 @@ export class MentorSlotService {
     private readonly zoomService: ZoomService,
     private readonly emailService: NotificationEmailService,
     private readonly zoomLicenseService: ZoomLicenseService,
+    private readonly mentorshipConfig: MentorshipConfigService,
+    private readonly creditService: CreditService,
   ) {}
 
   private mapMeetingLink(booking: any, userId: bigint) {
@@ -524,22 +540,6 @@ export class MentorSlotService {
 
     return eligibleBootcamps[0].bootcampId;
   }
-  /* ==========================================================================
-     UTILITY — 12 HOUR RULE ENFORCER
-  ========================================================================== */
-
-  private enforceMinimumNotice(slotStart: Date) {
-    const now = new Date();
-    const diffMs = slotStart.getTime() - now.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (diffHours < 12) {
-      throw new BadRequestException(
-        'Booking must be made at least 12 hours in advance.',
-      );
-    }
-  }
-
   /* ========================================================================== 
         UTILITY - FEEDBACK DATE FILTER
   ========================================================================== */
@@ -556,43 +556,6 @@ export class MentorSlotService {
       default:
         return null;
     }
-  }
-
-  /* ==========================================================================
-   QUOTA YEAR WINDOW (APRIL 15 → APRIL 14)
-========================================================================== */
-
-  private getQuotaWindow() {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-
-    let quotaStart = new Date(Date.UTC(year, 3, 15)); // April 15
-    let quotaEnd = new Date(Date.UTC(year + 1, 3, 14, 23, 59, 59));
-
-    if (now < quotaStart) {
-      quotaStart = new Date(Date.UTC(year - 1, 3, 15));
-      quotaEnd = new Date(Date.UTC(year, 3, 14, 23, 59, 59));
-    }
-
-    return { quotaStart, quotaEnd };
-  }
-
-  private getQuotaResetDate() {
-    const { quotaEnd } = this.getQuotaWindow();
-    return new Date(Date.UTC(quotaEnd.getUTCFullYear(), 3, 15));
-  }
-
-  private async resetStudentMetrics(studentUserId: bigint) {
-    const resetDate = this.getQuotaResetDate();
-    await db
-      .update(zuvyStudentBookingMetrics)
-      .set({
-        quotaUsed: 0,
-        isQuotaExhausted: false,
-        quotaResetDate: resetDate,
-        updatedAt: new Date(),
-      } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>)
-      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
   }
 
   /**
@@ -634,147 +597,81 @@ export class MentorSlotService {
   }
 
   /**
-   * Recounts a student's credits and cooldown from their bookings. A booking
-   * uses a credit unless it was cancelled or its credit was refunded after a
-   * no-show (MentorAttendanceJob); the cooldown runs from the most recent
-   * booking that still uses one. Run inside the caller's transaction.
+   * Recounts a student's credits and gap from their bookings (CreditService)
+   * and stores the result in zuvy_student_booking_metrics, which is only a
+   * cache of it. Takes the student's credit lock first, so it waits for any
+   * booking or cancel of the same student in progress. Run inside the
+   * caller's transaction, after its booking change; returns the new state.
    */
-  async recomputeStudentBookingMetrics(trx: any, studentUserId: bigint) {
-    // Lock the student's credit row before counting. bookSlot increments the
-    // same row, so a booking being made at the same moment either commits
-    // first (and is counted here) or waits and adds its +1 on top of this
-    // recount — instead of being overwritten by counts taken before it
-    // committed.
-    await trx
-      .select({ id: zuvyStudentBookingMetrics.id })
-      .from(zuvyStudentBookingMetrics)
-      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
-      .for('update');
-
-    const { quotaStart, quotaEnd } = this.getQuotaWindow();
-
-    const usesCredit = and(
-      eq(zuvyMentorSlotBooking.studentUserId, studentUserId),
-      ne(zuvyMentorSlotBooking.status, 'cancelled'),
-      notExists(
-        trx
-          .select({ id: zuvyMentorSessionAttendance.id })
-          .from(zuvyMentorSessionAttendance)
-          .where(
-            and(
-              eq(
-                zuvyMentorSessionAttendance.mentorBookingId,
-                zuvyMentorSlotBooking.id,
-              ),
-              eq(zuvyMentorSessionAttendance.creditRefunded, true),
-            ),
-          ),
-      ),
+  async recomputeStudentBookingMetrics(
+    trx: any,
+    studentUserId: bigint,
+    config?: MentorshipConfig,
+  ): Promise<CreditState> {
+    const rules = config ?? (await this.mentorshipConfig.get());
+    await this.creditService.lockStudent(
+      trx,
+      studentUserId,
+      rules.creditsCountedFrom,
     );
-
-    const [{ count: totalBookings }] = await trx
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(usesCredit);
-
-    if (Number(totalBookings) === 0) {
-      await trx
-        .delete(zuvyStudentBookingMetrics)
-        .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
-      return;
-    }
-
-    const [{ count: quotaUsed }] = await trx
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(
-        and(
-          usesCredit,
-          gte(zuvyMentorSlotBooking.confirmedAt, quotaStart),
-          lte(zuvyMentorSlotBooking.confirmedAt, quotaEnd),
-        ),
-      );
+    const usage = await this.creditService.loadUsage(trx, studentUserId, rules);
+    const state = computeCreditState(usage, rules, new Date());
 
     const [lastBooking] = await trx
       .select({ confirmedAt: zuvyMentorSlotBooking.confirmedAt })
       .from(zuvyMentorSlotBooking)
-      .where(usesCredit)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.studentUserId, studentUserId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      )
       .orderBy(desc(zuvyMentorSlotBooking.confirmedAt))
       .limit(1);
 
-    const lastBookingDate = lastBooking?.confirmedAt;
-    const cooldownEndDate = lastBookingDate
-      ? new Date(lastBookingDate.getTime() + 21 * 24 * 60 * 60 * 1000)
-      : null;
-
     await trx
-      .insert(zuvyStudentBookingMetrics)
-      .values({
-        userId: studentUserId,
-        totalBookings: Number(totalBookings),
-        quotaUsed: Number(quotaUsed),
-        lastBookingDate,
-        cooldownEndDate,
-        quotaResetDate: this.getQuotaResetDate(),
-        isQuotaExhausted: Number(quotaUsed) >= 3,
-      } as typeof zuvyStudentBookingMetrics.$inferInsert)
-      .onConflictDoUpdate({
-        target: zuvyStudentBookingMetrics.userId,
-        set: {
-          totalBookings: Number(totalBookings),
-          quotaUsed: Number(quotaUsed),
-          lastBookingDate,
-          cooldownEndDate,
-          isQuotaExhausted: Number(quotaUsed) >= 3,
-          updatedAt: new Date(),
-        } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
-      });
+      .update(zuvyStudentBookingMetrics)
+      .set({
+        totalBookings: usage.creditsUsed,
+        quotaUsed: state.creditsUsed,
+        lastBookingDate: lastBooking?.confirmedAt ?? null,
+        // When the gap ends (past or future); null with no session.
+        cooldownEndDate: gapEndsAfter(usage.latestSessionStart, rules),
+        // No yearly reset any more: the date credits are counted from.
+        quotaResetDate: rules.creditsCountedFrom,
+        isQuotaExhausted: state.creditsLeft === 0,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>)
+      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
+
+    return state;
   }
 
-  /* ==========================================================================
-     VALIDATE LEARNER QUOTA + COOLDOWN
-  ========================================================================== */
-
-  private async validateLearnerBookingEligibility(studentUserId: bigint) {
-    const [metrics] = await db
-      .select()
-      .from(zuvyStudentBookingMetrics)
-      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
-      .limit(1);
-
-    if (!metrics) {
-      // Initialize if missing
-      await this.initializeStudentMetrics(studentUserId);
-      return; // Allow first booking
-    }
-
+  /**
+   * The student's credits, the rules' numbers and the server's clock, for
+   * the booking banner and drawer (GET /student/mentorship/eligibility).
+   * Read only.
+   */
+  async getBookingEligibility(studentId: number) {
+    const config = await this.mentorshipConfig.get();
     const now = new Date();
-    if (metrics.quotaResetDate && now >= metrics.quotaResetDate) {
-      await this.resetStudentMetrics(studentUserId);
-      return;
-    }
-
-    // Check quota
-    if (metrics.isQuotaExhausted || metrics.quotaUsed >= 3) {
-      throw new ForbiddenException(
-        `You have used all 3 sessions for this year. Your quota resets on ${metrics.quotaResetDate.toDateString()}.`,
-      );
-    }
-
-    // Check cooldown
-    if (metrics.cooldownEndDate && now < metrics.cooldownEndDate) {
-      throw new ForbiddenException(
-        `You can book your next session from ${metrics.cooldownEndDate.toDateString()}.`,
-      );
-    }
-  }
-
-  private async initializeStudentMetrics(userId: bigint) {
-    const quotaResetDate = this.getQuotaResetDate();
-    await db.insert(zuvyStudentBookingMetrics).values({
-      userId,
-      quotaResetDate,
-    } as typeof zuvyStudentBookingMetrics.$inferInsert);
+    const credits = await this.creditService.getState(
+      BigInt(studentId),
+      config,
+      db,
+      now,
+    );
+    return {
+      credits: creditData(credits),
+      rules: {
+        totalCredits: config.totalCredits,
+        gapDays: config.gapDays,
+        noticeHours: config.noticeHours,
+        joinOpenMinutes: config.joinOpenMinutes,
+      },
+      earliestBookableStart: earliestBookableStart(now, config),
+      serverTime: now,
+    };
   }
 
   /* ==========================================================================
@@ -843,7 +740,13 @@ export class MentorSlotService {
 
   async bookSlot(studentId: number, slotId: number) {
     await this.ensureMentorshipEnabled(BigInt(studentId));
-    await this.validateLearnerBookingEligibility(BigInt(studentId));
+    const config = await this.mentorshipConfig.get();
+    // Fails fast, before any lock or licence work. Checked again below under
+    // the student's credit lock, which is the check that counts.
+    assertCreditsAllowBooking(
+      await this.creditService.getState(BigInt(studentId), config),
+      config,
+    );
     await this.syncZoomLicenseState();
 
     /* ========================================
@@ -881,8 +784,9 @@ export class MentorSlotService {
         throw new BadRequestException('This slot has already passed.');
       }
 
-      // 12-hour booking notice is temporarily disabled for short-notice sessions.
-      // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+      // Only slots starting at least notice_hours from now (exactly the
+      // notice is allowed). The slots API hides the others.
+      assertSlotHasNotice(new Date(slot.slotStartDateTime), new Date(), config);
 
       const [mentorProfile] = await trx
         .select()
@@ -985,6 +889,18 @@ export class MentorSlotService {
         throw error;
       }
 
+      /* Credits and gap, under the student's credit lock: a second booking
+         sent at the same moment waits here, then sees this one. */
+      await this.creditService.lockStudent(
+        trx,
+        BigInt(studentId),
+        config.creditsCountedFrom,
+      );
+      assertCreditsAllowBooking(
+        await this.creditService.getState(BigInt(studentId), config, trx),
+        config,
+      );
+
       /* Slot capacity */
       if (slot.currentBookedCount >= slot.maxCapacity)
         throw new BadRequestException('Slot is full.');
@@ -1014,40 +930,11 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotBooking.$inferInsert)
         .returning();
 
-      /* Student credit. The row as it was is kept (as text, so timestamps
-         are not shifted on the way through JS) in case step 2 fails and the
-         booking has to be undone. */
-      const metricsBefore = await this.readStudentMetricsForUndo(
+      /* Student credit: the booking above now uses one; recount. */
+      const credits = await this.recomputeStudentBookingMetrics(
         trx,
         BigInt(studentId),
-      );
-
-      await trx
-        .insert(zuvyStudentBookingMetrics)
-        .values({
-          userId: BigInt(studentId),
-          totalBookings: 1,
-          quotaUsed: 1,
-          lastBookingDate: new Date(),
-          cooldownEndDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000), // 21 days
-          quotaResetDate: this.getQuotaResetDate(),
-          isQuotaExhausted: false,
-        } as typeof zuvyStudentBookingMetrics.$inferInsert)
-        .onConflictDoUpdate({
-          target: zuvyStudentBookingMetrics.userId,
-          set: {
-            totalBookings: sql`COALESCE(zuvy_student_booking_metrics.total_bookings, 0) + 1`,
-            quotaUsed: sql`COALESCE(zuvy_student_booking_metrics.quota_used, 0) + 1`,
-            lastBookingDate: new Date(),
-            cooldownEndDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
-            quotaResetDate: this.getQuotaResetDate(),
-            isQuotaExhausted: sql`CASE WHEN COALESCE(zuvy_student_booking_metrics.quota_used, 0) + 1 >= 3 THEN true ELSE false END`,
-          } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
-        });
-
-      const metricsWritten = await this.readStudentMetricsForUndo(
-        trx,
-        BigInt(studentId),
+        config,
       );
 
       return {
@@ -1056,8 +943,7 @@ export class MentorSlotService {
         mentorProfile,
         mentorEmail: mentorUser.email as string,
         studentEmail: studentUser?.email as string | undefined,
-        metricsBefore,
-        metricsWritten,
+        credits,
       };
     });
 
@@ -1182,7 +1068,7 @@ export class MentorSlotService {
        STEP 3: SAVE MEETING (short transaction)
     ======================================== */
 
-    let saved: { cancelled: boolean; metrics?: any };
+    let saved: { cancelled: boolean };
     try {
       saved = await db.transaction(async (trx) => {
         // Same row lock cancelBooking takes: a cancel that landed while Zoom
@@ -1242,13 +1128,7 @@ export class MentorSlotService {
           trx,
         );
 
-        const [metrics] = await trx
-          .select()
-          .from(zuvyStudentBookingMetrics)
-          .where(eq(zuvyStudentBookingMetrics.userId, BigInt(studentId)))
-          .limit(1);
-
-        return { cancelled: false, metrics };
+        return { cancelled: false };
       });
     } catch (error: any) {
       this.logger.error(
@@ -1259,11 +1139,10 @@ export class MentorSlotService {
       const outcome = await this.readStep3Outcome(
         createdBooking.id,
         meeting.meetingId,
-        BigInt(studentId),
       );
       if (outcome.state === 'saved') {
         // Step 3 did commit: the booking is complete.
-        saved = { cancelled: false, metrics: outcome.metrics };
+        saved = { cancelled: false };
       } else if (outcome.state === 'not-saved') {
         await this.deleteZoomMeetingQuietly(
           meeting.meetingId,
@@ -1296,15 +1175,17 @@ export class MentorSlotService {
       );
     }
 
-    const updatedMetrics = saved.metrics;
-
     // This response goes to the student who booked, so it must not carry
     // the host start link (it used to, as `mentorJoinLink`).
+    const { credits } = reserved;
     const bookingResponse = {
       ...withoutHostZoomFields(createdBooking),
       meetingLink: meeting.joinUrl,
-      remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
-      nextEligible: updatedMetrics?.cooldownEndDate,
+      // Kept for existing screens; `credits` has the full picture.
+      remainingCredits: credits.creditsLeft,
+      nextEligible: credits.nextEligibleDate,
+      credits: creditData(credits),
+      serverTime: new Date(),
     };
 
     // Send notification email to team@zuvy after successful booking
@@ -1389,12 +1270,7 @@ export class MentorSlotService {
   private async readStep3Outcome(
     bookingId: number,
     meetingId: string | undefined,
-    studentUserId: bigint,
-  ): Promise<
-    | { state: 'saved'; metrics: any }
-    | { state: 'not-saved' }
-    | { state: 'unknown' }
-  > {
+  ): Promise<{ state: 'saved' | 'not-saved' | 'unknown' }> {
     try {
       const [row] = await db
         .select({
@@ -1409,12 +1285,7 @@ export class MentorSlotService {
         row.zoomMeetingId &&
         row.zoomMeetingId === meetingId
       ) {
-        const [metrics] = await db
-          .select()
-          .from(zuvyStudentBookingMetrics)
-          .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
-          .limit(1);
-        return { state: 'saved', metrics };
+        return { state: 'saved' };
       }
       return { state: 'not-saved' };
     } catch {
@@ -1466,23 +1337,6 @@ export class MentorSlotService {
   }
 
   /**
-   * The student's credit row with its values as text (timestamps exactly as
-   * stored, not converted through JS Date). Locks the row until the
-   * transaction ends.
-   */
-  private async readStudentMetricsForUndo(trx: any, studentUserId: bigint) {
-    const result = await trx.execute(sql`
-      SELECT total_bookings, quota_used, is_quota_exhausted,
-             last_booking_date::text AS last_booking_date,
-             cooldown_end_date::text AS cooldown_end_date,
-             quota_reset_date::text AS quota_reset_date
-      FROM ${zuvyStudentBookingMetrics}
-      WHERE ${zuvyStudentBookingMetrics.userId} = ${studentUserId}
-      FOR UPDATE`);
-    return (result.rows?.[0] as Record<string, any>) ?? null;
-  }
-
-  /**
    * Undoes step 1 of bookSlot after the Zoom step failed (or never finished):
    * removes the booking and gives back the slot seat, the licence and the
    * credit. Does nothing if the booking was cancelled meanwhile
@@ -1492,9 +1346,6 @@ export class MentorSlotService {
    */
   private async undoReservedBooking(reserved: {
     createdBooking: any;
-    slot: any;
-    metricsBefore: Record<string, any> | null;
-    metricsWritten: Record<string, any> | null;
   }): Promise<{ undone: boolean; zoomMeetingId: string | null }> {
     const notUndone = { undone: false, zoomMeetingId: null };
     const bookingId = reserved.createdBooking.id as number;
@@ -1530,12 +1381,12 @@ export class MentorSlotService {
 
         await this.releaseSlotLicenceIfUnbooked(trx, slotId);
 
-        await this.undoStudentCredit(
-          trx,
-          studentUserId,
-          reserved.metricsBefore,
-          reserved.metricsWritten,
-        );
+        // The credit comes back by itself: the booking is gone, so the
+        // recount no longer counts it. If the recount fails, the whole undo
+        // fails and the booking stays, so the abandoned-booking job retries
+        // it (removing it without giving the credit back would leave the
+        // student charged for nothing).
+        await this.recomputeStudentBookingMetrics(trx, studentUserId);
         return {
           undone: true,
           zoomMeetingId: booking.zoomMeetingId ?? null,
@@ -1592,9 +1443,6 @@ export class MentorSlotService {
     for (const booking of stuck) {
       const { undone, zoomMeetingId } = await this.undoReservedBooking({
         createdBooking: booking,
-        slot: { id: booking.slotAvailabilityId },
-        metricsBefore: null,
-        metricsWritten: null,
       });
       if (undone) {
         released += 1;
@@ -1608,54 +1456,6 @@ export class MentorSlotService {
       }
     }
     return released;
-  }
-
-  /**
-   * Puts the student's credit row back as it was before the booking, if
-   * nothing else changed it since; otherwise recounts it from bookings.
-   */
-  private async undoStudentCredit(
-    trx: any,
-    studentUserId: bigint,
-    before: Record<string, any> | null,
-    written: Record<string, any> | null,
-  ) {
-    const now = await this.readStudentMetricsForUndo(trx, studentUserId);
-    const unchangedSince =
-      !!now &&
-      !!written &&
-      [
-        'total_bookings',
-        'quota_used',
-        'last_booking_date',
-        'cooldown_end_date',
-      ].every((key) => String(now[key]) === String(written[key]));
-
-    if (unchangedSince) {
-      if (!before) {
-        await trx
-          .delete(zuvyStudentBookingMetrics)
-          .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
-      } else {
-        await trx.execute(sql`
-          UPDATE ${zuvyStudentBookingMetrics} SET
-            total_bookings = ${before.total_bookings},
-            quota_used = ${before.quota_used},
-            is_quota_exhausted = ${before.is_quota_exhausted},
-            last_booking_date = ${before.last_booking_date}::timestamp,
-            cooldown_end_date = ${before.cooldown_end_date}::timestamp,
-            quota_reset_date = ${before.quota_reset_date}::timestamp
-          WHERE ${zuvyStudentBookingMetrics.userId} = ${studentUserId}`);
-      }
-      return;
-    }
-
-    // No snapshot to restore (the abandoned-booking job), or something else
-    // changed the row since (another booking or a cancel): recount from
-    // bookings. If that fails, the whole undo fails and the booking stays,
-    // so the abandoned-booking job retries it; removing the booking without
-    // giving the credit back would leave the student charged for nothing.
-    await this.recomputeStudentBookingMetrics(trx, studentUserId);
   }
 
   /* ==========================================================================
@@ -2128,7 +1928,14 @@ export class MentorSlotService {
           ),
           eq(zuvyMentorSlotAvailability.status, 'available'),
           eq(zuvyMentorSlotAvailability.isPublic, true),
-          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()`,
+          // Only slots at least notice_hours away (server clock).
+          gte(
+            zuvyMentorSlotAvailability.slotStartDateTime,
+            earliestBookableStart(
+              new Date(),
+              await this.mentorshipConfig.get(),
+            ),
+          ),
           sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
           ne(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId),
         ),
@@ -3218,24 +3025,10 @@ export class MentorSlotService {
     filter: 'all' | '30d' | '3m' = 'all',
   ) {
     const userIdBigInt = BigInt(userId);
-
-    let [metrics] = await db
-      .select()
-      .from(zuvyStudentBookingMetrics)
-      .where(eq(zuvyStudentBookingMetrics.userId, userIdBigInt))
-      .limit(1);
-
-    if (!metrics) {
-      await this.initializeStudentMetrics(userIdBigInt);
-
-      [metrics] = await db
-        .select()
-        .from(zuvyStudentBookingMetrics)
-        .where(eq(zuvyStudentBookingMetrics.userId, userIdBigInt))
-        .limit(1);
-    }
-
+    const config = await this.mentorshipConfig.get();
     const now = new Date();
+    const usage = await this.creditService.loadUsage(db, userIdBigInt, config);
+    const credits = computeCreditState(usage, config, now);
 
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
@@ -3353,20 +3146,32 @@ export class MentorSlotService {
       upcomingCount = Number(upcoming.count || 0);
     }
 
-    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
-
-    const canBook =
-      !metrics?.isQuotaExhausted &&
-      (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
+    // The cached row's other fields, as this response always carried them
+    // (read only: nothing is created on read any more).
+    const [cachedRow] = await db
+      .select()
+      .from(zuvyStudentBookingMetrics)
+      .where(eq(zuvyStudentBookingMetrics.userId, userIdBigInt))
+      .limit(1);
 
     return {
-      ...metrics,
+      id: cachedRow?.id ?? null,
+      totalBookings: cachedRow?.totalBookings ?? 0,
+      lastBookingDate: cachedRow?.lastBookingDate ?? null,
+      quotaResetDate: config.creditsCountedFrom,
+      createdAt: cachedRow?.createdAt ?? null,
+      updatedAt: cachedRow?.updatedAt ?? null,
+      userId: userIdBigInt,
+      // The credit fields, worked out from bookings now (not the cache).
+      quotaUsed: credits.creditsUsed,
+      isQuotaExhausted: credits.creditsLeft === 0,
+      cooldownEndDate: gapEndsAfter(usage.latestSessionStart, config),
 
-      remainingCredits,
-
-      canBook,
-
-      nextEligible: metrics?.cooldownEndDate || null,
+      remainingCredits: credits.creditsLeft,
+      canBook: credits.canBook,
+      nextEligible: credits.nextEligibleDate,
+      credits: creditData(credits),
+      serverTime: now,
 
       sessions: {
         total: Number(sessionStats.totalSessions || 0),

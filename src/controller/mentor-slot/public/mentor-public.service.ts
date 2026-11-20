@@ -11,10 +11,21 @@ import {
   zuvyOrganizations,
 } from '../../../../drizzle/schema';
 
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { MentorshipConfigService } from '../mentorship-rules/mentorship-config.service';
+import { earliestBookableStart } from '../mentorship-rules/mentorship-rules';
 
 @Injectable()
 export class MentorPublicService {
+  constructor(
+    private readonly mentorshipConfig: MentorshipConfigService = new MentorshipConfigService(),
+  ) {}
+
+  /** Slots starting before this can't be booked (notice_hours, server clock). */
+  private async earliestBookableStart() {
+    return earliestBookableStart(new Date(), await this.mentorshipConfig.get());
+  }
+
   /* =========================================================
      GET ALL MENTORS (RBAC BASED)
   ========================================================= */
@@ -65,9 +76,12 @@ export class MentorPublicService {
     // with the availabilityStatus computed from this same number below —
     // and so mentors with open slots deterministically sort to the front of
     // page 1 instead of landing wherever Postgres happens to put them.
+    // Open slots a student can book now: at least notice_hours away, so the
+    // count matches what the availability list shows.
+    const bookableFrom = await this.earliestBookableStart();
     const availableSlotsExpr = sql<number>`
       COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
-      WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} >= ${bookableFrom.toISOString()}::timestamptz
       AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
       )
     `;
@@ -408,7 +422,11 @@ export class MentorPublicService {
           ),
           eq(zuvyMentorSlotAvailability.status, 'available'),
           eq(zuvyMentorSlotAvailability.isPublic, true),
-          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()`,
+          // Only slots a student can book now: at least notice_hours away.
+          gte(
+            zuvyMentorSlotAvailability.slotStartDateTime,
+            await this.earliestBookableStart(),
+          ),
           sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
         ),
       );
