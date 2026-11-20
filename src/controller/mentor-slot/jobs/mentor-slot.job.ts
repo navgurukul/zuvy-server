@@ -6,7 +6,7 @@ import {
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, ne, inArray, isNull } from 'drizzle-orm';
+import { and, eq, lt, inArray, isNull } from 'drizzle-orm';
 import { MentorSlotService } from '../mentor-slot.service';
 
 // On unless MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false. It is the safety net
@@ -22,6 +22,7 @@ export function abandonedBookingJobEnabled(
 export class MentorSlotJob implements OnModuleInit {
   private readonly logger = new Logger(MentorSlotJob.name);
   private releasingAbandoned = false;
+  private expiringReschedules = false;
 
   constructor(private readonly mentorSlotService: MentorSlotService) {}
 
@@ -203,31 +204,27 @@ export class MentorSlotJob implements OnModuleInit {
   }
 
   /* ==========================================================================
-       RUN EVERY 5 MINUTES — EXPIRE RESCHEDULE REQUESTS (24H WINDOW)
+       RUN EVERY MINUTE — EXPIRE UNANSWERED RESCHEDULE REQUESTS
+       A request the mentor didn't answer lapses when the original session
+       starts: the session runs as booked, the held seat on the proposed
+       slot is given back and the student is told (decision, 17 Nov 2026).
     ========================================================================== */
 
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(CronExpression.EVERY_MINUTE)
   async expireRescheduleRequests() {
-    const now = new Date();
-    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    // Excluding cancelled bookings here is defense in depth: cancelBooking
-    // already clears rescheduleStatus to null on cancel, so a cancelled
-    // booking's row shouldn't match `rescheduleStatus = 'pending'` at all —
-    // but re-checking status != 'cancelled' means this job can never revive
-    // a cancelled booking even if that invariant is ever violated elsewhere.
-    await db
-      .update(zuvyMentorSlotBooking)
-      .set({
-        rescheduleStatus: 'declined',
-        sessionLifecycleState: 'SCHEDULED',
-      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(
-        and(
-          eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
-          lt(zuvyMentorSlotBooking.rescheduleRequestedAt, cutoff),
-          ne(zuvyMentorSlotBooking.status, 'cancelled'),
-        ),
+    if (this.expiringReschedules) return;
+    this.expiringReschedules = true;
+    try {
+      const expired = await this.mentorSlotService.expireRescheduleRequests();
+      if (expired) {
+        this.logger.log(`Expired ${expired} unanswered reschedule request(s).`);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Expiring reschedule requests failed: ${error.message}`,
       );
+    } finally {
+      this.expiringReschedules = false;
+    }
   }
 }

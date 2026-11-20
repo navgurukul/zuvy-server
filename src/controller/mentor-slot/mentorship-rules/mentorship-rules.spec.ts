@@ -6,12 +6,14 @@ import {
 } from './mentorship-config.service';
 import { MentorshipError } from './mentorship-error';
 import {
+  assertCanChangeSession,
   assertCreditsAllowBooking,
   assertSlotHasNotice,
   computeCreditState,
   earliestBookableStart,
   formatIstDateTime,
   gapPhrase,
+  goodToKnow,
 } from './mentorship-rules';
 
 const config: MentorshipConfig = { ...DEFAULT_MENTORSHIP_CONFIG };
@@ -237,6 +239,53 @@ describe('the R1 example, step by step', () => {
     );
     expect(state.creditsLeft).toBe(2);
     expect(state.canBook).toBe(true);
+  });
+});
+
+describe('cancel and reschedule close at the notice (ST4)', () => {
+  const start = ist('2026-11-06T18:00:00');
+
+  it('open until exactly 72 h before, closed a minute later', () => {
+    expect(
+      refusal(() =>
+        assertCanChangeSession(
+          'student',
+          start,
+          new Date(start.getTime() - 72 * HOUR),
+          config,
+        ),
+      ),
+    ).toBeNull();
+    const error = refusal(() =>
+      assertCanChangeSession(
+        'student',
+        start,
+        new Date(start.getTime() - 72 * HOUR + MIN),
+        config,
+      ),
+    );
+    expect(error?.code).toBe('TOO_LATE_TO_CHANGE');
+    expect(error?.message).toBe(
+      "Rescheduling and cancelling close 72 hours before the session. If you can't attend, email team@zuvy.org.",
+    );
+  });
+
+  it('the mentor gets their own message', () => {
+    const error = refusal(() =>
+      assertCanChangeSession('mentor', start, start, config),
+    );
+    expect(error?.message).toBe(
+      'This session starts in under 72 hours. Email team@zuvy.org to cancel it.',
+    );
+  });
+
+  it('good-to-know lines use the configured numbers', () => {
+    expect(goodToKnow(config).map((line) => line.text)).toEqual([
+      'Cancel up to 72 hours before. Your credit comes back.',
+      'Reschedule up to 72 hours before. Your mentor needs to accept.',
+      'Join opens 10 minutes before the start.',
+      "Inside 72 hours, email team@zuvy.org if you can't attend. If you miss the session, you lose the credit.",
+    ]);
   });
 });
 

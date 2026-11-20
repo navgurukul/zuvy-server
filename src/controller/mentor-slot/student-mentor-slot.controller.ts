@@ -54,6 +54,38 @@ export class StudentMentorSlotController {
       query.title,
       query.search,
       query.organizationId ? Number(query.organizationId) : undefined,
+      query.available === 'true',
+    );
+  }
+
+  // Declared before mentors/:mentorUserId so "skills" isn't taken for an id.
+  @Get('mentors/skills')
+  @ApiOperation({
+    summary: 'The skill chips: the fixed skill list with mentor counts',
+    description:
+      "Every active skill with mentorCount: mentors who have it among those matching search, organizationId and available (the same filters as GET /student/mentors). Use a skill's slug in ?expertise=.",
+  })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'organizationId', required: false, type: Number })
+  @ApiQuery({ name: 'available', required: false, enum: ['true', 'false'] })
+  @ApiQuery({
+    name: 'inUse',
+    required: false,
+    enum: ['true', 'false'],
+    description:
+      'true = only skills at least one matching mentor has (for the filter dropdown). Default: the whole list (for the mentor profile form).',
+  })
+  getSkillChips(
+    @Query('search') search?: string,
+    @Query('organizationId') organizationId?: string,
+    @Query('available') available?: string,
+    @Query('inUse') inUse?: string,
+  ) {
+    return this.mentorPublicService.getSkillChips(
+      search || undefined,
+      organizationId ? Number(organizationId) : undefined,
+      available === 'true',
+      inUse === 'true',
     );
   }
 
@@ -88,6 +120,19 @@ export class StudentMentorSlotController {
     return this.mentorPublicService.getAvailableSlots(
       mentorId,
       organizationId ? Number(organizationId) : undefined,
+    );
+  }
+
+  @Get('mentor-slots/:slotId/booking-preview')
+  @ApiOperation({
+    summary: 'Booking drawer: what booking this slot would do (ST2)',
+    description:
+      'canBook, and when not, blocked: { code, message } (SLOT_TOO_SOON, NO_CREDITS, GAP_ACTIVE, SLOT_TAKEN) exactly as booking would refuse. impact: creditsLeftAfter, nextBookingOpensAt, summary ("Uses 1 credit, 1 left after this"), detail. goodToKnow: the rule lines. Reserves nothing.',
+  })
+  getBookingPreview(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
+    return this.mentorSlotService.getBookingPreview(
+      Number(req.user[0].id),
+      slotId,
     );
   }
 
@@ -134,7 +179,7 @@ export class StudentMentorSlotController {
   async proposeReschedule(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
-    @Query('slotId') slotId: number,
+    @Query('slotId', ParseIntPipe) slotId: number,
     @Body() body: ProposeRescheduleDto,
   ) {
     return this.mentorSlotService.proposeReschedule(
@@ -155,6 +200,22 @@ export class StudentMentorSlotController {
     @Param('bookingId', ParseIntPipe) bookingId: number,
   ) {
     return this.mentorSlotService.getRescheduleSlotsForBooking(
+      Number(req.user[0].id),
+      bookingId,
+    );
+  }
+
+  @Get('mentor-slots/bookings/:bookingId/cancel-preview')
+  @ApiOperation({
+    summary: 'Cancel form: what cancelling would do (ST4)',
+    description:
+      'canCancel, and when not, blocked: { code, message } (TOO_LATE_TO_CHANGE, RESCHEDULE_PENDING, SESSION_ENDED, ALREADY_CANCELLED). creditsAfter and message ("Your credit comes back, so you\'ll have 2 of 3 left, and you can book again straight away."). Changes nothing.',
+  })
+  getCancelPreview(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getCancelPreview(
       Number(req.user[0].id),
       bookingId,
     );
@@ -238,7 +299,7 @@ export class StudentMentorSlotController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'completed', 'cancelled'],
+    enum: ['all', 'upcoming', 'completed', 'cancelled', 'missed'],
   })
   @ApiQuery({
     name: 'limit',

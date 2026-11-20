@@ -118,6 +118,59 @@ export function assertCreditsAllowBooking(
   }
 }
 
+const SUPPORT_EMAIL = 'team@zuvy.org';
+
+/** Reschedule and cancel close this long before the session (notice_hours). */
+export function changesCloseAt(sessionStart: Date, config: MentorshipConfig) {
+  return new Date(sessionStart.getTime() - config.noticeHours * HOUR_MS);
+}
+
+/**
+ * A student or mentor can cancel or reschedule only until `noticeHours`
+ * before the session (exactly the notice is allowed). Ops can at any time,
+ * so Ops paths don't call this.
+ */
+export function assertCanChangeSession(
+  actor: 'student' | 'mentor',
+  sessionStart: Date,
+  now: Date,
+  config: MentorshipConfig,
+) {
+  const closesAt = changesCloseAt(sessionStart, config);
+  if (now.getTime() > closesAt.getTime()) {
+    throw new MentorshipError(
+      'TOO_LATE_TO_CHANGE',
+      actor === 'mentor'
+        ? `This session starts in under ${plural(config.noticeHours, 'hour')}. Email ${SUPPORT_EMAIL} to cancel it.`
+        : `Rescheduling and cancelling close ${plural(config.noticeHours, 'hour')} before the session. If you can't attend, email ${SUPPORT_EMAIL}.`,
+      { noticeHours: config.noticeHours, changesCloseAt: closesAt },
+    );
+  }
+}
+
+/** "Good to know" in the booking drawer, worded with the configured numbers. */
+export function goodToKnow(config: MentorshipConfig) {
+  const notice = plural(config.noticeHours, 'hour');
+  return [
+    {
+      tone: 'info',
+      text: `Cancel up to ${notice} before. Your credit comes back.`,
+    },
+    {
+      tone: 'info',
+      text: `Reschedule up to ${notice} before. Your mentor needs to accept.`,
+    },
+    {
+      tone: 'info',
+      text: `Join opens ${plural(config.joinOpenMinutes, 'minute')} before the start.`,
+    },
+    {
+      tone: 'warning',
+      text: `Inside ${notice}, email ${SUPPORT_EMAIL} if you can't attend. If you miss the session, you lose the credit.`,
+    },
+  ] as const;
+}
+
 /** The credit fields every response carries. */
 export function creditData(state: CreditState) {
   return {

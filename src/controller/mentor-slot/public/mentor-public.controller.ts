@@ -25,6 +25,23 @@ export class MentorPublicController {
       query.title,
       query.search,
       query.organizationId ? Number(query.organizationId) : undefined,
+      query.available === 'true',
+    );
+  }
+
+  // Declared before :mentorUserId so "skills" isn't taken for an id.
+  @Get('skills')
+  getSkillChips(
+    @Query('search') search?: string,
+    @Query('organizationId') organizationId?: string,
+    @Query('available') available?: string,
+    @Query('inUse') inUse?: string,
+  ) {
+    return this.service.getSkillChips(
+      search || undefined,
+      organizationId ? Number(organizationId) : undefined,
+      available === 'true',
+      inUse === 'true',
     );
   }
 
