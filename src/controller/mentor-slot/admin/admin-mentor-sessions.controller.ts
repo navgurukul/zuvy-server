@@ -26,7 +26,7 @@ import {
   AdminMentorsQueryDto,
 } from './dto/admin-mentor-sessions-query.dto';
 
-@ApiTags('Admin Mentor Sessions')
+@ApiTags('Course Admin Mentor Sessions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('course-admin')
