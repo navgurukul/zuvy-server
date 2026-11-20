@@ -541,106 +541,13 @@ export class AdminMentorSessionsService {
     query: AdminMentorSessionsFilterDto,
   ) {
     const { data } = await this.getSessionsData(user, query);
-    const headers = [
-      'bookingId',
-      'courseName',
-      'batchName',
-      'mentorId',
-      'mentorName',
-      'mentorEmail',
-      'studentId',
-      'studentName',
-      'studentEmail',
-      'slotStart',
-      'slotEnd',
-      'status',
-      'lifecycleState',
-      'rescheduleStatus',
-      'joinedAt',
-      'leftAt',
-      'bookedAt',
-      'cancelledAt',
-      'completedAt',
-      'cancelledBy',
-      'cancellationReason',
-      'mentorRating',
-      'studentRating',
-      'mentorFeedback',
-      'studentFeedback',
-      'recordingUrl',
-      'recordingStatus',
-      'creditsAssigned',
-      'creditsUsed',
-      'creditsLeft',
-      'nextEligibleDate',
-      'attendanceStatus',
-      'studentAttendanceStatus',
-      'studentJoinedAt',
-      'studentLeftAt',
-      'studentDurationAttended',
-      'studentLateByMinutes',
-      'mentorAttendanceStatus',
-      'mentorJoinedAt',
-      'mentorLeftAt',
-      'mentorDurationAttended',
-      'mentorLateByMinutes',
-    ];
-    const toValue = (value: unknown) => {
-      if (value === null || value === undefined) return '';
-      if (value instanceof Date) return value.toISOString();
-      return typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return {
+      status: 'success',
+      data,
+      total: data.length,
+      limit: data.length,
+      offset: 0,
     };
-    const escape = (value: unknown) =>
-      `"${toValue(value).replace(/"/g, '""')}"`;
-    const lines = data.map((session) =>
-      [
-        session.bookingId,
-        session.courseName,
-        session.batchName,
-        session.mentor.id,
-        session.mentor.name,
-        session.mentor.email,
-        session.student.id,
-        session.student.name,
-        session.student.email,
-        session.slotStart,
-        session.slotEnd,
-        session.status,
-        session.lifecycleState,
-        session.rescheduleStatus,
-        session.joinedAt,
-        session.leftAt,
-        session.bookedAt,
-        session.cancelledAt,
-        session.completedAt,
-        session.cancelledBy,
-        session.cancellationReason,
-        session.mentorRating,
-        session.studentRating,
-        session.mentorFeedback,
-        session.studentFeedback,
-        session.recordingUrl,
-        session.recordingStatus,
-        session.creditsAssigned,
-        session.creditsUsed,
-        session.creditsLeft,
-        session.nextEligibleDate,
-        session.attendanceStatus,
-        session.studentAttendance.status,
-        session.studentAttendance.joinedAt,
-        session.studentAttendance.leftAt,
-        session.studentAttendance.durationAttended,
-        session.studentAttendance.lateByMinutes,
-        session.mentorAttendance.status,
-        session.mentorAttendance.joinedAt,
-        session.mentorAttendance.leftAt,
-        session.mentorAttendance.durationAttended,
-        session.mentorAttendance.lateByMinutes,
-      ]
-        .map(escape)
-        .join(','),
-    );
-    return [headers.map(escape).join(','), ...lines].join('\r\n');
   }
 
   /* ==========================================================================
