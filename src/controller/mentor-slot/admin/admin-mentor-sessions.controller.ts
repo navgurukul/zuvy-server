@@ -29,7 +29,7 @@ import {
 @ApiTags('Admin Mentor Sessions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
-@Controller('admin')
+@Controller('course-admin')
 export class AdminMentorSessionsController {
   constructor(
     private readonly adminMentorSessionsService: AdminMentorSessionsService,
