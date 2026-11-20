@@ -304,6 +304,28 @@ describe('session card: the states in the My Sessions design', () => {
   });
 });
 
+describe('reschedule to an earlier slot', () => {
+  it('the reply deadline is the proposed start when it comes first', () => {
+    const proposedStart = ist('2026-11-04T17:00:00'); // before Fri 6 Nov
+    const c = card(
+      session({
+        lifecycleState: 'RESCHEDULE_PENDING',
+        reschedule: {
+          status: 'pending',
+          proposedStart,
+          proposedEnd: ist('2026-11-04T17:45:00'),
+          acceptedCount: 0,
+        },
+      }),
+      at(-100 * HOUR),
+    );
+    expect(c.reschedule?.replyBy).toEqual(proposedStart);
+    expect(c.message).toBe(
+      "You asked to move this to Wed, 4 Nov at 5:00 PM. If Arjun Mehta doesn't reply by Wed, 4 Nov at 5:00 PM, your session stays as it is.",
+    );
+  });
+});
+
 describe('after a reschedule request (ST4)', () => {
   const answered = (status: string, acceptedCount = 0) =>
     session({

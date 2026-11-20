@@ -42,6 +42,7 @@ import {
   isNull,
   notExists,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { withoutHostZoomFields } from './booking-response.util';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
@@ -71,6 +72,13 @@ import {
   goodToKnow,
 } from './mentorship-rules/mentorship-rules';
 import { MentorshipError } from './mentorship-rules/mentorship-error';
+
+// The slot a pending reschedule request would move the booking to.
+const rescheduleTarget = alias(zuvyMentorSlotAvailability, 'reschedule_target');
+
+// Back to SCHEDULED only if the session is still waiting on the request.
+const stillWaitingToScheduled = () =>
+  sql`CASE WHEN ${zuvyMentorSlotBooking.sessionLifecycleState} = 'RESCHEDULE_PENDING' THEN 'SCHEDULED' ELSE ${zuvyMentorSlotBooking.sessionLifecycleState} END`;
 
 // A booking still without its join link this long after it was made is
 // treated as abandoned between bookSlot's steps: the abandoned-booking job
@@ -1974,15 +1982,23 @@ export class MentorSlotService {
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
-      // The reply deadline is the original start: the request lapses then.
+      // The reply deadline: the earlier of the original and the proposed
+      // start. The request lapses then (expireRescheduleRequests).
+      const proposedStart = new Date(target.slotStartDateTime);
+      const replyBy = originalSlot
+        ? new Date(
+            Math.min(
+              new Date(originalSlot.start).getTime(),
+              proposedStart.getTime(),
+            ),
+          )
+        : proposedStart;
       await this.notificationService.createNotification(
         {
           userId: booking.mentorUserId,
           type: NotificationType.RESCHEDULE_REQUEST,
           title: 'Reschedule request',
-          message: originalSlot
-            ? `A student asked to move their session to ${formatIstDateTime(new Date(target.slotStartDateTime))}. Reply by ${formatIstDateTime(new Date(originalSlot.start))}, or the session stays as booked.`
-            : '',
+          message: `A student asked to move their session to ${formatIstDateTime(proposedStart)}. Reply by ${formatIstDateTime(replyBy)}, or the session stays as booked.`,
           referenceId: bookingId,
           referenceType: 'booking',
         },
@@ -1990,9 +2006,6 @@ export class MentorSlotService {
       );
     });
 
-    return {
-      message: 'Reschedule request submitted successfully.',
-    };
     return {
       message: 'Reschedule request submitted successfully.',
     };
@@ -2746,7 +2759,7 @@ export class MentorSlotService {
           rescheduleRequestedAt: null,
           rescheduleProposedSlotId: null,
           rescheduleSeatHeld: false,
-          sessionLifecycleState: 'SCHEDULED',
+          sessionLifecycleState: stillWaitingToScheduled(),
           updatedAt: new Date(),
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
@@ -2800,10 +2813,11 @@ export class MentorSlotService {
   }
 
   /**
-   * Reschedule requests the mentor didn't answer before the original
-   * session started lapse: the session runs at its original time, the held
-   * seat is given back and the student is told. Run every minute by
-   * MentorSlotJob. Requests that were answered are never touched.
+   * Reschedule requests the mentor didn't answer in time lapse: the session
+   * runs at its original time, the held seat is given back and the student
+   * is told. "In time" means before the earlier of the original start and
+   * the proposed start (after either, accepting is no longer possible). Run
+   * every minute by MentorSlotJob. Answered requests are never touched.
    */
   async expireRescheduleRequests(
     now = new Date(),
@@ -2820,11 +2834,15 @@ export class MentorSlotService {
           zuvyMentorSlotBooking.slotAvailabilityId,
         ),
       )
+      .leftJoin(
+        rescheduleTarget,
+        eq(rescheduleTarget.id, zuvyMentorSlotBooking.rescheduleProposedSlotId),
+      )
       .where(
         and(
           eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
           ne(zuvyMentorSlotBooking.status, 'cancelled'),
-          lte(zuvyMentorSlotAvailability.slotStartDateTime, now),
+          sql`LEAST(${zuvyMentorSlotAvailability.slotStartDateTime}, COALESCE(${rescheduleTarget.slotStartDateTime}, ${zuvyMentorSlotAvailability.slotStartDateTime})) <= ${now.toISOString()}::timestamptz`,
           onlyBookingIds
             ? inArray(zuvyMentorSlotBooking.id, onlyBookingIds)
             : undefined,
@@ -2855,8 +2873,9 @@ export class MentorSlotService {
             rescheduleRequestedAt: null,
             rescheduleProposedSlotId: null,
             rescheduleSeatHeld: false,
-            // Back to SCHEDULED so the lifecycle job moves it on as usual.
-            sessionLifecycleState: 'SCHEDULED',
+            // Back to SCHEDULED so the lifecycle job moves it on as usual,
+            // unless it has moved on already (e.g. marked completed).
+            sessionLifecycleState: stillWaitingToScheduled(),
             updatedAt: now,
           } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
           .where(eq(zuvyMentorSlotBooking.id, id));
@@ -2905,12 +2924,24 @@ export class MentorSlotService {
 
     let blocked: { code: string; message: string; data?: unknown } | null =
       null;
+    // The checks bookSlot makes, in its order; the first refusal wins.
     try {
+      await this.ensureMentorshipEnabled(BigInt(studentId));
       assertSlotHasNotice(start, now, config);
       assertCreditsAllowBooking(credits, config);
-    } catch (error) {
-      if (!(error instanceof MentorshipError)) throw error;
-      blocked = { code: error.code, message: error.message, data: error.data };
+    } catch (error: any) {
+      if (error instanceof MentorshipError) {
+        blocked = {
+          code: error.code,
+          message: error.message,
+          data: error.data,
+        };
+      } else if (error instanceof ForbiddenException) {
+        // Not in a course with mentorship.
+        blocked = { code: 'MENTORSHIP_NOT_AVAILABLE', message: error.message };
+      } else {
+        throw error;
+      }
     }
     if (
       !blocked &&

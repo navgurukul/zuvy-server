@@ -5,7 +5,7 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../drizzle/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { NotificationService } from './notification.service';
 
 @Injectable()
@@ -34,7 +34,12 @@ export class NotificationJob {
       )
       .where(
         and(
-          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          // Also while a reschedule request waits: the session still runs
+          // at this time unless the mentor accepts.
+          inArray(zuvyMentorSlotBooking.sessionLifecycleState, [
+            'SCHEDULED',
+            'RESCHEDULE_PENDING',
+          ]),
           eq(zuvyMentorSlotBooking.reminder24hSent, false),
           sql`${zuvyMentorSlotAvailability.slotStartDateTime} BETWEEN ${targetStart} AND ${windowEnd}`,
         ),
@@ -81,7 +86,12 @@ export class NotificationJob {
       )
       .where(
         and(
-          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          // Also while a reschedule request waits: the session still runs
+          // at this time unless the mentor accepts.
+          inArray(zuvyMentorSlotBooking.sessionLifecycleState, [
+            'SCHEDULED',
+            'RESCHEDULE_PENDING',
+          ]),
           eq(zuvyMentorSlotBooking.reminder1hSent, false),
           sql`${zuvyMentorSlotAvailability.slotStartDateTime} BETWEEN ${targetStart} AND ${windowEnd}`,
         ),

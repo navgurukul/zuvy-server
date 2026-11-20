@@ -248,6 +248,8 @@ export class MentorPublicService {
       COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
         WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} >= ${bookableFrom.toISOString()}::timestamptz
         AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
+        AND ${zuvyMentorSlotAvailability.status} = 'available'
+        AND ${zuvyMentorSlotAvailability.isPublic} = true
       )`;
 
     let query = db

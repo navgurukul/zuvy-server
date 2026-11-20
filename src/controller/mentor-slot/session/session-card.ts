@@ -298,9 +298,14 @@ export function buildSessionCard(
 
   /* Reschedule waiting for the mentor */
   if (input.reschedule.status === 'pending') {
-    // The request lapses when the original session starts (decision,
-    // 17 Nov 2026), so that is the mentor's reply deadline.
-    const replyBy = input.start;
+    // The request lapses at the earlier of the original start and the
+    // proposed start (after either it can't be accepted), so that is the
+    // mentor's reply deadline.
+    const replyBy =
+      input.reschedule.proposedStart &&
+      input.reschedule.proposedStart.getTime() < input.start.getTime()
+        ? input.reschedule.proposedStart
+        : input.start;
     const proposed = input.reschedule.proposedStart
       ? formatDayTime(input.reschedule.proposedStart)
       : 'another time';

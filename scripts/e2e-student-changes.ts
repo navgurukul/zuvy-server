@@ -606,6 +606,83 @@ async function main() {
     );
 
     await section(
+      'D5b. Moving to an earlier slot: the request lapses at that slot',
+      async () => {
+        rules();
+        const earlier = await slotAt(nextDay());
+        const slot = await slotAt(nextDay());
+        const id = await book(slot.id);
+        await svc.proposeReschedule(id, earlier.id, REASON, STUDENT);
+        const earlierStart = new Date(earlier.slotStartDateTime);
+
+        const c = await card(id);
+        report(
+          'card: reply by the proposed (earlier) start',
+          new Date(c.reschedule.replyBy).getTime() === earlierStart.getTime(),
+        );
+        const [alert] = await db
+          .select()
+          .from(schema.zuvyNotifications)
+          .where(
+            and(
+              eq(schema.zuvyNotifications.referenceId, id),
+              eq(schema.zuvyNotifications.type, 'RESCHEDULE_REQUEST'),
+            ),
+          );
+        report(
+          "the mentor's deadline is the proposed start too",
+          !!alert &&
+            alert.message.includes(
+              `Reply by ${require('../src/controller/mentor-slot/mentorship-rules/mentorship-rules').formatIstDateTime(earlierStart)}`,
+            ),
+          alert?.message,
+        );
+
+        const early = await svc.expireRescheduleRequests(
+          new Date(earlierStart.getTime() - MIN),
+          [id],
+        );
+        report(
+          'a minute before the proposed start: still waiting',
+          early === 0,
+        );
+        const n = await svc.expireRescheduleRequests(earlierStart, [id]);
+        const b = await bookingRow(id);
+        const e = await slotRow(earlier.id);
+        report(
+          'at the proposed start: expired, seat and licence given back, session stays',
+          n === 1 &&
+            b.rescheduleStatus === 'expired' &&
+            b.slotAvailabilityId === slot.id &&
+            b.sessionLifecycleState === 'SCHEDULED' &&
+            e.currentBookedCount === 0 &&
+            (await holds(earlier.id)) === 0,
+        );
+
+        // A session already marked completed keeps its state on expiry.
+        const other = await slotAt(nextDay());
+        const target = await slotAt(nextDay());
+        const done = await book(other.id);
+        await svc.proposeReschedule(done, target.id, REASON, STUDENT);
+        await db
+          .update(schema.zuvyMentorSlotBooking)
+          .set({ sessionLifecycleState: 'COMPLETED' })
+          .where(eq(schema.zuvyMentorSlotBooking.id, done));
+        await svc.expireRescheduleRequests(new Date(other.slotStartDateTime), [
+          done,
+        ]);
+        const d = await bookingRow(done);
+        report(
+          'expiry does not undo a completed session',
+          d.rescheduleStatus === 'expired' &&
+            d.sessionLifecycleState === 'COMPLETED' &&
+            (await slotRow(target.id)).currentBookedCount === 0,
+          d.sessionLifecycleState,
+        );
+      },
+    );
+
+    await section(
       'D6. Requests made before this change (no held seat)',
       async () => {
         rules();
