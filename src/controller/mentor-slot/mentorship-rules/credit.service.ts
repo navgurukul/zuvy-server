@@ -58,6 +58,8 @@ export class CreditService {
     executor: any,
     studentUserId: bigint,
     config: MentorshipConfig,
+    // Leave this booking out: "what would the credits be after cancelling it?"
+    excludeBookingId?: number,
   ): Promise<CreditUsage> {
     const [row] = await executor
       .select({
@@ -78,6 +80,9 @@ export class CreditService {
         and(
           eq(zuvyMentorSlotBooking.studentUserId, studentUserId),
           ne(zuvyMentorSlotBooking.status, 'cancelled'),
+          excludeBookingId !== undefined
+            ? ne(zuvyMentorSlotBooking.id, excludeBookingId)
+            : undefined,
           // When the booking was made (confirmedAt; older rows may only have
           // the other two).
           sql`coalesce(${zuvyMentorSlotBooking.confirmedAt}, ${zuvyMentorSlotBooking.bookedAt}, ${zuvyMentorSlotBooking.createdAt}) >= ${config.creditsCountedFrom.toISOString()}::timestamptz`,

@@ -29,6 +29,18 @@ export class UpdateMentorProfileDto {
   expertise?: string[];
 
   @ApiProperty({
+    type: [String],
+    required: false,
+    example: ['react', 'node-js', 'system-design'],
+    description:
+      'Skills from the fixed list (GET /mentors/skills), by slug or name. Unknown ones are refused. Sets expertise to their names. Use this instead of expertise.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  skills?: string[];
+
+  @ApiProperty({
     example:
       'At Paytm, I established the SRE practice for the payments infrastructure team, introducing SLOs that reduced customer-impacting incidents by 70% in one year. Built a centralized alerting system that consolidated 800+ noisy alerts into 40 actionable ones.',
     description: 'Detailed past experience of the mentor (plain text)',

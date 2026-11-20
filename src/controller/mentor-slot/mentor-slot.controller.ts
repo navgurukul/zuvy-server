@@ -106,7 +106,7 @@ export class MentorSlotController {
   async proposeReschedule(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
-    @Query('slotId') slotId: number,
+    @Query('slotId', ParseIntPipe) slotId: number,
     @Body() body: ProposeRescheduleDto,
   ) {
     return this.mentorSlotService.proposeReschedule(

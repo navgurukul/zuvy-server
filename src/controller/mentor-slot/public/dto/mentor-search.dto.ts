@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 // Query-string DTO. Every field needs a class-validator decorator because the
 // student mentor controller runs ValidationPipe with `whitelist: true`, which
@@ -26,10 +26,22 @@ export class MentorSearchDto {
   @IsString()
   role?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    example: 'react,node-js',
+    description:
+      'Skills, comma separated (slug or name, any spelling the skill list knows). Returns mentors with any of them; none known = empty list.',
+  })
   @IsOptional()
   @IsString()
   expertise?: string;
+
+  @ApiPropertyOptional({
+    enum: ['true', 'false'],
+    description: 'true = only mentors with a slot students can book now.',
+  })
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  available?: 'true' | 'false';
 
   @ApiPropertyOptional()
   @IsOptional()

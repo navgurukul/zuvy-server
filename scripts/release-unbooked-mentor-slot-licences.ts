@@ -93,6 +93,24 @@ function findUnbookedFutureSlotAssignments(
               ),
             ),
         ),
+        // A seat held by a pending reschedule request keeps its licence too
+        // (migration 0052).
+        notExists(
+          executor
+            .select({ one: sql`1` })
+            .from(zuvyMentorSlotBooking)
+            .where(
+              and(
+                eq(
+                  zuvyMentorSlotBooking.rescheduleProposedSlotId,
+                  zuvyMentorSlotAvailability.id,
+                ),
+                eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+                eq(zuvyMentorSlotBooking.rescheduleSeatHeld, true),
+                ne(zuvyMentorSlotBooking.status, 'cancelled'),
+              ),
+            ),
+        ),
       ),
     )
     .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
