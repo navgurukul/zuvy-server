@@ -51,6 +51,7 @@ import { SuperAdminModule } from './super-admin/super-admin.module';
 import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
 import { StudentAuthModule } from './student-auth/student-auth.module';
 import { SchoolsModule } from './schools/schools.module';
+import { AfeReportModule } from './afe-report/afe-report.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -102,6 +103,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     LeaderboardModule,
     StudentAuthModule,
     SchoolsModule,
+    AfeReportModule,
   ],
 
   providers: [
