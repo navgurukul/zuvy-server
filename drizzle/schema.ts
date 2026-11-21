@@ -3511,3 +3511,24 @@ export const zuvyStudentCredentialsRelations = relations(
     }),
   }),
 );
+
+// One row per attempt to email the AFE Career Tours report (migration 0048).
+// A report covers finished tours from window_start (inclusive) to window_end
+// (exclusive, a Monday 9 AM India time); the next one starts where the last
+// sent one ended. The first starts at AFE_REPORT_START (else 1970-01-01, i.e.
+// everything so far). A partial unique index
+// allows one 'sending' or 'sent' row per window_start, so when several
+// servers run the hourly check at once, only one of them sends.
+export const zuvyAfeReportRuns = main.table('zuvy_afe_report_runs', {
+  id: serial('id').primaryKey().notNull(),
+  windowStart: timestamp('window_start', { withTimezone: true, mode: 'string' }).notNull(),
+  windowEnd: timestamp('window_end', { withTimezone: true, mode: 'string' }).notNull(),
+  status: varchar('status', { length: 20 }).notNull(), // sending | sent | failed
+  rowCount: integer('row_count'),
+  recipients: text('recipients'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+    .notNull()
+    .defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+});
