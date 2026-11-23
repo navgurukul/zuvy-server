@@ -1,3 +1,5960 @@
+// import {
+//   BadRequestException,
+//   ForbiddenException,
+//   Injectable,
+//   InternalServerErrorException,
+//   Logger,
+//   NotFoundException,
+// } from '@nestjs/common';
+// import {
+//   zuvyModuleTracking,
+//   zuvyAssignmentSubmission,
+//   zuvyQuizTracking,
+//   zuvyModuleChapter,
+//   zuvyModuleTopics,
+//   zuvyCourseModules,
+//   zuvyModuleQuiz,
+//   zuvyCodingQuestions,
+//   zuvyOpenEndedQuestions,
+//   zuvyModuleAssessment,
+//   zuvyCourseProjects,
+//   zuvyTags,
+//   zuvyOutsourseAssessments,
+//   zuvyOutsourseCodingQuestions,
+//   zuvyOutsourseOpenEndedQuestions,
+//   zuvyOutsourseQuizzes,
+//   zuvyAssessmentSubmission,
+//   zuvyModuleForm,
+//   questionType,
+//   zuvyQuestionTypes,
+//   zuvyModuleQuizVariants,
+//   zuvyPracticeCode,
+//   zuvySessions,
+//   zuvyStudentAttendance,
+//   zuvyProjectTracking,
+//   zuvyFormTracking,
+//   zuvyChapterTracking,
+//   zuvyRecentBootcamp,
+//   zuvySessionRecordViews,
+//   zuvyBootcamps,
+//   zuvyBatches,
+//   zuvyLearnerLeaderboardChapterPoints,
+//   zuvyLearnerLeaderboard,
+//   zuvyBatchEnrollments,
+//   // zuvyBootcamps,
+//   zuvyUserRolesAssigned,
+//   users,
+// } from '../../../drizzle/schema';
+// import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
+
+// import { error, log } from 'console';
+// import {
+//   sql,
+//   eq,
+//   count,
+//   inArray,
+//   and,
+//   getTableColumns,
+//   asc,
+//   ne,
+//   gt,
+//   SQL,
+//   desc,
+//   isNull,
+// } from 'drizzle-orm';
+// import { db } from '../../db/index';
+// import {
+//   moduleDto,
+//   quizBatchDto,
+//   ReOrderModuleBody,
+//   EditChapterDto,
+//   openEndedDto,
+//   CreateAssessmentBody,
+//   EditQuizBatchDto,
+//   UpdateProblemDto,
+//   deleteQuestionDto,
+//   UpdateOpenEndedDto,
+//   CreateTagDto,
+//   projectDto,
+//   formBatchDto,
+//   editFormBatchDto,
+//   CreateTypeDto,
+//   CreateAndEditFormBody,
+//   formDto,
+//   CreateQuizzesDto,
+//   EditQuizVariantDto,
+//   CreateQuizVariantDto,
+//   AddQuizVariantsDto,
+//   deleteQuestionOrVariantDto,
+//   UpdateChapterDto,
+// } from './dto/content.dto';
+// import { STATUS_CODES } from '../../helpers';
+// import { helperVariable } from '../../constants/helper';
+// import { ConfigService } from '@nestjs/config';
+// import {
+//   S3Client,
+//   GetObjectCommand,
+//   PutObjectCommand,
+//   DeleteObjectCommand,
+// } from '@aws-sdk/client-s3';
+// import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+// import { SseService } from '../../services/sse.service';
+// import { ClassesService } from '../classes/classes.service';
+// import { ZoomService } from 'src/services/zoom/zoom.service';
+// import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
+// let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } =
+//   process.env;
+// import e from 'express';
+// import { ResourceList } from 'src/rbac/utility';
+// import { RbacService } from 'src/rbac/rbac.service';
+// import { text } from 'drizzle-orm/pg-core';
+// let { DIFFICULTY } = helperVariable;
+
+// @Injectable()
+// export class ContentService {
+//   private s3: S3Client;
+//   private bucket: string;
+//   private region: string;
+//   logger: any;
+//   constructor(
+//     private config: ConfigService,
+//     private sseService: SseService,
+//     private classesService: ClassesService,
+//     private zoomService: ZoomService,
+//     private rbacAllocPermsService: RbacAllocPermsService,
+//     private rbacService: RbacService,
+//   ) {
+//     this.bucket = this.config.get('S3_BUCKET_NAME');
+//     this.region = 'ap-south-1';
+//     this.s3 = new S3Client({
+//       region: this.region,
+//       credentials: {
+//         accessKeyId: this.config.get('S3_ACCESS_KEY_ID'),
+//         secretAccessKey: this.config.get('S3_SECRET_KEY_ACCESS'),
+//       },
+//     });
+//   }
+
+//   private async getChapterTrackingContext(chapterId: number, moduleId: number) {
+//     const resolvedModuleId = Number(moduleId);
+//     const module = await db
+//       .select({
+//         moduleId: zuvyCourseModules.id,
+//         moduleName: zuvyCourseModules.name,
+//         bootcampId: zuvyCourseModules.bootcampId,
+//       })
+//       .from(zuvyCourseModules)
+//       .where(eq(zuvyCourseModules.id, resolvedModuleId))
+//       .limit(1);
+
+//     return {
+//       chapterId: Number(chapterId),
+//       moduleId: resolvedModuleId,
+//       moduleName: module[0]?.moduleName || '',
+//       bootcampId: module[0]?.bootcampId ?? null,
+//     };
+//   }
+
+//   async uploadPdfToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
+//     try {
+//       const key = `zuvy_curriculum/${Date.now()}_${fileName}`;
+//       await this.s3.send(
+//         new PutObjectCommand({
+//           Bucket: this.bucket,
+//           Key: key,
+//           Body: fileBuffer,
+//           ContentType: 'application/pdf',
+//         }),
+//       );
+//       return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+//     } catch (err) {
+//       throw new InternalServerErrorException('Error uploading PDF to S3');
+//     }
+//   }
+
+//   async uploadCertificateToChapter(
+//     moduleId: number,
+//     chapterId: number,
+//     fileBuffer: Buffer,
+//     fileName: string,
+//     chapterTitle?: string,
+//   ) {
+//     const resolvedModuleId = Number(moduleId);
+//     const resolvedChapterId = Number(chapterId);
+
+//     if (
+//       !Number.isInteger(resolvedModuleId) ||
+//       resolvedModuleId <= 0 ||
+//       !Number.isInteger(resolvedChapterId) ||
+//       resolvedChapterId <= 0
+//     ) {
+//       throw new BadRequestException('moduleId and chapterId must be valid IDs');
+//     }
+
+//     const [module, chapter] = await Promise.all([
+//       db
+//         .select({ id: zuvyCourseModules.id })
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, resolvedModuleId))
+//         .limit(1),
+//       db
+//         .select({
+//           id: zuvyModuleChapter.id,
+//           moduleId: zuvyModuleChapter.moduleId,
+//           topicId: zuvyModuleChapter.topicId,
+//           title: zuvyModuleChapter.title,
+//         })
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, resolvedChapterId))
+//         .limit(1),
+//     ]);
+
+//     if (!module[0]) {
+//       throw new NotFoundException('Module not found');
+//     }
+//     if (!chapter[0]) {
+//       throw new NotFoundException('Chapter not found');
+//     }
+//     if (chapter[0].moduleId !== resolvedModuleId) {
+//       throw new BadRequestException(
+//         'Chapter does not belong to the provided module',
+//       );
+//     }
+//     if (chapter[0].topicId !== 10) {
+//       throw new BadRequestException(
+//         'Certificates can only be uploaded to Download Certificate chapters',
+//       );
+//     }
+
+//     const certificateUrl = await this.uploadPdfToS3(fileBuffer, fileName);
+//     if (!certificateUrl) {
+//       throw new InternalServerErrorException('S3 returned an empty URL');
+//     }
+
+//     try {
+//       const [updatedChapter] = await db
+//         .update(zuvyModuleChapter)
+//         // .set({ links: [certificateUrl] })
+//         .set({
+//           links: [certificateUrl],
+//           ...(chapterTitle?.trim() && {
+//             title: chapterTitle.trim(),
+//           }),
+//         })
+
+//         .where(
+//           and(
+//             eq(zuvyModuleChapter.id, resolvedChapterId),
+//             eq(zuvyModuleChapter.moduleId, resolvedModuleId),
+//             eq(zuvyModuleChapter.topicId, 10),
+//           ),
+//         )
+//         .returning({
+//           id: zuvyModuleChapter.id,
+//           title: zuvyModuleChapter.title,
+//           links: zuvyModuleChapter.links,
+//         });
+
+//       if (!updatedChapter) {
+//         throw new NotFoundException('Certificate chapter was not found');
+//       }
+
+//       return {
+//         status: 'success',
+//         code: 200,
+//         message: 'Certificate uploaded successfully',
+//         // chapterTitle: chapter[0].title,
+//         chapterTitle: updatedChapter.title,
+//         chapterId: updatedChapter.id,
+//         certificateUrl,
+//       };
+//     } catch (error) {
+//       if (error instanceof NotFoundException) {
+//         throw error;
+//       }
+//       throw new InternalServerErrorException('Failed to save certificate link');
+//     }
+//   }
+
+//   async getCertificateForModule(moduleId: number, user: any) {
+//     if (!user?.id) {
+//       throw new ForbiddenException('User not authenticated');
+//     }
+//     const userId = Number(user.id);
+
+//     const [module] = await db
+//       .select({ bootcampId: zuvyCourseModules.bootcampId })
+//       .from(zuvyCourseModules)
+//       .where(eq(zuvyCourseModules.id, moduleId))
+//       .limit(1);
+//     if (!module?.bootcampId) {
+//       throw new NotFoundException('Module not found');
+//     }
+
+//     const [bootcamp] = await db
+//       .select({ organizationId: zuvyBootcamps.organizationId })
+//       .from(zuvyBootcamps)
+//       .where(eq(zuvyBootcamps.id, module.bootcampId))
+//       .limit(1);
+//     if (!bootcamp) {
+//       throw new NotFoundException('Module not found');
+//     }
+
+//     await this.ensureCertificateAccess(
+//       user,
+//       module.bootcampId,
+//       bootcamp.organizationId,
+//     );
+
+//     // user_id + module_id is not unique, so prefer the most complete row
+//     const [tracking] = await db
+//       .select({
+//         id: zuvyModuleTracking.id,
+//         progress: zuvyModuleTracking.progress,
+//         certificateUrl: zuvyModuleTracking.certificateUrl,
+//       })
+//       .from(zuvyModuleTracking)
+//       .where(
+//         and(
+//           eq(zuvyModuleTracking.userId, userId),
+//           eq(zuvyModuleTracking.moduleId, moduleId),
+//           eq(zuvyModuleTracking.bootcampId, module.bootcampId),
+//         ),
+//       )
+//       .orderBy(
+//         desc(sql`${zuvyModuleTracking.certificateUrl} is not null`),
+//         desc(zuvyModuleTracking.progress),
+//         asc(zuvyModuleTracking.id),
+//       )
+//       .limit(1);
+//     if (!tracking) {
+//       throw new NotFoundException(
+//         'No progress found for this module. Complete the module to download the certificate',
+//       );
+//     }
+//     if (tracking.progress !== 100) {
+//       throw new BadRequestException(
+//         `Complete the module before downloading the certificate (current progress: ${tracking.progress ?? 0}%)`,
+//       );
+//     }
+
+//     const [student] = await db
+//       .select({ name: users.name })
+//       .from(users)
+//       .where(eq(users.id, BigInt(user.id)))
+//       .limit(1);
+//     const studentName = student?.name?.trim();
+//     if (!studentName) {
+//       throw new NotFoundException('Student name not found');
+//     }
+//     const safeName = studentName.replace(/[^a-zA-Z0-9]+/g, '_') || 'student';
+//     const fileName = `certificate_${safeName}.pdf`;
+
+//     const existingKey = tracking.certificateUrl
+//       ? this.getS3KeyFromUrl(tracking.certificateUrl)
+//       : null;
+//     let certificateKey = existingKey;
+//     if (!certificateKey) {
+//       // Concurrent requests on this instance share one generation
+//       let generation = this.certificateGenerations.get(tracking.id);
+//       if (!generation) {
+//         generation = this.generateModuleCertificate(
+//           tracking.id,
+//           moduleId,
+//           userId,
+//           studentName,
+//         ).finally(() => this.certificateGenerations.delete(tracking.id));
+//         this.certificateGenerations.set(tracking.id, generation);
+//       }
+//       certificateKey = await generation;
+//     }
+
+//     return {
+//       status: 'success',
+//       code: 200,
+//       message: existingKey
+//         ? 'Certificate already generated'
+//         : 'Certificate generated successfully',
+//       data: {
+//         moduleId,
+//         certificateUrl: await this.getCertificateDownloadUrl(
+//           certificateKey,
+//           fileName,
+//         ),
+//         fileName,
+//       },
+//     };
+//   }
+
+//   private certificateGenerations = new Map<number, Promise<string>>();
+
+//   // Personalizes the module's certificate template, uploads it and saves its
+//   // S3 key on the tracking row. Returns the key that ends up saved.
+//   private async generateModuleCertificate(
+//     trackingId: number,
+//     moduleId: number,
+//     userId: number,
+//     studentName: string,
+//   ): Promise<string> {
+//     const [chapter] = await db
+//       .select({ links: zuvyModuleChapter.links })
+//       .from(zuvyModuleChapter)
+//       .where(
+//         and(
+//           eq(zuvyModuleChapter.moduleId, moduleId),
+//           eq(zuvyModuleChapter.topicId, 10),
+//         ),
+//       )
+//       .orderBy(asc(zuvyModuleChapter.order), asc(zuvyModuleChapter.id))
+//       .limit(1);
+//     if (!chapter) {
+//       throw new NotFoundException(
+//         'Certificate chapter not found for this module',
+//       );
+//     }
+
+//     const templateUrl = Array.isArray(chapter.links)
+//       ? chapter.links.find(
+//           (link): link is string =>
+//             typeof link === 'string' && link.trim().length > 0,
+//         )
+//       : null;
+//     if (!templateUrl) {
+//       throw new NotFoundException(
+//         'Certificate template not found for this module',
+//       );
+//     }
+
+//     const templateBuffer = await this.getCertificateTemplateFromS3(templateUrl);
+//     // Formatted as "dd MMMM yyyy", e.g. "03 November 2026"
+//     const issuedDate = new Date().toLocaleDateString('en-GB', {
+//       day: '2-digit',
+//       month: 'long',
+//       year: 'numeric',
+//       timeZone: 'Asia/Kolkata',
+//     });
+//     const pdfBuffer = await this.personalizeCertificate(
+//       templateBuffer,
+//       studentName,
+//       issuedDate,
+//     );
+
+//     const uploadedUrl = await this.uploadPdfToS3(
+//       pdfBuffer,
+//       `certificate_${moduleId}_${userId}.pdf`,
+//     );
+//     const key = this.getS3KeyFromUrl(uploadedUrl);
+
+//     // Only the first save wins, so other instances can't overwrite it
+//     const [saved] = await db
+//       .update(zuvyModuleTracking)
+//       .set({ certificateUrl: key, updatedAt: sql`NOW()` } as any)
+//       .where(
+//         and(
+//           eq(zuvyModuleTracking.id, trackingId),
+//           isNull(zuvyModuleTracking.certificateUrl),
+//         ),
+//       )
+//       .returning({ id: zuvyModuleTracking.id });
+//     if (saved) {
+//       return key;
+//     }
+
+//     // Another request saved a certificate first: keep it and drop ours
+//     await this.deleteS3Object(key);
+//     const [existing] = await db
+//       .select({ certificateUrl: zuvyModuleTracking.certificateUrl })
+//       .from(zuvyModuleTracking)
+//       .where(eq(zuvyModuleTracking.id, trackingId))
+//       .limit(1);
+//     const existingKey = existing?.certificateUrl
+//       ? this.getS3KeyFromUrl(existing.certificateUrl)
+//       : null;
+//     if (!existingKey) {
+//       throw new InternalServerErrorException('Failed to save certificate');
+//     }
+//     return existingKey;
+//   }
+
+//   // Accepts either one of our bucket URLs or a bare object key
+//   private getS3KeyFromUrl(url: string): string | null {
+//     const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
+//     if (url.startsWith(bucketPrefix)) {
+//       return decodeURIComponent(url.slice(bucketPrefix.length));
+//     }
+//     return /^https?:\/\//i.test(url) ? null : url;
+//   }
+
+//   // The bucket is private, so downloads go through a short-lived signed URL
+//   private async getCertificateDownloadUrl(
+//     key: string,
+//     fileName: string,
+//   ): Promise<string> {
+//     try {
+//       return await getSignedUrl(
+//         this.s3,
+//         new GetObjectCommand({
+//           Bucket: this.bucket,
+//           Key: key,
+//           ResponseContentType: 'application/pdf',
+//           ResponseContentDisposition: `attachment; filename="${fileName}"`,
+//         }),
+//         { expiresIn: 15 * 60 },
+//       );
+//     } catch (err) {
+//       throw new InternalServerErrorException(
+//         'Failed to create certificate download URL',
+//       );
+//     }
+//   }
+
+//   private async deleteS3Object(key: string): Promise<void> {
+//     try {
+//       await this.s3.send(
+//         new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+//       );
+//     } catch (err) {
+//       this.logger?.warn?.(`Failed to delete S3 object ${key}: ${err?.message}`);
+//     }
+//   }
+
+//   private async getCertificateTemplateFromS3(
+//     certificateUrl: string,
+//   ): Promise<Buffer> {
+//     const key = this.getS3KeyFromUrl(certificateUrl);
+//     if (!key) {
+//       throw new NotFoundException('Certificate file not found');
+//     }
+
+//     try {
+//       const response = await this.s3.send(
+//         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+//       );
+//       return Buffer.from(await response.Body.transformToByteArray());
+//     } catch (err) {
+//       throw new InternalServerErrorException(
+//         'Failed to fetch certificate from S3',
+//       );
+//     }
+//   }
+
+//   // Writes the student's name and date onto a copy of the certificate template.
+//   // Positions come from the template's own text ("Amazon hereby acknowledges
+//   // that", the "____" line and "Date:") when the PDF has a text layer, otherwise
+//   // from the certificate layout's proportions (image-only templates).
+//   private async personalizeCertificate(
+//     templateBuffer: Buffer,
+//     studentName: string,
+//     issuedDate: string,
+//   ): Promise<Buffer> {
+//     const isPng = templateBuffer.subarray(0, 4).toString('hex') === '89504e47';
+//     const isJpg = templateBuffer.subarray(0, 3).toString('hex') === 'ffd8ff';
+
+//     let pdfDoc: PDFDocument;
+//     if (isPng || isJpg) {
+//       pdfDoc = await PDFDocument.create();
+//       const image = isPng
+//         ? await pdfDoc.embedPng(templateBuffer)
+//         : await pdfDoc.embedJpg(templateBuffer);
+//       const page = pdfDoc.addPage([image.width, image.height]);
+//       page.drawImage(image, {
+//         x: 0,
+//         y: 0,
+//         width: image.width,
+//         height: image.height,
+//       });
+//     } else {
+//       try {
+//         pdfDoc = await PDFDocument.load(templateBuffer);
+//       } catch (err) {
+//         throw new InternalServerErrorException(
+//           'Certificate template is not a valid PDF',
+//         );
+//       }
+//     }
+
+//     const page = pdfDoc.getPage(0);
+//     const { width, height } = page.getSize();
+//     const anchors =
+//       isPng || isJpg ? null : await this.findCertificateAnchors(templateBuffer);
+
+//     const nameFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+//     const dateFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+//     const textColor = rgb(0.07, 0.09, 0.13);
+
+//     // Name: centered just above the blank line, shrunk to fit long names
+//     const name = this.toEncodableText(nameFont, studentName);
+//     const nameCenterX = anchors?.line
+//       ? anchors.line.x + anchors.line.width / 2
+//       : anchors?.heading
+//         ? anchors.heading.x + anchors.heading.width / 2
+//         : width / 2;
+//     const nameMaxWidth = anchors?.line ? anchors.line.width : width * 0.65;
+//     const nameY = anchors?.line
+//       ? anchors.line.y + anchors.line.fontSize * 0.4
+//       : anchors?.heading
+//         ? anchors.heading.y - anchors.heading.fontSize * 2.1
+//         : height * 0.392;
+//     let nameSize = anchors?.heading
+//       ? anchors.heading.fontSize * 1.3
+//       : height * 0.042;
+//     const minNameSize = nameSize * 0.45;
+//     while (
+//       nameSize > minNameSize &&
+//       nameFont.widthOfTextAtSize(name, nameSize) > nameMaxWidth
+//     ) {
+//       nameSize -= 0.5;
+//     }
+//     page.drawText(name, {
+//       x: nameCenterX - nameFont.widthOfTextAtSize(name, nameSize) / 2,
+//       y: nameY,
+//       size: nameSize,
+//       font: nameFont,
+//       color: textColor,
+//     });
+
+//     // Date: right after the "Date:" label, on the same baseline
+//     // const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+//     // page.drawText(issuedDate, {
+//     //   x: anchors?.date
+//     //     ? anchors.date.x + anchors.date.width + dateSize * 0.4
+//     //     : width * 0.7725,
+//     //   y: anchors?.date ? anchors.date.y : height * 0.1429,
+//     //   size: dateSize,
+//     //   font: dateFont,
+//     //   color: textColor,
+//     // });
+
+//     const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
+
+//     const dateY = anchors?.date ? anchors.date.y + 5 : height * 0.1429;
+
+//     page.drawText(issuedDate, {
+//       x: anchors?.date
+//         ? anchors.date.x + anchors.date.width + dateSize * 0.4
+//         : width * 0.7725,
+//       y: dateY,
+//       size: dateSize,
+//       font: dateFont,
+//       color: textColor,
+//     });
+//     pdfDoc.setTitle(
+//       'Student Participation Certificate - AWS Data Center Tour',
+//       {
+//         showInWindowTitleBar: true,
+//       },
+//     );
+//     return Buffer.from(await pdfDoc.save());
+//   }
+
+//   private async findCertificateAnchors(pdfBuffer: Buffer) {
+//     type TextBox = { x: number; y: number; width: number; fontSize: number };
+//     const anchors: { heading?: TextBox; line?: TextBox; date?: TextBox } = {};
+
+//     try {
+//       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+//       const doc = await pdfjsLib.getDocument({
+//         data: new Uint8Array(pdfBuffer),
+//         useSystemFonts: true,
+//       }).promise;
+//       const content = await (await doc.getPage(1)).getTextContent();
+
+//       for (const item of content.items) {
+//         if (!('str' in item)) continue;
+//         const text = item.str.trim();
+//         const box: TextBox = {
+//           x: item.transform[4],
+//           y: item.transform[5],
+//           width: item.width,
+//           fontSize: Math.abs(item.transform[3]) || Math.abs(item.transform[0]),
+//         };
+//         if (!anchors.heading && /amazon hereby acknowledges that/i.test(text)) {
+//           anchors.heading = box;
+//         } else if (!anchors.date && /^date\s*:?$/i.test(text)) {
+//           anchors.date = box;
+//         } else if (/^_{5,}$/.test(text)) {
+//           // The blank name line sits below the heading
+//           if (!anchors.line || box.width > anchors.line.width) {
+//             anchors.line = box;
+//           }
+//         }
+//       }
+//       await doc.destroy();
+//     } catch (err) {
+//       this.logger?.warn?.(`Certificate text lookup failed: ${err?.message}`);
+//     }
+
+//     if (
+//       anchors.line &&
+//       anchors.heading &&
+//       anchors.line.y >= anchors.heading.y
+//     ) {
+//       delete anchors.line;
+//     }
+//     return anchors;
+//   }
+//   // Standard PDF fonts only cover WinAnsi characters; drop anything else
+//   private toEncodableText(font: PDFFont, text: string): string {
+//     const supported = new Set(font.getCharacterSet());
+//     return Array.from(text)
+//       .filter((char) => supported.has(char.codePointAt(0)))
+//       .join('')
+//       .replace(/\s+/g, ' ')
+//       .trim();
+//   }
+
+//   private async ensureCertificateAccess(
+//     user: any,
+//     bootcampId: number,
+//     organizationId: number,
+//   ): Promise<void> {
+//     if (!user?.id) {
+//       throw new ForbiddenException('User not authenticated');
+//     }
+
+//     const roles = Array.isArray(user.roles) ? user.roles : [];
+//     if (roles.includes('super_admin')) {
+//       return;
+//     }
+
+//     const isStudent = roles.includes('student') || roles.length === 0;
+//     if (isStudent) {
+//       const [enrollment] = await db
+//         .select({ id: zuvyBatchEnrollments.id })
+//         .from(zuvyBatchEnrollments)
+//         .where(
+//           and(
+//             eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+//             eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+//           ),
+//         )
+//         .limit(1);
+
+//       if (!enrollment) {
+//         throw new ForbiddenException('Unauthorized access to certificate');
+//       }
+//       return;
+//     }
+
+//     const [membership] = await db
+//       .select({ id: zuvyUserRolesAssigned.id })
+//       .from(zuvyUserRolesAssigned)
+//       .where(
+//         and(
+//           eq(zuvyUserRolesAssigned.userId, BigInt(user.id)),
+//           eq(zuvyUserRolesAssigned.organizationId, organizationId),
+//         ),
+//       )
+//       .limit(1);
+
+//     if (!membership) {
+//       throw new ForbiddenException('Unauthorized access to certificate');
+//     }
+//   }
+
+//   async uploadImageToS3(buffer: Buffer, filename: string): Promise<string> {
+//     const key = `mcq_images/${Date.now()}_${filename}`;
+//     await this.s3.send(
+//       new PutObjectCommand({
+//         Bucket: this.bucket,
+//         Key: key,
+//         Body: buffer,
+//         ContentType: 'image/*',
+//       }),
+//     );
+//     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+//   }
+
+//   async lockContent(modules__, module_id = null) {
+//     let index = 0;
+//     while (index < modules__.length) {
+//       let index_run = index + 1;
+//       if (index == 0) {
+//         modules__[index]['lock'] = true;
+//       }
+//       if (index_run < modules__.length) {
+//         if (modules__[index].progress >= 100) {
+//           modules__[index_run]['lock'] = true;
+//         } else {
+//           modules__[index_run]['lock'] = false;
+//         }
+//       }
+//       index++;
+//     }
+//     return modules__;
+//   }
+
+//   async createModuleForCourse(
+//     bootcampId: number,
+//     module: moduleDto,
+//     typeId: number,
+//   ) {
+//     try {
+//       module.name =
+//         module.name?.charAt(0).toUpperCase() + module.name?.slice(1);
+
+//       const noOfModuleOfBootcamp = await db
+//         .select({ count: count(zuvyCourseModules.id) })
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
+//       let projectId = null;
+//       if (typeId == 2) {
+//         const newProject = await db
+//           .insert(zuvyCourseProjects)
+//           .values({ title: module.name })
+//           .returning();
+//         projectId = newProject.length > 0 ? newProject[0].id : null;
+//       }
+//       var moduleWithBootcamp = {
+//         bootcampId,
+//         ...module,
+//         typeId,
+//         projectId,
+//         order: noOfModuleOfBootcamp[0].count + 1,
+//       };
+//       const moduleData = await db
+//         .insert(zuvyCourseModules)
+//         .values(moduleWithBootcamp)
+//         .returning();
+//       const courseRes = await db
+//         .select({ name: zuvyBootcamps.name })
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId))
+//         .limit(1);
+//       const courseName = courseRes[0]?.name || '';
+//       if (moduleData.length > 0) {
+//         return {
+//           status: 'success',
+//           message: 'Module created successfully for this course',
+//           code: 200,
+//           module: moduleData,
+//           courseName,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'Module creation failed.Please try again',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createProjectForCourse(
+//     bootcampId: number,
+//     project: projectDto,
+//     typeId: number,
+//   ) {
+//     try {
+//       const bootcampInfo = await db
+//         .select()
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId));
+//       if (bootcampInfo.length == 0) {
+//         throw new NotFoundException('Bootcamp not found or deleted!');
+//       }
+
+//       const newProject = await db
+//         .insert(zuvyCourseProjects)
+//         .values(project)
+//         .returning();
+//       if (newProject.length > 0) {
+//         const newModule = {
+//           bootcampId,
+//           isLock: project.isLock,
+//           name: null,
+//           timeAlloted: null,
+//           description: null,
+//           projectId: newProject[0].id,
+//         };
+//         const moduleCreated = await this.createModuleForCourse(
+//           bootcampId,
+//           newModule,
+//           typeId,
+//         );
+//         if (moduleCreated.status == 'success') {
+//           return {
+//             status: 'success',
+//             code: 200,
+//             projectCreated: {
+//               ...newProject[0],
+//               order: moduleCreated.module[0]?.order,
+//             },
+//           };
+//         }
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getProjectDetails(bootcampId: number, projectId: number) {
+//     try {
+//       const project = await db
+//         .select()
+//         .from(zuvyCourseProjects)
+//         .where(eq(zuvyCourseProjects.id, projectId));
+//       // readability/type-safety: typed and/eq helpers instead of a raw sql template
+//       const correspondingModule = await db
+//         .select()
+//         .from(zuvyCourseModules)
+//         .where(
+//           and(
+//             eq(zuvyCourseModules.bootcampId, bootcampId),
+//             eq(zuvyCourseModules.projectId, projectId),
+//           ),
+//         );
+//       if (project.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           project,
+//           bootcampId,
+//           moduleId: correspondingModule[0].id,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'There is no such project with this id',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async updateProjectDetails(projectId: number, project: projectDto) {
+//     try {
+//       const updatedProjects = await db
+//         .update(zuvyCourseProjects)
+//         .set(project)
+//         .where(eq(zuvyCourseProjects.id, projectId))
+//         .returning();
+//       if (updatedProjects.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'The project has been updated successfully',
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'Update failed.Please try again',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteProjectForBootcamp(
+//     projectId: number,
+//     moduleId: number,
+//     bootcampId: number,
+//   ) {
+//     try {
+//       let deletedProject = await db
+//         .delete(zuvyCourseProjects)
+//         .where(eq(zuvyCourseProjects.id, projectId))
+//         .returning();
+//       if (deletedProject.length > 0) {
+//         await db
+//           .delete(zuvyProjectTracking)
+//           .where(eq(zuvyProjectTracking.id, projectId));
+//         let data = await db
+//           .delete(zuvyCourseModules)
+//           .where(eq(zuvyCourseModules.id, moduleId))
+//           .returning();
+//         if (data.length === 0) {
+//           return [
+//             { status: 'error', message: 'Module not found', code: 404 },
+//             null,
+//           ];
+//         }
+//         await db
+//           .update(zuvyCourseModules)
+//           .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
+//           .where(
+//             sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+//           );
+
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'Project has been deleted successfully',
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Project not found with this id',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createChapterForModule(
+//     moduleId: number,
+//     topicId: number,
+//     bootcampId: number,
+//     videoDurationSeconds?: number,
+//   ) {
+//     try {
+//       const moduleInfo = await db
+//         .select()
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, moduleId));
+//       if (moduleInfo.length == 0) {
+//         throw new NotFoundException('Module not found or deleted!');
+//       }
+//       let newAssessment;
+//       let chapterData;
+//       const noOfChaptersOfAModule = await db
+//         .select({ count: count(zuvyModuleChapter.id) })
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.moduleId, moduleId));
+//       const order = noOfChaptersOfAModule[0].count + 1;
+//       if (topicId == 6) {
+//         newAssessment = await this.createAssessment(moduleId);
+//         chapterData = {
+//           title: `Chapter ${order}`,
+//           moduleId,
+//           topicId,
+//           order,
+//           assessmentId: newAssessment[0].id,
+//         };
+//       } else {
+//         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+//       }
+//       if (topicId === 1 && videoDurationSeconds !== undefined) {
+//         chapterData.videoDurationSeconds = Math.round(videoDurationSeconds);
+//       }
+//       const chapter = await db
+//         .insert(zuvyModuleChapter)
+//         .values(chapterData)
+//         .returning();
+//       if (chapter.length == 0) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'Not able to create chapter for this module',
+//           module: chapter,
+//         };
+//       }
+//       if (topicId == 6) {
+//         let insertedAssessmentOutsourse: any = {
+//           assessmentId: newAssessment[0].id,
+//           moduleId,
+//           bootcampId,
+//           chapterId: chapter[0].id,
+//           order,
+//           currentState: 0, // Setting initial state to DRAFT
+//         };
+//         let outsourseAssessmentData = await db
+//           .insert(zuvyOutsourseAssessments)
+//           .values(insertedAssessmentOutsourse)
+//           .returning();
+//         if (outsourseAssessmentData.length == 0) {
+//           return {
+//             status: 'error',
+//             code: 400,
+//             message: 'Not able to create outsourse assessment for this chapter',
+//             module: chapter,
+//           };
+//         }
+//       }
+
+//       const courseRes = await db
+//         .select({ name: zuvyBootcamps.name })
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId))
+//         .limit(1);
+//       const courseName = courseRes[0]?.name || '';
+//       const moduleName = moduleInfo[0]?.name || '';
+//       return {
+//         status: 'success',
+//         message: 'Chapter created successfully for this module',
+//         code: 200,
+//         module: chapter,
+//         courseName,
+//         moduleName,
+//         moduleId,
+//         bootcampId,
+//         chapterId: chapter[0]?.id ?? null,
+//       };
+//     } catch (err) {
+//       Logger.error({ err });
+//       throw err;
+//     }
+//   }
+
+//   async createQuizForModule(quizData: CreateQuizzesDto): Promise<any> {
+//     try {
+//       // Ensure quizzes is an array
+//       const quizzes = Array.isArray(quizData.quizzes)
+//         ? quizData.quizzes
+//         : [quizData.quizzes];
+//       const quizUploadResults = [];
+//       let validationErrors = [];
+
+//       // Validate required fields for each quiz and its variants
+//       for (const quiz of quizzes) {
+//         if (!quiz.difficulty || !quiz.tagId) {
+//           validationErrors.push('All fields are required');
+//         }
+
+//         // Validate variants if they exist
+//         if (quiz.variantMCQs) {
+//           for (const variant of quiz.variantMCQs) {
+//             if (
+//               !variant.question ||
+//               typeof variant.options !== 'object' ||
+//               Object.keys(variant.options).length === 0 ||
+//               variant.correctOption === undefined
+//             ) {
+//               validationErrors.push('All fields are required.');
+//             }
+//           }
+//         }
+//       }
+
+//       if (validationErrors.length === 0) {
+//         const quizzesData = quizzes.map((quiz) => ({
+//           // title: quiz.title, // Optional
+//           title: quiz.title?.charAt(0).toUpperCase() + quiz.title?.slice(1),
+//           difficulty: quiz.difficulty,
+//           tagId: quiz.tagId,
+//           content: quiz.content, // Optional
+//           isRandom: quiz.isRandomOptions, // Optional
+//           orgId: quizData.orgId,
+//         }));
+
+//         // Insert quizzes into the database
+//         const insertedQuizzes = await db
+//           .insert(zuvyModuleQuiz)
+//           .values(quizzesData)
+//           .returning();
+
+//         // Prepare all variants in one array, associating each with its quiz ID
+//         const allVariantsData = [];
+//         insertedQuizzes.forEach((insertedQuiz, quizIndex) => {
+//           const quizId = insertedQuiz.id;
+//           const variants = quizzes[quizIndex].variantMCQs?.map(
+//             (variant, index) => ({
+//               quizId,
+//               // question: variant.question,
+//               question:
+//                 variant.question?.charAt(0).toUpperCase() +
+//                 variant.question?.slice(1),
+//               options: variant.options,
+//               correctOption: variant.correctOption,
+//               variantNumber: index + 1,
+//             }),
+//           );
+
+//           // Push quiz data along with variants into the result array
+//           quizUploadResults.push({
+//             difficulty: insertedQuiz.difficulty,
+//             tagId: insertedQuiz.tagId,
+//             content: insertedQuiz.content,
+//             isRandom: insertedQuiz.isRandomOptions,
+//             variantMCQs: variants,
+//           });
+
+//           allVariantsData.push(...variants);
+//         });
+
+//         // Insert all variants in batch and keep the generated ids in the response
+//         const insertedVariants = await db
+//           .insert(zuvyModuleQuizVariants)
+//           .values(allVariantsData)
+//           .returning();
+
+//         let variantOffset = 0;
+//         quizUploadResults.forEach((quizResult) => {
+//           const variantCount = quizResult.variantMCQs?.length || 0;
+//           quizResult.variantMCQs = (quizResult.variantMCQs || []).map(
+//             (variant, index) => ({
+//               ...variant,
+//               id: insertedVariants[variantOffset + index]?.id,
+//             }),
+//           );
+//           variantOffset += variantCount;
+//         });
+
+//         return [
+//           null,
+//           {
+//             message: 'MCQ and variants have been created successfully.',
+//             statusCode: STATUS_CODES.CREATED,
+//             data: quizUploadResults,
+//           },
+//         ];
+//       } else {
+//         return [
+//           {
+//             message: validationErrors[0],
+//             statusCode: STATUS_CODES.BAD_REQUEST,
+//           },
+//           null,
+//         ];
+//       }
+//     } catch (err) {
+//       return [
+//         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//         null,
+//       ];
+//     }
+//   }
+
+//   async createOpenEndedQuestions(questions: openEndedDto, orgId: number) {
+//     try {
+//       const questionsWithOrg = { ...questions, orgId };
+
+//       questionsWithOrg.question =
+//         questionsWithOrg.question?.charAt(0).toUpperCase() +
+//         questionsWithOrg.question?.slice(1);
+
+//       const openEndedQuestions = await db
+//         .insert(zuvyOpenEndedQuestions)
+//         .values(questionsWithOrg)
+//         .returning();
+//       return openEndedQuestions;
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllModuleByBootcampId(
+//     bootcampId: number,
+//     roleName: string[],
+//     orgId?: number,
+//   ) {
+//     const bootcampInfo = await db
+//       .select()
+//       .from(zuvyBootcamps)
+//       .where(eq(zuvyBootcamps.id, bootcampId));
+//     if (bootcampInfo.length == 0) {
+//       throw new NotFoundException('Bootcamp not found!');
+//     }
+//     try {
+//       const data = await db.query.zuvyCourseModules.findMany({
+//         where: (courseModules, { eq }) =>
+//           eq(courseModules.bootcampId, bootcampId),
+//         with: {
+//           moduleChapterData: true,
+//           projectData: true,
+//         },
+//       });
+//       let modules = data.map((module: any) => {
+//         return {
+//           id: module.id,
+//           name: module.name || module['projectData']?.[0]?.title || module.name,
+//           description: module.description,
+//           typeId: module.typeId,
+//           order: module.order,
+//           projectId: module.projectId,
+//           timeAlloted: module.timeAlloted,
+//           ChapterId:
+//             module.moduleChapterData.find((chapter) => chapter.order === 1)
+//               ?.id || null,
+//           quizCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 4,
+//           ).length,
+//           assignmentCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 5,
+//           ).length,
+//           codingProblemsCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 3,
+//           ).length,
+//           articlesCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 2,
+//           ).length,
+//           formCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 7,
+//           ).length,
+//           liveClassCount: module.moduleChapterData.filter(
+//             (chapter) => chapter.topicId === 8,
+//           ).length,
+//         };
+//       });
+//       modules.sort((a, b) => a.order - b.order);
+//       //get permissions.
+//       const targetPermissions = [
+//         ResourceList.module.read,
+//         ResourceList.module.create,
+//         ResourceList.module.edit,
+//         ResourceList.module.delete,
+//       ];
+//       const grantedPermission = await this.rbacService.getAllPermissions(
+//         roleName,
+//         targetPermissions,
+//         orgId,
+//       );
+//       return { modules, ...grantedPermission };
+//     } catch (err) {
+//       console.error(err);
+//       return [];
+//     }
+//   }
+
+//   async getAllChaptersOfModule(roleName, moduleId: number, orgId?: number) {
+//     try {
+//       const module = await db
+//         .select()
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, moduleId));
+
+//       if (module.length == 0) {
+//         throw new NotFoundException('Module not found!');
+//       }
+//       const chapterNameWithId = await db
+//         .select({
+//           chapterId: zuvyModuleChapter.id,
+//           chapterTitle: zuvyModuleChapter.title,
+//           topicId: zuvyModuleChapter.topicId,
+//           order: zuvyModuleChapter.order,
+//           isLock: zuvyModuleChapter.isLock,
+//         })
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.moduleId, moduleId))
+//         .orderBy(zuvyModuleChapter.order);
+
+//       const topicNames = await db
+//         .select({
+//           topicId: zuvyModuleTopics.id,
+//           topicName: zuvyModuleTopics.name,
+//         })
+//         .from(zuvyModuleTopics);
+
+//       const chapterWithTopic = chapterNameWithId.map((ch) => {
+//         const topicInfo = topicNames.find(
+//           (topic) => topic.topicId === ch.topicId,
+//         );
+//         return {
+//           chapterId: ch.chapterId,
+//           chapterTitle: ch.chapterTitle,
+//           topicId: ch.topicId,
+//           topicName: topicInfo?.topicName || 'Unknown',
+//           order: ch.order,
+//           isLock: ch.isLock ?? false,
+//         };
+//       });
+//       const targetPermissions = [
+//         ResourceList.chapter.read,
+//         ResourceList.chapter.create,
+//         ResourceList.chapter.edit,
+//         ResourceList.chapter.delete,
+//       ];
+//       const grantedPermissions =
+//         await this.rbacAllocPermsService.getAllPermissions(
+//           roleName,
+//           targetPermissions,
+//           orgId,
+//         );
+//       return {
+//         chapterWithTopic,
+//         moduleName: module[0].name,
+//         ...grantedPermissions,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async formatedChapterDetails(chapterDetails: any) {
+//     try {
+//       chapterDetails.Quizzes = chapterDetails?.Quizzes.map((Quizzes) => {
+//         let quizDetails = { ...Quizzes.Quiz };
+//         delete Quizzes.Quiz;
+//         return { ...Quizzes, ...quizDetails };
+//       });
+
+//       chapterDetails.OpenEndedQuestions =
+//         chapterDetails?.OpenEndedQuestions.map((OpenEndedQuestions) => {
+//           let openEndedDetails = { ...OpenEndedQuestions.OpenEndedQuestion };
+//           delete OpenEndedQuestions.OpenEndedQuestion;
+//           return { ...OpenEndedQuestions, ...openEndedDetails };
+//         });
+
+//       chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map(
+//         (CodingQuestions) => {
+//           let codingOutsourseId = CodingQuestions.id;
+//           let codingDetails = {
+//             codingOutsourseId,
+//             ...CodingQuestions.CodingQuestion,
+//           };
+//           delete CodingQuestions.CodingQuestion;
+//           return { ...CodingQuestions, ...codingDetails };
+//         },
+//       );
+
+//       return chapterDetails;
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getChapterDetailsById(
+//     chapterId: number,
+//     bootcampId: number,
+//     moduleId: number,
+//     topicId: number,
+//     userRole?: string,
+//     batchId?: number,
+//   ) {
+//     try {
+//       // perf: fetch these independent lookups in parallel instead of sequential awaits
+//       const [bootcampInfo, chapterInfo, moduleInfo] = await Promise.all([
+//         db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId)),
+//         db
+//           .select()
+//           .from(zuvyModuleChapter)
+//           .where(eq(zuvyModuleChapter.id, chapterId)),
+//         db
+//           .select()
+//           .from(zuvyCourseModules)
+//           .where(eq(zuvyCourseModules.id, moduleId)),
+//       ]);
+
+//       if (bootcampInfo.length == 0) {
+//         throw new NotFoundException('Bootcamp not found or deleted!');
+//       }
+//       if (moduleInfo.length == 0) {
+//         throw new NotFoundException('Module not found or deleted!');
+//       }
+//       if (chapterInfo.length == 0) {
+//         throw new NotFoundException('Module not found or deleted!');
+//       }
+
+//       // Fetch batch information
+//       let batchInfo = null;
+//       if (batchId) {
+//         // If batchId is provided, fetch that specific batch
+//         const batchData = await db
+//           .select()
+//           .from(zuvyBatches)
+//           .where(eq(zuvyBatches.id, batchId));
+//         if (batchData.length > 0) {
+//           batchInfo = {
+//             batchId: batchData[0].id,
+//             batchName: batchData[0].name,
+//           };
+//         }
+//       } else {
+//         // If batchId is not provided, fetch the first batch associated with this bootcamp
+//         const batchData = await db
+//           .select()
+//           .from(zuvyBatches)
+//           .where(eq(zuvyBatches.bootcampId, bootcampId))
+//           .limit(2);
+//         if (batchData.length > 0) {
+//           batchInfo = {
+//             batchId: batchData[0].id,
+//             batchName: batchData[0].name,
+//           };
+//           if (batchData.length > 1) {
+//             batchInfo['secondBatchId'] = batchData[1].id;
+//             batchInfo['secondBatchName'] = batchData[1].name;
+//           }
+//         }
+//       }
+
+//       if (topicId === 8) {
+//         // Assuming 8 is for sessions/live classes
+//         await this.classesService.updatingStatusOfClass(
+//           bootcampId,
+//           undefined,
+//           chapterId,
+//         );
+//       }
+//       if (topicId == 6) {
+//         const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany(
+//           {
+//             where: (zuvyOutsourseAssessments, { eq }) =>
+//               eq(zuvyOutsourseAssessments.chapterId, chapterId),
+//             with: {
+//               ModuleAssessment: {
+//                 columns: {
+//                   id: true,
+//                   title: true,
+//                   description: true,
+//                 },
+//               },
+//               Quizzes: {
+//                 columns: {
+//                   id: true,
+//                   assessmentOutsourseId: true,
+//                   bootcampId: true,
+//                 },
+//                 where: (zuvyOutsourseQuizzes, { sql }) =>
+//                   sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+//                 with: {
+//                   Quiz: {
+//                     with: {
+//                       quizVariants: true,
+//                     },
+//                   },
+//                 },
+//               },
+//               OpenEndedQuestions: {
+//                 columns: {
+//                   id: true,
+//                   assessmentOutsourseId: true,
+//                   bootcampId: true,
+//                 },
+//                 where: (zuvyOutsourseOpenEndedQuestions, { sql }) =>
+//                   sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+//                 with: {
+//                   OpenEndedQuestion: true,
+//                 },
+//               },
+//               CodingQuestions: {
+//                 columns: {
+//                   id: true,
+//                   assessmentOutsourseId: true,
+//                   bootcampId: true,
+//                 },
+//                 where: (zuvyOutsourseCodingQuestions, { sql }) =>
+//                   sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+//                 with: {
+//                   CodingQuestion: {
+//                     columns: {
+//                       id: true,
+//                       title: true,
+//                       description: true,
+//                       difficulty: true,
+//                       tagId: true,
+//                       constraints: true,
+//                     },
+//                     with: {
+//                       testCases: {
+//                         columns: {
+//                           id: true,
+//                           inputs: true,
+//                           expectedOutput: true,
+//                         },
+//                         orderBy: (testCase, { asc }) => asc(testCase.id),
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         );
+
+//         if (!chapterDetails || chapterDetails.length === 0) {
+//           return 'No Chapter found';
+//         }
+
+//         // Update assessment state using AssessmentStateService; it now
+//         // returns the up-to-date assessment row, avoiding a redundant re-fetch.
+//         // fix: guard against a null return (assessment genuinely missing, or
+//         // both the fetch and the state-write failed) so this read path
+//         // degrades to the default state below instead of throwing.
+//         const updatedAssessment =
+//           (await this.handleAssessmentUpdate(chapterDetails[0].id)) ?? {};
+
+//         const stateMap = {
+//           0: 'DRAFT',
+//           1: 'PUBLISHED',
+//           2: 'ACTIVE',
+//           3: 'CLOSED',
+//         };
+
+//         chapterDetails[0]['assessmentOutsourseId'] = chapterDetails[0].id;
+//         let formatedData = await this.formatedChapterDetails(chapterDetails[0]);
+
+//         formatedData.publishDatetime = chapterDetails[0].publishDatetime;
+//         formatedData.startDatetime = chapterDetails[0].startDatetime;
+//         formatedData.endDatetime = chapterDetails[0].endDatetime;
+//         formatedData.currentState =
+//           stateMap[updatedAssessment.currentState] || stateMap[2];
+
+//         // Add batch information if available
+//         if (batchInfo) {
+//           formatedData.batchId = batchInfo.batchId;
+//           formatedData.batchName = batchInfo.batchName;
+//           if (batchInfo.secondBatchId) {
+//             formatedData.secondBatchId = batchInfo.secondBatchId;
+//             formatedData.secondBatchName = batchInfo.secondBatchName;
+//           }
+//         }
+
+//         return formatedData;
+//       }
+
+//       const chapterDetails = await db
+//         .select()
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, chapterId));
+
+//       const modifiedChapterDetails: {
+//         id: number;
+//         title: string;
+//         description: string;
+//         moduleId: number;
+//         topicId: number;
+//         order: number;
+//         completionDate: string;
+//         quizQuestionDetails?: any[];
+//         codingQuestionDetails?: any[];
+//         formQuestionDetails?: any[];
+//         contentDetails?: any[];
+//         sessionDetails?: any[];
+//       } = {
+//         id: chapterDetails[0].id,
+//         title: chapterDetails[0].title,
+//         description: chapterDetails[0].description,
+//         moduleId: chapterDetails[0].moduleId,
+//         topicId: chapterDetails[0].topicId,
+//         order: chapterDetails[0].order,
+//         completionDate: chapterDetails[0].completionDate,
+//       };
+
+//       if (chapterDetails.length > 0) {
+//         if (chapterDetails[0].topicId == 4) {
+//           const quizDetails =
+//             chapterDetails[0].quizQuestions !== null
+//               ? await db.query.zuvyModuleQuiz.findMany({
+//                   where: (quiz, { inArray }) =>
+//                     inArray(
+//                       quiz.id,
+//                       Object.values(chapterDetails[0].quizQuestions),
+//                     ),
+//                   with: {
+//                     quizVariants: {
+//                       where: (variants, { eq }) =>
+//                         eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+//                     },
+//                   },
+//                 })
+//               : [];
+//           modifiedChapterDetails.quizQuestionDetails = quizDetails;
+//         } else if (chapterDetails[0].topicId == 3) {
+//           // Fetch coding questions and their test cases
+//           const codingProblemDetails =
+//             chapterDetails[0].codingQuestions !== null
+//               ? await db.query.zuvyCodingQuestions.findMany({
+//                   where: (codingQuestion, { eq }) =>
+//                     eq(codingQuestion.id, chapterDetails[0].codingQuestions),
+//                   columns: {
+//                     id: true,
+//                     title: true,
+//                     description: true,
+//                     difficulty: true,
+//                     tagId: true,
+//                     constraints: true, // Include constraints here
+//                   },
+//                   with: {
+//                     testCases: {
+//                       columns: {
+//                         id: true,
+//                         inputs: true,
+//                         expectedOutput: true,
+//                       },
+//                       orderBy: (testCase, { asc }) => asc(testCase.id),
+//                     },
+//                   },
+//                 })
+//               : [];
+//           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
+//         } else if (chapterDetails[0].topicId == 7) {
+//           // cleanup: drop the redundant sql`` wrapper, inArray() already produces a valid condition
+//           const formDetails =
+//             chapterDetails[0].formQuestions !== null
+//               ? await db
+//                   .select()
+//                   .from(zuvyModuleForm)
+//                   .where(
+//                     inArray(
+//                       zuvyModuleForm.id,
+//                       Object.values(chapterDetails[0].formQuestions),
+//                     ),
+//                   )
+//               : [];
+//           modifiedChapterDetails.formQuestionDetails = formDetails;
+//         } else if (chapterDetails[0].topicId == 8) {
+//           // Fetch session data for live classes with Zoom integration
+//           const sessionDetails = await db.query.zuvySessions.findMany({
+//             where: (sessions, { and, eq }) =>
+//               and(
+//                 eq(sessions.chapterId, chapterId),
+//                 eq(sessions.bootcampId, bootcampId),
+//                 eq(sessions.moduleId, moduleId),
+//               ),
+//             columns: {
+//               id: true,
+//               meetingId: true,
+//               hangoutLink: true,
+//               zoomStartUrl: true,
+//               isZoomMeet: true,
+//               creator: true,
+//               startTime: true,
+//               endTime: true,
+//               title: true,
+//               s3link: true,
+//               status: true,
+//               hasBeenMerged: true,
+//               batchId: true,
+//               secondBatchId: true,
+//               zoomMeetingId: true,
+//             },
+//           });
+//           let session = sessionDetails[0];
+//           if (
+//             session &&
+//             session.s3link !== null &&
+//             session.s3link !== '' &&
+//             session.status === 'completed' &&
+//             session.isZoomMeet === true &&
+//             !session.s3link.includes('www.youtube.com')
+//           ) {
+//             const updatedRecordingLink =
+//               await this.zoomService.getMeetingRecordingLink(
+//                 session.zoomMeetingId,
+//               );
+//             if (updatedRecordingLink.success) {
+//               session.s3link =
+//                 updatedRecordingLink.data.playUrl !== null
+//                   ? updatedRecordingLink.data.playUrl
+//                   : session.s3link;
+//               sessionDetails[0] = session;
+//             }
+//           }
+
+//           // Fetch attendance data and format response for each session
+//           const sessionDetailsWithAttendance = await Promise.all(
+//             sessionDetails.map(async (session) => {
+//               // Fetch merge information separately
+//               const mergeInfoAsParent =
+//                 await db.query.zuvySessionMerge.findMany({
+//                   where: (merge, { eq }) =>
+//                     eq(merge.parentSessionId, session.id),
+//                   with: {
+//                     childSession: {
+//                       columns: {
+//                         id: true,
+//                         title: true,
+//                         startTime: true,
+//                         endTime: true,
+//                       },
+//                     },
+//                   },
+//                 });
+
+//               const mergeInfoAsChild =
+//                 await db.query.zuvySessionMerge.findFirst({
+//                   where: (merge, { eq }) =>
+//                     eq(merge.childSessionId, session.id),
+//                   with: {
+//                     parentSession: {
+//                       columns: {
+//                         id: true,
+//                         title: true,
+//                         hangoutLink: true,
+//                         zoomStartUrl: true,
+//                         isZoomMeet: true,
+//                       },
+//                     },
+//                   },
+//                 });
+
+//               let userJoinLink = mergeInfoAsChild
+//                 ? mergeInfoAsChild.parentSession.hangoutLink
+//                 : session.isZoomMeet
+//                   ? session.zoomStartUrl
+//                   : session.hangoutLink;
+//               if (
+//                 userRole &&
+//                 (userRole.includes('admin') || userRole.includes('instructor'))
+//               ) {
+//                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
+//                 userJoinLink = session.isZoomMeet
+//                   ? session.zoomStartUrl
+//                   : session.hangoutLink;
+//               }
+//               // Format session data with role-based response and merge information
+//               const formattedSession = {
+//                 id: session.id,
+//                 meetingId: session.meetingId,
+//                 hangoutLink: userJoinLink, // If child session, use parent's hangoutLink; otherwise use session's hangoutLink/zoomStartUrl
+//                 creator: session.creator,
+//                 startTime: session.startTime,
+//                 endTime: session.endTime,
+//                 title: session.title,
+//                 s3link: session.s3link,
+//                 status: session.status,
+//                 isZoomMeet: session.isZoomMeet,
+//                 hasBeenMerged: session.hasBeenMerged,
+//                 platform: session.isZoomMeet ? 'zoom' : 'google_meet',
+//                 batchId: session.batchId,
+//                 secondBatchId: session.secondBatchId,
+//                 mergeInfo: {
+//                   isMerged: session.hasBeenMerged,
+//                   isParentSession: mergeInfoAsParent.length > 0,
+//                   isChildSession: !!mergeInfoAsChild,
+//                   childSessions: mergeInfoAsParent.map(
+//                     (merge) => merge.childSession,
+//                   ),
+//                   parentSession: mergeInfoAsChild?.parentSession || null,
+//                 },
+//               };
+
+//               return formattedSession;
+//             }),
+//           );
+
+//           modifiedChapterDetails.sessionDetails = sessionDetailsWithAttendance;
+//         } else {
+//           let content = [
+//             {
+//               title: chapterDetails[0].title,
+//               description: chapterDetails[0].description,
+//               links: chapterDetails[0].links,
+//               file: chapterDetails[0].file,
+//               content: chapterDetails[0].articleContent,
+//             },
+//           ];
+//           modifiedChapterDetails.contentDetails = content;
+//         }
+
+//         // Add batch information if available
+//         if (batchInfo) {
+//           // For session/live class topics (topicId 8), use session's batch info if available
+//           if (
+//             chapterDetails[0].topicId == 8 &&
+//             modifiedChapterDetails.sessionDetails &&
+//             modifiedChapterDetails.sessionDetails.length > 0
+//           ) {
+//             const firstSession = modifiedChapterDetails.sessionDetails[0];
+//             modifiedChapterDetails['batchId'] = firstSession.batchId;
+//             modifiedChapterDetails['secondBatchId'] =
+//               firstSession.secondBatchId;
+
+//             // Fetch batch names
+//             if (firstSession.batchId) {
+//               const batchData = await db
+//                 .select()
+//                 .from(zuvyBatches)
+//                 .where(eq(zuvyBatches.id, firstSession.batchId))
+//                 .limit(1);
+//               if (batchData.length > 0) {
+//                 modifiedChapterDetails['batchName'] = batchData[0].name;
+//               }
+//             }
+
+//             if (firstSession.secondBatchId) {
+//               const secondBatchData = await db
+//                 .select()
+//                 .from(zuvyBatches)
+//                 .where(eq(zuvyBatches.id, firstSession.secondBatchId))
+//                 .limit(1);
+//               if (secondBatchData.length > 0) {
+//                 modifiedChapterDetails['secondBatchName'] =
+//                   secondBatchData[0].name;
+//               }
+//             }
+//           } else {
+//             // For other topics, use the bootcamp's batch info
+//             modifiedChapterDetails['batchId'] = batchInfo.batchId;
+//             modifiedChapterDetails['batchName'] = batchInfo.batchName;
+//             if (batchInfo.secondBatchId) {
+//               modifiedChapterDetails['secondBatchId'] = batchInfo.secondBatchId;
+//               modifiedChapterDetails['secondBatchName'] =
+//                 batchInfo.secondBatchName;
+//             }
+//           }
+//         }
+
+//         return modifiedChapterDetails;
+//       } else {
+//         return 'No Chapter found';
+//       }
+//     } catch (err) {
+//       console.log(err);
+//       throw err;
+//     }
+//   }
+
+//   async updateOrderOfModules(
+//     reorderData: ReOrderModuleBody,
+//     bootcampId: number,
+//     moduleId: number,
+//   ) {
+//     try {
+//       const bootcampInfo = await db
+//         .select()
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId));
+//       if (bootcampInfo.length == 0) {
+//         throw new NotFoundException('Bootcamp not found or deleted!');
+//       }
+//       const moduleInfo = await db
+//         .select()
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, moduleId));
+//       if (moduleInfo.length == 0) {
+//         throw new NotFoundException('Module not found or deleted!');
+//       }
+
+//       let newModule = null;
+
+//       if (reorderData.moduleDto == undefined) {
+//         const { newOrder } = reorderData.reOrderDto;
+
+//         // fix: don't assume `order` values are a dense, gap-free 1..N
+//         // sequence per bootcamp (a range filter like `order BETWEEN x AND y`
+//         // only shifts the right rows under that assumption, which nothing
+//         // enforces at the DB level). Fetch the actual sorted list once and
+//         // compute shifts by ARRAY POSITION — the same approach the original
+//         // per-row-loop code used, so it's correct regardless of gaps or
+//         // duplicate order values — then apply them all in a single bulk
+//         // CASE-based UPDATE instead of one UPDATE per shifted row.
+//         const modules = await db
+//           .select({ id: zuvyCourseModules.id, order: zuvyCourseModules.order })
+//           .from(zuvyCourseModules)
+//           .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+//           .orderBy(zuvyCourseModules.order);
+//         const draggedIndex = modules.findIndex((m) => m.id === moduleId);
+
+//         if (draggedIndex !== -1) {
+//           const shifts: { id: number; order: number }[] = [];
+//           if (draggedIndex + 1 > newOrder) {
+//             for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+//               shifts.push({ id: modules[i].id, order: modules[i].order + 1 });
+//             }
+//           } else if (draggedIndex + 1 < newOrder) {
+//             let counting = newOrder - (draggedIndex + 1);
+//             let ordering = newOrder - 1;
+//             while (counting > 0) {
+//               shifts.push({
+//                 id: modules[ordering].id,
+//                 order: modules[ordering].order - 1,
+//               });
+//               counting -= 1;
+//               ordering -= 1;
+//             }
+//           }
+
+//           if (shifts.length > 0) {
+//             const sqlChunks: SQL[] = [sql`(case`];
+//             for (const shift of shifts) {
+//               sqlChunks.push(
+//                 sql`when ${zuvyCourseModules.id} = ${shift.id} then ${shift.order}`,
+//               );
+//             }
+//             sqlChunks.push(sql`else ${zuvyCourseModules.order} end)`);
+//             await db
+//               .update(zuvyCourseModules)
+//               .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+//               .where(
+//                 inArray(
+//                   zuvyCourseModules.id,
+//                   shifts.map((shift) => shift.id),
+//                 ),
+//               );
+//           }
+
+//           const updated = await db
+//             .update(zuvyCourseModules)
+//             .set({ order: newOrder })
+//             .where(eq(zuvyCourseModules.id, moduleId))
+//             .returning();
+//           newModule = updated[0] || null;
+//         }
+//       } else if (reorderData.reOrderDto == undefined) {
+//         const updated = await db
+//           .update(zuvyCourseModules)
+//           .set(reorderData.moduleDto)
+//           .where(eq(zuvyCourseModules.id, moduleId))
+//           .returning();
+//         newModule = updated[0] || null;
+
+//         const newName = reorderData.moduleDto?.name;
+//         const projectIdToUse = newModule?.projectId ?? moduleInfo[0]?.projectId;
+//         if (
+//           typeof newName === 'string' &&
+//           newName.trim() !== '' &&
+//           projectIdToUse
+//         ) {
+//           await db
+//             .update(zuvyCourseProjects)
+//             .set({ title: newName })
+//             .where(eq(zuvyCourseProjects.id, projectIdToUse));
+//         }
+//       }
+
+//       // Fall back to a fresh SELECT only if none of the update branches above
+//       // ran (e.g. oldOrder === newOrder), so the response shape is unchanged.
+//       if (!newModule) {
+//         const updatedModule = await db
+//           .select()
+//           .from(zuvyCourseModules)
+//           .where(eq(zuvyCourseModules.id, moduleId))
+//           .limit(1);
+//         newModule = updatedModule[0] || null;
+//       }
+
+//       const courseRes = await db
+//         .select({ name: zuvyBootcamps.name })
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId))
+//         .limit(1);
+//       const courseName = courseRes[0]?.name || '';
+//       const descriptionSuffix = courseName
+//         ? `for course name ${courseName}`
+//         : '';
+//       return {
+//         message: 'Modified successfully',
+//         data: {
+//           ...newModule,
+//           courseName,
+//           descriptionSuffix,
+//         },
+//         descriptionSuffix,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async updateCodingProblemForModule(
+//     questionId: number,
+//     codingProblem: UpdateProblemDto,
+//     orgId: number,
+//   ) {
+//     try {
+//       let examples = [];
+//       let testCases = [];
+
+//       const beforeRows = await db
+//         .select()
+//         .from(zuvyCodingQuestions)
+//         .where(
+//           and(
+//             eq(zuvyCodingQuestions.id, questionId),
+//             eq(zuvyCodingQuestions.orgId, orgId),
+//           ),
+//         )
+//         .limit(1);
+//       const before = beforeRows[0] || null;
+
+//       if (!before) {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Coding question not found or unauthorized',
+//         };
+//       }
+
+//       if (codingProblem.examples) {
+//         for (let i = 0; i < codingProblem.examples.length; i++) {
+//           examples.push(codingProblem.examples[i].inputs);
+//         }
+//         codingProblem.examples = examples;
+//       }
+//       if (codingProblem.testCases) {
+//         for (let j = 0; j < codingProblem.testCases.length; j++) {
+//           testCases.push(codingProblem.testCases[j].inputs);
+//         }
+//         codingProblem.testCases = testCases;
+//       }
+//       const updatedQuestion = await db
+//         .update(zuvyCodingQuestions)
+//         .set({
+//           ...codingProblem,
+//         })
+//         .where(
+//           and(
+//             eq(zuvyCodingQuestions.id, questionId),
+//             eq(zuvyCodingQuestions.orgId, orgId),
+//           ),
+//         )
+//         .returning();
+//       if (updatedQuestion.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'Coding question has been updated successfully',
+//           before,
+//           data: updatedQuestion[0],
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Coding question not available',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async updateChapterLock(chapterId: number, isLock: boolean) {
+//     const [chapter] = await db
+//       .update(zuvyModuleChapter)
+//       .set({ isLock } as any)
+//       .where(eq(zuvyModuleChapter.id, chapterId))
+//       .returning({
+//         id: zuvyModuleChapter.id,
+//         title: zuvyModuleChapter.title,
+//         moduleId: zuvyModuleChapter.moduleId,
+//         isLock: zuvyModuleChapter.isLock,
+//       });
+//     if (!chapter) {
+//       throw new NotFoundException('Chapter not found!');
+//     }
+//     return {
+//       status: 'success',
+//       code: 200,
+//       message: isLock
+//         ? 'Chapter locked successfully'
+//         : 'Chapter unlocked successfully',
+//       chapter,
+//     };
+//   }
+
+//   async editChapter(
+//     editData: UpdateChapterDto,
+//     moduleId: number,
+//     chapterId: number,
+//   ) {
+//     try {
+//       const chapterInfo = await db
+//         .select()
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, chapterId));
+//       const moduleInfo = await db
+//         .select()
+//         .from(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, moduleId));
+//       if (moduleInfo.length == 0 || chapterInfo.length == 0) {
+//         throw new NotFoundException('Module or chapter not found!');
+//       }
+//       // Video duration comes from the frontend's player metadata. Keep it
+//       // optional and ignore it for non-video chapter types.
+//       if (chapterInfo[0].topicId !== 1) {
+//         delete (editData as any).videoDurationSeconds;
+//       } else if (editData.videoDurationSeconds !== undefined) {
+//         editData.videoDurationSeconds = Math.round(
+//           editData.videoDurationSeconds,
+//         );
+//       }
+//       if (editData.newOrder != undefined) {
+//         const { newOrder } = editData;
+
+//         // fix: don't assume `order` values are a dense, gap-free 1..N
+//         // sequence per module (a range filter like `order BETWEEN x AND y`
+//         // only shifts the right rows under that assumption, which nothing
+//         // enforces at the DB level). Fetch the actual sorted list once and
+//         // compute shifts by ARRAY POSITION — the same approach the original
+//         // per-row-loop code used, so it's correct regardless of gaps or
+//         // duplicate order values — then apply them all in a single bulk
+//         // CASE-based UPDATE instead of one UPDATE per shifted row.
+//         const chapters = await db
+//           .select({ id: zuvyModuleChapter.id, order: zuvyModuleChapter.order })
+//           .from(zuvyModuleChapter)
+//           .where(eq(zuvyModuleChapter.moduleId, moduleId))
+//           .orderBy(zuvyModuleChapter.order);
+//         const draggedIndex = chapters.findIndex((c) => c.id === chapterId);
+
+//         if (draggedIndex !== -1) {
+//           const shifts: { id: number; order: number }[] = [];
+//           if (draggedIndex + 1 > newOrder) {
+//             for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+//               shifts.push({ id: chapters[i].id, order: chapters[i].order + 1 });
+//             }
+//           } else if (draggedIndex + 1 < newOrder) {
+//             let counting = newOrder - (draggedIndex + 1);
+//             let ordering = newOrder - 1;
+//             while (counting > 0) {
+//               shifts.push({
+//                 id: chapters[ordering].id,
+//                 order: chapters[ordering].order - 1,
+//               });
+//               counting -= 1;
+//               ordering -= 1;
+//             }
+//           }
+
+//           if (shifts.length > 0) {
+//             const sqlChunks: SQL[] = [sql`(case`];
+//             for (const shift of shifts) {
+//               sqlChunks.push(
+//                 sql`when ${zuvyModuleChapter.id} = ${shift.id} then ${shift.order}`,
+//               );
+//             }
+//             sqlChunks.push(sql`else ${zuvyModuleChapter.order} end)`);
+//             await db
+//               .update(zuvyModuleChapter)
+//               .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+//               .where(
+//                 inArray(
+//                   zuvyModuleChapter.id,
+//                   shifts.map((shift) => shift.id),
+//                 ),
+//               );
+//           }
+
+//           await db
+//             .update(zuvyModuleChapter)
+//             .set({
+//               order: newOrder,
+//               ...(editData.videoDurationSeconds !== undefined
+//                 ? { videoDurationSeconds: editData.videoDurationSeconds }
+//                 : {}),
+//             })
+//             .where(eq(zuvyModuleChapter.id, chapterId));
+//         }
+//       } else if (editData.newOrder == undefined) {
+//         const chapter = await db
+//           .select()
+//           .from(zuvyModuleChapter)
+//           .where(eq(zuvyModuleChapter.id, chapterId));
+//         if (editData.quizQuestions) {
+//           const earlierQuizIds =
+//             chapter[0].quizQuestions != null
+//               ? Object.values(chapter[0].quizQuestions)
+//               : [];
+//           const remainingQuizIds =
+//             editData.quizQuestions != null && earlierQuizIds.length > 0
+//               ? earlierQuizIds.filter(
+//                   (questionId) => !editData.quizQuestions.includes(questionId),
+//                 )
+//               : [];
+//           const toUpdateIds =
+//             editData.quizQuestions != null && earlierQuizIds.length > 0
+//               ? editData.quizQuestions.filter(
+//                   (questionId) => !earlierQuizIds.includes(questionId),
+//                 )
+//               : editData.quizQuestions;
+//           if (remainingQuizIds.length > 0) {
+//             await db
+//               .update(zuvyModuleQuiz)
+//               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` } as any)
+//               .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
+//           }
+//           if (toUpdateIds.length > 0) {
+//             await db
+//               .update(zuvyModuleQuiz)
+//               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` } as any)
+//               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+//           }
+//           if (editData.quizQuestions.length == 0) {
+//             editData.quizQuestions = null;
+//           }
+//         } else if (
+//           editData.codingQuestions ||
+//           (editData.codingQuestions == null &&
+//             chapter[0].codingQuestions != null)
+//         ) {
+//           const earlierCodingId = chapter[0].codingQuestions;
+
+//           if (earlierCodingId !== editData.codingQuestions) {
+//             let updatedCodingQuestion: any = {
+//               usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`,
+//             };
+//             const updatedquestion = await db
+//               .update(zuvyCodingQuestions)
+//               .set(updatedCodingQuestion as any)
+//               .where(eq(zuvyCodingQuestions.id, earlierCodingId))
+//               .returning();
+//             if (editData.codingQuestions) {
+//               updatedCodingQuestion = {
+//                 usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
+//               };
+//               await db
+//                 .update(zuvyCodingQuestions)
+//                 .set(updatedCodingQuestion as any)
+//                 .where(eq(zuvyCodingQuestions.id, editData.codingQuestions))
+//                 .returning();
+//             }
+//           }
+//         } else if (editData.formQuestions) {
+//           const earlierFormIds =
+//             chapter[0].formQuestions != null
+//               ? Object.values(chapter[0].formQuestions)
+//               : [];
+//           const remainingFormIds =
+//             editData.formQuestions != null && earlierFormIds.length > 0
+//               ? earlierFormIds.filter(
+//                   (questionId) => !editData.formQuestions.includes(questionId),
+//                 )
+//               : [];
+//           const toUpdateIds =
+//             editData.formQuestions != null && earlierFormIds.length > 0
+//               ? editData.formQuestions.filter(
+//                   (questionId) => !earlierFormIds.includes(questionId),
+//                 )
+//               : editData.formQuestions;
+//           if (remainingFormIds.length > 0) {
+//             let updateModuleForm: any = {
+//               usage: sql`${zuvyModuleForm.usage}::numeric - 1`,
+//             };
+
+//             await db
+//               .update(zuvyModuleForm)
+//               .set(updateModuleForm as any)
+//               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
+//           }
+//           if (toUpdateIds.length > 0) {
+//             let updateModuleForm: any = {
+//               usage: sql`${zuvyModuleForm.usage}::numeric + 1`,
+//             };
+//             await db
+//               .update(zuvyModuleForm)
+//               .set(updateModuleForm as any)
+//               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
+//           }
+//           if (editData.formQuestions.length == 0) {
+//             editData.formQuestions = null;
+//           }
+
+//           if (editData.title) {
+//             editData.title =
+//               editData.title.charAt(0).toUpperCase() + editData.title.slice(1);
+//           }
+//         }
+//         await db
+//           .update(zuvyModuleChapter)
+//           .set({
+//             ...editData,
+//           })
+//           .where(eq(zuvyModuleChapter.id, chapterId));
+//       }
+//       const updatedChapter = await db
+//         .select()
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, chapterId));
+
+//       const courseRes = await db
+//         .select({ name: zuvyBootcamps.name })
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, moduleInfo[0].bootcampId))
+//         .limit(1);
+//       const courseName = courseRes[0]?.name || '';
+//       const descriptionSuffix = courseName
+//         ? `for class name ${courseName}`
+//         : '';
+
+//       return {
+//         message: 'Modified successfully',
+//         chapter: updatedChapter,
+//         bootcampId: moduleInfo[0].bootcampId,
+//         moduleId,
+//         moduleName: moduleInfo[0]?.name || '',
+//         chapterId,
+//         descriptionSuffix,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createAssessment(moduleId: number) {
+//     try {
+//       const assessment = {
+//         title: `Assessment for module number ${moduleId}`,
+//       };
+//       const newAssessment = await db
+//         .insert(zuvyModuleAssessment)
+//         .values(assessment)
+//         .returning();
+
+//       return newAssessment;
+//     } catch (err) {
+//       console.error({ err });
+//       throw err;
+//     }
+//   }
+
+//   // Helper function to calculate the score for each question based on the weightage and counts
+//   async calculateQuestionScores(
+//     totalScore,
+//     weightage,
+//     questionCounts,
+//     type = 'MCQ',
+//   ) {
+//     const sectionScore = totalScore * (weightage / 100);
+//     const { easy, medium, hard } = questionCounts;
+
+//     // Use the appropriate points for the type of questions (MCQ or Coding)
+//     const points =
+//       type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
+
+//     const totalWeight =
+//       easy * points.Easy + medium * points.Medium + hard * points.Hard;
+
+//     const scores = {
+//       easy: easy ? (points.Easy / totalWeight) * sectionScore : 0,
+//       medium: medium ? (points.Medium / totalWeight) * sectionScore : 0,
+//       hard: hard ? (points.Hard / totalWeight) * sectionScore : 0,
+//     };
+
+//     return scores;
+//   }
+
+//   async editAssessment(
+//     assessmentOutsourseId: number,
+//     assessmentBody: CreateAssessmentBody,
+//     chapterId: number,
+//   ) {
+//     try {
+//       let moduleInfo: any[] = [];
+//       const chapterInfo = await db
+//         .select()
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, chapterId));
+//       if (chapterInfo.length == 0) {
+//         throw new NotFoundException('Assessment not found or deleted!');
+//       } else {
+//         moduleInfo = await db
+//           .select()
+//           .from(zuvyCourseModules)
+//           .where(eq(zuvyCourseModules.id, chapterInfo[0].moduleId));
+//         if (moduleInfo.length == 0) {
+//           throw new NotFoundException('Module not found or deleted!');
+//         }
+//       }
+//       if (
+//         assessmentBody.weightageCodingQuestions +
+//           assessmentBody.weightageMcqQuestions !=
+//         100
+//       ) {
+//         throw {
+//           status: 'error',
+//           statusCode: 404,
+//           message: 'The total weightage must equal 100.',
+//         };
+//       }
+//       if (assessmentBody.passPercentage > 100) {
+//         throw {
+//           status: 'error',
+//           statusCode: 404,
+//           message: 'Pass percentage cannot be greater than 100.',
+//         };
+//       }
+//       // New date validations
+//       if (assessmentBody.publishDatetime && assessmentBody.startDatetime) {
+//         const startDate = new Date(assessmentBody.startDatetime);
+//         const publishDate = new Date(assessmentBody.publishDatetime);
+
+//         if (startDate < publishDate) {
+//           throw {
+//             status: 'error',
+//             statusCode: 400,
+//             message:
+//               'startDatetime must be greater than or equal to publishDatetime',
+//           };
+//         }
+//       }
+
+//       if (assessmentBody.endDatetime && assessmentBody.startDatetime) {
+//         const endDate = new Date(assessmentBody.endDatetime);
+//         const startDate = new Date(assessmentBody.startDatetime);
+
+//         if (endDate <= startDate) {
+//           throw {
+//             status: 'error',
+//             statusCode: 400,
+//             message: 'endDatetime must be greater than startDatetime',
+//           };
+//         }
+//       }
+
+//       if (assessmentBody.title) {
+//         const updatedChapterName = await db
+//           .update(zuvyModuleChapter)
+//           .set({ title: assessmentBody.title })
+//           .where(eq(zuvyModuleChapter.id, chapterId))
+//           .returning();
+//         if (updatedChapterName.length == 0) {
+//           throw {
+//             status: 'error',
+//             statusCode: 404,
+//             message: 'Chapter title not updated properly.Please try again',
+//           };
+//         }
+//       }
+//       const assessment: any = await db.query.zuvyOutsourseAssessments.findMany({
+//         where: (zuvyOutsourseAssessments, { eq }) =>
+//           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+//         with: {
+//           ModuleAssessment: true,
+//           OutsourseQuizzes: true,
+//           OutsourseOpenEndedQuestions: true,
+//           OutsourseCodingQuestions: true,
+//         },
+//       });
+
+//       if (assessment == undefined || assessment.length == 0) {
+//         throw {
+//           status: 'error',
+//           statusCode: 404,
+//           message: 'Assessment not found',
+//         };
+//       } else {
+//         let {
+//           bootcampId,
+//           moduleId,
+//           chapterId,
+//           ModuleAssessment,
+//           OutsourseQuizzes,
+//           OutsourseOpenEndedQuestions,
+//           OutsourseCodingQuestions,
+//         } = assessment[0];
+//         let {
+//           mcqIds,
+//           openEndedQuestionIds,
+//           codingProblemIds,
+//           title,
+//           description,
+//           ...OutsourseAssessmentData__
+//         } = assessmentBody;
+
+//         let assessment_id = ModuleAssessment.id;
+
+//         let assessmentData = { title, description };
+
+//         // Calculate current state based on dates
+//         const now = new Date();
+//         let currentState = 0; // 0: DRAFT, 1: PUBLISHED, 2: ACTIVE, 3: CLOSED
+
+//         if (assessmentBody.publishDatetime) {
+//           const publishDate = new Date(assessmentBody.publishDatetime);
+
+//           if (now < publishDate) {
+//             currentState = 0; // DRAFT
+//           } else if (assessmentBody.startDatetime) {
+//             const startDate = new Date(assessmentBody.startDatetime);
+
+//             if (now >= publishDate && now < startDate) {
+//               currentState = 1; // PUBLISHED - visible but not started
+//             } else if (assessmentBody.endDatetime) {
+//               const endDate = new Date(assessmentBody.endDatetime);
+
+//               if (now >= startDate && now < endDate) {
+//                 currentState = 2; // ACTIVE - assessment is live
+//               } else if (now >= endDate) {
+//                 currentState = 3; // CLOSED - assessment is over
+//               }
+//             } else if (now >= startDate) {
+//               currentState = 2; // ACTIVE - no end date, assessment is live
+//             }
+//           } else if (now >= publishDate) {
+//             currentState = 1; // PUBLISHED - no start date, just published
+//           }
+//         }
+
+//         // filter out the ids that are not in the assessment
+//         let existingQuizIds =
+//           OutsourseQuizzes.length > 0
+//             ? OutsourseQuizzes.map((q) => q.quiz_id).filter((id) => id !== null)
+//             : [];
+//         let existingOpenEndedQuestionIds =
+//           OutsourseOpenEndedQuestions.length > 0
+//             ? OutsourseOpenEndedQuestions.map(
+//                 (q) => q.openEndedQuestionId,
+//               ).filter((id) => id !== null)
+//             : [];
+//         let existingCodingQuestionIds =
+//           OutsourseCodingQuestions.length > 0
+//             ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(
+//                 (id) => id !== null,
+//               )
+//             : [];
+
+//         let quizIdsToDelete = existingQuizIds.filter(
+//           (id) => !mcqIds.includes(id),
+//         );
+//         let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter(
+//           (id) => !openEndedQuestionIds.includes(id),
+//         );
+//         let codingQuestionIdsToDelete = existingCodingQuestionIds.filter(
+//           (id) => !codingProblemIds.includes(id),
+//         );
+
+//         let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
+//         let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter(
+//           (id) => !existingOpenEndedQuestionIds.includes(id),
+//         );
+//         let codingQuestionIdsToAdd = codingProblemIds.filter(
+//           (id) => !existingCodingQuestionIds.includes(id),
+//         );
+//         // Delete operations
+//         if (quizIdsToDelete.length > 0) {
+//           let updatedMcqQuestions: any = {
+//             usage: sql`${zuvyModuleQuiz.usage}::numeric - 1`,
+//           };
+//           await db
+//             .update(zuvyModuleQuiz)
+//             .set(updatedMcqQuestions)
+//             .where(inArray(zuvyModuleQuiz.id, quizIdsToDelete));
+//           await db
+//             .delete(zuvyOutsourseQuizzes)
+//             .where(
+//               sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`,
+//             );
+//         }
+//         if (openEndedQuestionIdsToDelete.length > 0) {
+//           let updatedOpenEndedQuestions: any = {
+//             usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1`,
+//           };
+//           await db
+//             .update(zuvyOpenEndedQuestions)
+//             .set(updatedOpenEndedQuestions)
+//             .where(
+//               inArray(zuvyOpenEndedQuestions.id, openEndedQuestionIdsToDelete),
+//             );
+//           await db
+//             .delete(zuvyOutsourseOpenEndedQuestions)
+//             .where(
+//               sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`,
+//             );
+//         }
+//         if (codingQuestionIdsToDelete.length > 0) {
+//           let updatedCodingQuestion: any = {
+//             usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`,
+//           };
+//           await db
+//             .update(zuvyCodingQuestions)
+//             .set(updatedCodingQuestion)
+//             .where(inArray(zuvyCodingQuestions.id, codingQuestionIdsToDelete));
+//           await db
+//             .delete(zuvyOutsourseCodingQuestions)
+//             .where(
+//               sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`,
+//             );
+//         }
+
+//         // Extract counts for each question type and difficulty
+//         const codingQuestionsCount = {
+//           easy: OutsourseAssessmentData__.easyCodingQuestions || 0,
+//           medium: OutsourseAssessmentData__.mediumCodingQuestions || 0,
+//           hard: OutsourseAssessmentData__.hardCodingQuestions || 0,
+//         };
+
+//         const mcqQuestionsCount = {
+//           easy: OutsourseAssessmentData__.easyMcqQuestions || 0,
+//           medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
+//           hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
+//         };
+
+//         // Calculate the scores for each type
+//         const codingScores: any = await this.calculateQuestionScores(
+//           helperVariable.TOTAL_SCORE,
+//           OutsourseAssessmentData__.weightageCodingQuestions,
+//           codingQuestionsCount,
+//           'Coding',
+//         );
+//         const mcqScores: any = await this.calculateQuestionScores(
+//           helperVariable.TOTAL_SCORE,
+//           OutsourseAssessmentData__.weightageMcqQuestions,
+//           mcqQuestionsCount,
+//         );
+//         // Update marks in the assessment
+//         OutsourseAssessmentData__.totalCodingQuestions =
+//           codingQuestionsCount.easy +
+//           codingQuestionsCount.medium +
+//           codingQuestionsCount.hard;
+//         OutsourseAssessmentData__.totalMcqQuestions =
+//           mcqQuestionsCount.easy +
+//           mcqQuestionsCount.medium +
+//           mcqQuestionsCount.hard;
+//         let marks = {
+//           easyCodingMark: codingScores.easy,
+//           mediumCodingMark: codingScores.medium,
+//           hardCodingMark: codingScores.hard,
+//           easyMcqMark: mcqScores.easy,
+//           mediumMcqMark: mcqScores.medium,
+//           hardMcqMark: mcqScores.hard,
+//         };
+
+//         let updatedOutsourse: any = {
+//           ...OutsourseAssessmentData__,
+//           ...marks,
+//           currentState,
+//           updatedAt: new Date().toISOString(),
+//           ...(assessmentBody.publishDatetime && {
+//             publishDatetime: new Date(
+//               assessmentBody.publishDatetime,
+//             ).toISOString(),
+//           }),
+//           ...(assessmentBody.startDatetime && {
+//             startDatetime: new Date(assessmentBody.startDatetime).toISOString(),
+//           }),
+//           ...(assessmentBody.endDatetime && {
+//             endDatetime: new Date(assessmentBody.endDatetime).toISOString(),
+//           }),
+//         };
+//         // These two updates target independent tables and don't depend on
+//         // each other's result, so they can run concurrently.
+//         const [updatedOutsourseAssessment, updatedAssessment] =
+//           await Promise.all([
+//             db
+//               .update(zuvyOutsourseAssessments)
+//               .set(updatedOutsourse)
+//               .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+//               .returning(),
+//             db
+//               .update(zuvyModuleAssessment)
+//               .set(assessmentData)
+//               .where(eq(zuvyModuleAssessment.id, assessment_id))
+//               .returning(),
+//           ]);
+//         // Insert new data
+
+//         // Update chapter title when assessment title changes
+//         if (title) {
+//           const updatedChapterName = await db
+//             .update(zuvyModuleChapter)
+//             .set({ title })
+//             .where(eq(zuvyModuleChapter.id, chapterId))
+//             .returning();
+//           if (updatedChapterName.length == 0) {
+//             throw {
+//               status: 'error',
+//               statusCode: 404,
+//               message: 'Chapter title not updated properly. Please try again',
+//             };
+//           }
+//         }
+
+//         let mcqArray = quizIdsToAdd.map((id) => ({
+//           quiz_id: id,
+//           bootcampId,
+//           chapterId,
+//           assessmentOutsourseId,
+//         }));
+//         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map((id) => ({
+//           openEndedQuestionId: id,
+//           bootcampId,
+//           moduleId,
+//           chapterId,
+//           assessmentOutsourseId,
+//         }));
+//         let codingProblemsArray = codingQuestionIdsToAdd.map((id) => ({
+//           codingQuestionId: id,
+//           bootcampId,
+//           moduleId,
+//           chapterId,
+//           assessmentOutsourseId,
+//         }));
+
+//         // Each of these three blocks touches its own insert table + its own
+//         // usage counter table, is self-contained (no shared mutable state,
+//         // no cross-block references), so they can run concurrently.
+//         await Promise.all([
+//           (async () => {
+//             if (mcqArray.length > 0) {
+//               let createZOMQ = await db
+//                 .insert(zuvyOutsourseQuizzes)
+//                 .values(mcqArray)
+//                 .returning();
+//               if (createZOMQ.length > 0) {
+//                 const toUpdateIds = createZOMQ
+//                   .filter((c) => c.quiz_id)
+//                   .map((c) => c.quiz_id);
+//                 await db
+//                   .update(zuvyModuleQuiz)
+//                   .set({
+//                     usage: sql`${zuvyModuleQuiz.usage}::numeric + 1`,
+//                   } as any)
+//                   .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+//               }
+//             }
+//           })(),
+//           (async () => {
+//             if (openEndedQuestionsArray.length > 0) {
+//               let createZOOQ = await db
+//                 .insert(zuvyOutsourseOpenEndedQuestions)
+//                 .values(openEndedQuestionsArray)
+//                 .returning();
+//               if (createZOOQ.length > 0) {
+//                 const toUpdateIds = createZOOQ
+//                   .filter((c) => c.openEndedQuestionId)
+//                   .map((c) => c.openEndedQuestionId);
+//                 let updateOpendEndedQuestions: any = {
+//                   usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1`,
+//                 };
+//                 await db
+//                   .update(zuvyOpenEndedQuestions)
+//                   .set(updateOpendEndedQuestions)
+//                   .where(
+//                     sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`,
+//                   );
+//               }
+//             }
+//           })(),
+//           (async () => {
+//             if (codingProblemsArray.length > 0) {
+//               let createZOCQ = await db
+//                 .insert(zuvyOutsourseCodingQuestions)
+//                 .values(codingProblemsArray)
+//                 .returning();
+//               if (createZOCQ.length > 0) {
+//                 const toUpdateIds = createZOCQ
+//                   .filter((c) => c.codingQuestionId)
+//                   .map((c) => c.codingQuestionId);
+//                 let updateCodingQuestions: any = {
+//                   usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
+//                 };
+//                 await db
+//                   .update(zuvyCodingQuestions)
+//                   .set(updateCodingQuestions)
+//                   .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+//               }
+//             }
+//           })(),
+//         ]);
+//       }
+//       return {
+//         status: 'success',
+//         code: 200,
+//         message: 'Updated successfully',
+//         before: { title: chapterInfo[0]?.title },
+//         data: { title: assessmentBody.title || chapterInfo[0]?.title },
+//         chapterId,
+//         moduleId: chapterInfo[0]?.moduleId,
+//         moduleName: moduleInfo[0]?.name || '',
+//         bootcampId: moduleInfo[0]?.bootcampId || null,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAssessmentDetails(assessmentOutsourseId: number) {
+//     try {
+//       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+//         where: (zuvyOutsourseAssessments, { eq }) =>
+//           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+//         with: {
+//           ModuleAssessment: true,
+//           Quizzes: true,
+//           OpenEndedQuestions: true,
+//           CodingQuestions: true,
+//         },
+//       });
+//       return assessment;
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteModule(moduleId: number, bootcampId: number): Promise<any> {
+//     // 1. Find all chapters for this module
+//     let chapterIds: number[] = [];
+//     try {
+//       const chapters = await db
+//         .select({ id: zuvyModuleChapter.id })
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.moduleId, moduleId));
+//       chapterIds = chapters.map((ch) => ch.id);
+//     } catch (err) {
+//       return [
+//         {
+//           status: 'error',
+//           message: `Failed to fetch chapters: ${err.message}`,
+//           code: 500,
+//         },
+//         null,
+//       ];
+//     }
+//     const zuvySessionIds = await db
+//       .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId })
+//       .from(zuvySessions)
+//       .where(eq(zuvySessions.moduleId, moduleId));
+//     if (zuvySessionIds.length > 0) {
+//       const sessionIds = zuvySessionIds.map((r) => r.id);
+//       const meetingIds = zuvySessionIds.map((s) => s.meetingId);
+//       await db
+//         .update(zuvySessions)
+//         .set({ chapterId: null, moduleId: null })
+//         .where(inArray(zuvySessions.id, sessionIds));
+//     }
+//     // 2. Cascade delete all related records for each chapter
+//     const cascadeChapterTables = [
+//       {
+//         table: zuvyOutsourseQuizzes,
+//         column: zuvyOutsourseQuizzes.chapterId,
+//         name: 'zuvyOutsourseQuizzes',
+//       },
+//       {
+//         table: zuvyOutsourseOpenEndedQuestions,
+//         column: zuvyOutsourseOpenEndedQuestions.chapterId,
+//         name: 'zuvyOutsourseOpenEndedQuestions',
+//       },
+//       {
+//         table: zuvyOutsourseCodingQuestions,
+//         column: zuvyOutsourseCodingQuestions.chapterId,
+//         name: 'zuvyOutsourseCodingQuestions',
+//       },
+//       {
+//         table: zuvyModuleForm,
+//         column: zuvyModuleForm.chapterId,
+//         name: 'zuvyModuleForm',
+//       },
+//       {
+//         table: zuvyFormTracking,
+//         column: zuvyFormTracking.chapterId,
+//         name: 'zuvyFormTracking',
+//       },
+//       {
+//         table: zuvyAssignmentSubmission,
+//         column: zuvyAssignmentSubmission.chapterId,
+//         name: 'zuvyAssignmentSubmission',
+//       },
+//       {
+//         table: zuvyChapterTracking,
+//         column: zuvyChapterTracking.chapterId,
+//         name: 'zuvyChapterTracking',
+//       },
+//       {
+//         table: zuvyQuizTracking,
+//         column: zuvyQuizTracking.chapterId,
+//         name: 'zuvyQuizTracking',
+//       },
+//       {
+//         table: zuvyPracticeCode,
+//         column: zuvyPracticeCode.chapterId,
+//         name: 'zuvyPracticeCode',
+//       },
+//       {
+//         table: zuvyRecentBootcamp,
+//         column: zuvyRecentBootcamp.chapterId,
+//         name: 'zuvyRecentBootcamp',
+//       },
+//     ];
+//     for (const { table, column, name } of cascadeChapterTables) {
+//       try {
+//         if (chapterIds.length > 0) {
+//           await db.delete(table).where(inArray(column, chapterIds));
+//         }
+//       } catch (err) {
+//         return [
+//           {
+//             status: 'error',
+//             message: `Failed to delete from ${name}: ${err.message}`,
+//             code: 500,
+//           },
+//           null,
+//         ];
+//       }
+//     }
+//     // 3. Delete chapters
+//     try {
+//       if (chapterIds.length > 0) {
+//         await db
+//           .delete(zuvyModuleChapter)
+//           .where(inArray(zuvyModuleChapter.id, chapterIds));
+//       }
+//     } catch (err) {
+//       return [
+//         {
+//           status: 'error',
+//           message: `Failed to delete chapters: ${err.message}`,
+//           code: 500,
+//         },
+//         null,
+//       ];
+//     }
+//     // 4. Cascade delete all related records for the module itself
+//     const cascadeModuleTables = [
+//       {
+//         table: zuvyOutsourseAssessments,
+//         column: zuvyOutsourseAssessments.moduleId,
+//         name: 'zuvyOutsourseAssessments',
+//       },
+//       {
+//         table: zuvyQuizTracking,
+//         column: zuvyQuizTracking.moduleId,
+//         name: 'zuvyQuizTracking',
+//       },
+//       {
+//         table: zuvyProjectTracking,
+//         column: zuvyProjectTracking.moduleId,
+//         name: 'zuvyProjectTracking',
+//       },
+//       {
+//         table: zuvyModuleTracking,
+//         column: zuvyModuleTracking.moduleId,
+//         name: 'zuvyModuleTracking',
+//       },
+//     ];
+//     for (const { table, column, name } of cascadeModuleTables) {
+//       try {
+//         await db.delete(table).where(eq(column, moduleId));
+//       } catch (err) {
+//         return [
+//           {
+//             status: 'error',
+//             message: `Failed to delete from ${name}: ${err.message}`,
+//             code: 500,
+//           },
+//           null,
+//         ];
+//       }
+//     }
+//     // 5. Delete the module itself
+//     let deletedModuleOrder = null;
+//     let courseName = '';
+//     try {
+//       const courseRes = await db
+//         .select({ name: zuvyBootcamps.name })
+//         .from(zuvyBootcamps)
+//         .where(eq(zuvyBootcamps.id, bootcampId))
+//         .limit(1);
+//       courseName = courseRes[0]?.name || '';
+//     } catch (_) {}
+//     try {
+//       const deleted = await db
+//         .delete(zuvyCourseModules)
+//         .where(eq(zuvyCourseModules.id, moduleId))
+//         .returning();
+//       if (!deleted.length) {
+//         return [
+//           { status: 'error', message: 'Module not found', code: 404 },
+//           null,
+//         ];
+//       }
+//       deletedModuleOrder = deleted[0].order;
+//       // Update order of remaining modules in the bootcamp
+//       await db
+//         .update(zuvyCourseModules)
+//         .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
+//         .where(
+//           sql`${zuvyCourseModules.order} > ${deletedModuleOrder} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+//         );
+//       return {
+//         status: 'success',
+//         message: 'Module and all related data deleted successfully',
+//         code: 200,
+//         moduleName: deleted[0].name,
+//         courseName,
+//       };
+//     } catch (error) {
+//       log(`error: ${error.message}`);
+//       return [{ status: 'error', message: error.message, code: 500 }, null];
+//     }
+//   }
+
+//   async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
+//     const moduleInfo = await db
+//       .select({
+//         name: zuvyCourseModules.name,
+//         bootcampId: zuvyCourseModules.bootcampId,
+//       })
+//       .from(zuvyCourseModules)
+//       .where(eq(zuvyCourseModules.id, moduleId))
+//       .limit(1);
+
+//     let courseName = '';
+//     const bootcampId = moduleInfo[0]?.bootcampId;
+//     if (bootcampId) {
+//       try {
+//         const courseRes = await db
+//           .select({ name: zuvyBootcamps.name })
+//           .from(zuvyBootcamps)
+//           .where(eq(zuvyBootcamps.id, bootcampId))
+//           .limit(1);
+//         courseName = courseRes[0]?.name || '';
+//       } catch (_) {}
+//     }
+
+//     // Cascade delete all related records for this chapter
+//     const cascadeChapterTables = [
+//       {
+//         table: zuvyOutsourseQuizzes,
+//         column: zuvyOutsourseQuizzes.chapterId,
+//         name: 'zuvyOutsourseQuizzes',
+//       },
+//       {
+//         table: zuvyOutsourseOpenEndedQuestions,
+//         column: zuvyOutsourseOpenEndedQuestions.chapterId,
+//         name: 'zuvyOutsourseOpenEndedQuestions',
+//       },
+//       {
+//         table: zuvyOutsourseCodingQuestions,
+//         column: zuvyOutsourseCodingQuestions.chapterId,
+//         name: 'zuvyOutsourseCodingQuestions',
+//       },
+//       {
+//         table: zuvyOutsourseAssessments,
+//         column: zuvyOutsourseAssessments.chapterId,
+//         name: 'zuvyOutsourseAssessments',
+//       },
+//       {
+//         table: zuvyModuleForm,
+//         column: zuvyModuleForm.chapterId,
+//         name: 'zuvyModuleForm',
+//       },
+//       {
+//         table: zuvyFormTracking,
+//         column: zuvyFormTracking.chapterId,
+//         name: 'zuvyFormTracking',
+//       },
+//       {
+//         table: zuvyAssignmentSubmission,
+//         column: zuvyAssignmentSubmission.chapterId,
+//         name: 'zuvyAssignmentSubmission',
+//       },
+//       {
+//         table: zuvyChapterTracking,
+//         column: zuvyChapterTracking.chapterId,
+//         name: 'zuvyChapterTracking',
+//       },
+//       {
+//         table: zuvyQuizTracking,
+//         column: zuvyQuizTracking.chapterId,
+//         name: 'zuvyQuizTracking',
+//       },
+//       {
+//         table: zuvyPracticeCode,
+//         column: zuvyPracticeCode.chapterId,
+//         name: 'zuvyPracticeCode',
+//       },
+//       {
+//         table: zuvyRecentBootcamp,
+//         column: zuvyRecentBootcamp.chapterId,
+//         name: 'zuvyRecentBootcamp',
+//       },
+//     ];
+//     const chapterInfo = await db
+//       .select()
+//       .from(zuvyModuleChapter)
+//       .where(eq(zuvyModuleChapter.id, chapterId));
+//     if (chapterInfo.length === 0) {
+//       return [
+//         { status: 'error', message: 'Chapter not found', code: 404 },
+//         null,
+//       ];
+//     }
+
+//     // ####################Get chapter points before deleting the chapter in leaderboars chapters points table##############################
+//     const chapterRecord = chapterInfo[0];
+//     try {
+//       await db.transaction(async (tx) => {
+//         const chapterPoints = await tx
+//           .select({
+//             learnerId: zuvyLearnerLeaderboardChapterPoints.learnerId,
+//             bootcampId: zuvyLearnerLeaderboardChapterPoints.bootcampId,
+//             points: zuvyLearnerLeaderboardChapterPoints.points,
+//             topicId: zuvyLearnerLeaderboardChapterPoints.topicId,
+//           })
+//           .from(zuvyLearnerLeaderboardChapterPoints)
+//           .where(
+//             and(
+//               eq(zuvyLearnerLeaderboardChapterPoints.chapterId, chapterId),
+//               eq(zuvyLearnerLeaderboardChapterPoints.bootcampId, bootcampId),
+//             ),
+//           );
+//         // Map chapter topicId to the corresponding leaderboard points column
+//         const topicPointsColumn = {
+//           1: 'videoPoints',
+//           2: 'articlePoints',
+//           3: 'codingPoints',
+//           4: 'quizPoints',
+//           5: 'assignmentPoints',
+//           6: 'assessmentPoints',
+//           7: 'attendancePoints',
+//           8: 'recordingPoints',
+//         } as const;
+
+//         // Remove the deleted chapter's points from the corresponding
+//         // leaderboard category and from totalPoints
+//         for (const chapterPoint of chapterPoints) {
+//           const points = chapterPoint.points ?? 0;
+
+//           if (!points || !chapterPoint.learnerId) {
+//             continue;
+//           }
+//           const pointColumn = topicPointsColumn[chapterPoint.topicId];
+
+//           const updateData: any = {
+//             totalPoints: sql`
+//       GREATEST(
+//         ${zuvyLearnerLeaderboard.totalPoints} - ${points},
+//         0
+//       )
+//     `,
+//           };
+//           if (pointColumn) {
+//             updateData[pointColumn] = sql`
+//       GREATEST(
+//         ${zuvyLearnerLeaderboard[pointColumn]} - ${points},
+//         0
+//       )
+//     `;
+//           }
+//           await tx
+//             .update(zuvyLearnerLeaderboard)
+//             .set(updateData)
+//             .where(
+//               and(
+//                 eq(zuvyLearnerLeaderboard.learnerId, chapterPoint.learnerId),
+//                 eq(zuvyLearnerLeaderboard.bootcampId, chapterPoint.bootcampId),
+//               ),
+//             );
+//         }
+
+//         // ###############################
+//         if (chapterInfo[0].topicId == 8) {
+//           await tx
+//             .update(zuvySessions)
+//             .set({ chapterId: null, moduleId: null })
+//             .where(eq(zuvySessions.chapterId, chapterId));
+//         }
+//         for (const { table, column } of cascadeChapterTables) {
+//           await tx.delete(table).where(eq(column, chapterId));
+//         }
+//         // Now delete the chapter itself
+//         let spyMan;
+//         try {
+//           spyMan = await tx
+//             .delete(zuvyModuleChapter)
+//             .where(eq(zuvyModuleChapter.id, chapterId))
+//             .returning();
+//           if (spyMan.length === 0) {
+//             throw new Error('Chapter not found');
+//           }
+//         } catch (err) {
+//           throw new Error(
+//             `Failed to delete chapter: ${
+//               err instanceof Error ? err.message : String(err)
+//             }`,
+//           );
+//         }
+//         // Update order of remaining chapters in the module
+//         try {
+//           await tx
+//             .update(zuvyModuleChapter)
+//             .set({
+//               order: sql`${zuvyModuleChapter.order}::numeric - 1`,
+//             })
+//             .where(
+//               sql`${zuvyModuleChapter.order} > ${spyMan[0].order}
+//           and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
+//             );
+//         } catch (err) {
+//           throw new Error(
+//             `Failed to update chapter order: ${
+//               err instanceof Error ? err.message : String(err)
+//             }`,
+//           );
+//         }
+//       });
+//       return {
+//         status: 'success',
+//         message: 'Chapter and all related data deleted successfully',
+//         code: 200,
+//         chapter: chapterRecord,
+//         chapterId,
+//         moduleId,
+//         moduleName: moduleInfo[0]?.name || '',
+//         bootcampId,
+//         courseName,
+//       };
+//     } catch (err) {
+//       return [
+//         {
+//           status: 'error',
+//           message:
+//             err instanceof Error ? err.message : 'Failed to delete chapter',
+//           code: 500,
+//         },
+//         null,
+//       ];
+//     }
+//   }
+
+//   async getAllQuizQuestions(
+//     roleName: string[],
+//     tagId: number | number[],
+//     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+//     searchTerm: string = '',
+//     limit: number,
+//     offSet: number,
+//     userId: bigint,
+//     orgId: number,
+//   ) {
+//     try {
+//       const where: SQL[] = [];
+//       where.push(eq(zuvyModuleQuiz.orgId, orgId));
+//       let resourceId = 2;
+//       let tagIds;
+//       if (tagId) {
+//         tagIds = Array.isArray(tagId) ? tagId : [tagId];
+//         where.push(inArray(zuvyModuleQuiz.tagId, tagIds));
+//       }
+
+//       let difficultyArray;
+//       if (difficulty) {
+//         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+//         where.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
+//       }
+
+//       // First get the quiz IDs that match the search term
+//       const matchingQuizIds = searchTerm
+//         ? await db
+//             .select({ quizId: zuvyModuleQuizVariants.quizId })
+//             .from(zuvyModuleQuizVariants)
+//             .innerJoin(
+//               zuvyModuleQuiz,
+//               eq(zuvyModuleQuizVariants.quizId, zuvyModuleQuiz.id),
+//             )
+//             .where(
+//               and(
+//                 eq(zuvyModuleQuizVariants.variantNumber, 1),
+//                 eq(zuvyModuleQuiz.orgId, orgId),
+//                 // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//                 // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
+//                 sql`LOWER(${zuvyModuleQuizVariants.question}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
+//               ),
+//             )
+//             .execute()
+//             .then((results) => results.map((r) => r.quizId))
+//         : null;
+
+//       // Add the quiz ID condition if we have search results
+//       if (searchTerm && matchingQuizIds) {
+//         where.push(inArray(zuvyModuleQuiz.id, matchingQuizIds));
+//       }
+
+//       // perf: count(*) aggregate instead of fetching every matching row just to count them
+//       const totalCountResult = await db
+//         .select({ count: sql<number>`count(*)` })
+//         .from(zuvyModuleQuiz)
+//         .where(and(...where))
+//         .execute();
+//       const totalCount = Number(totalCountResult[0].count);
+
+//       // Get paginated results
+//       const result = await db.query.zuvyModuleQuiz.findMany({
+//         with: {
+//           quizVariants: {
+//             where: (variants, { eq }) => eq(variants.variantNumber, 1),
+//             orderBy: (quizVariants, { sql }) => {
+//               if (searchTerm) {
+//                 return [
+//                   // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//                   // (unescaped) — now bound as query parameters, closing a SQL-injection hole
+//                   sql`CASE
+//                                   WHEN LOWER(${quizVariants.question}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 0
+//                                   WHEN LOWER(${quizVariants.question}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+//                                       POSITION(${searchTerm.toLowerCase()} IN LOWER(${quizVariants.question})) - 1
+//                                   ELSE 9999
+//                               END`,
+//                 ];
+//               } else {
+//                 return [sql`${quizVariants.id} ASC`];
+//               }
+//             },
+//           },
+//         },
+//         where: and(...where),
+//         orderBy: (quiz, { desc }) => desc(quiz.id),
+//         limit: limit,
+//         offset: offSet,
+//       });
+
+//       let userPermissions = {};
+
+//       try {
+//         const targetPermissions = [
+//           ResourceList.question.read,
+//           ResourceList.question.create,
+//           ResourceList.question.edit,
+//           ResourceList.question.delete,
+//           ResourceList.topic.read,
+//           ResourceList.topic.create,
+//           ResourceList.topic.edit,
+//           ResourceList.topic.delete,
+//         ];
+//         const permissionsResult = await this.rbacService.getAllPermissions(
+//           roleName,
+//           targetPermissions,
+//           orgId,
+//         );
+//         userPermissions = permissionsResult;
+//       } catch (permissionError) {
+//         // Log the error but don't fail the entire request
+//         console.error('Error fetching user permissions:', permissionError);
+//         userPermissions = { error: 'Failed to fetch permissions' };
+//       }
+
+//       // Return the results with permissions
+//       return {
+//         data: result,
+//         totalRows: totalCount,
+//         totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount / limit) : 1,
+//         ...userPermissions,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllCodingQuestions(
+//     roleName: string[],
+//     tagId: number | number[],
+//     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+//     searchTerm: string = '',
+//     limit: number,
+//     offSet: number,
+//     userId: bigint,
+//     orgId: number,
+//   ) {
+//     try {
+//       let conditions = [];
+//       conditions.push(eq(zuvyCodingQuestions.orgId, orgId));
+//       let resourceId = 2;
+//       let tagIds;
+
+//       if (tagId) {
+//         tagIds = Array.isArray(tagId) ? tagId : [tagId];
+//         conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
+//       }
+
+//       let difficultyArray;
+
+//       if (difficulty) {
+//         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+//         conditions.push(
+//           inArray(zuvyCodingQuestions.difficulty, difficultyArray),
+//         );
+//       }
+
+//       if (searchTerm) {
+//         // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//         // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
+//         conditions.push(
+//           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
+//         );
+//       }
+
+//       // Query for total number of rows that match the conditions
+//       const totalRowsResult = await db
+//         .select({ count: sql<number>`count(*)` })
+//         .from(zuvyCodingQuestions)
+//         .where(and(...conditions))
+//         .execute();
+
+//       const totalRows = Number(totalRowsResult[0].count);
+
+//       // Calculate totalPages based on totalRows and limit
+//       const totalPages = !Number.isNaN(limit)
+//         ? Math.ceil(totalRows / limit)
+//         : 1;
+
+//       const question = await db.query.zuvyCodingQuestions.findMany({
+//         where: and(...conditions),
+//         columns: {
+//           id: true,
+//           title: true,
+//           description: true,
+//           difficulty: true,
+//           constraints: true,
+//           content: true,
+//           tagId: true,
+//           createdAt: true,
+//           usage: true,
+//         } as any,
+//         with: {
+//           testCases: {
+//             columns: {
+//               id: true,
+//               inputs: true,
+//               expectedOutput: true,
+//             },
+//             orderBy: (testCase, { asc }) => asc(testCase.id),
+//           },
+//         },
+//         orderBy: (zuvyCodingQuestions, { sql }) => {
+//           if (searchTerm) {
+//             return [
+//               // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//               // (unescaped) — now bound as query parameters, closing a SQL-injection hole
+//               sql`
+//                 CASE
+//                   WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 1
+//                   WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+//                     POSITION(${searchTerm.toLowerCase()} IN LOWER(${zuvyCodingQuestions.title})) + 1
+//                   ELSE 9999
+//                 END
+//               `,
+//               desc(zuvyCodingQuestions.createdAt),
+//             ];
+//           } else {
+//             return [desc(zuvyCodingQuestions.createdAt)];
+//           }
+//         },
+//         limit, // Apply limit as a number
+//         offset: offSet, // Apply offset
+//       });
+
+//       let userPermissions = {};
+//       try {
+//         // Get user permissions for coding questions resource
+//         const targetPermissions = [
+//           ResourceList.question.read,
+//           ResourceList.question.create,
+//           ResourceList.question.edit,
+//           ResourceList.question.delete,
+//           ResourceList.topic.read,
+//           ResourceList.topic.create,
+//           ResourceList.topic.edit,
+//           ResourceList.topic.delete,
+//         ];
+//         const permissionsResult = await this.rbacService.getAllPermissions(
+//           roleName,
+//           targetPermissions,
+//           orgId,
+//         );
+//         userPermissions = permissionsResult;
+//       } catch (permissionError) {
+//         // Log the error but don't fail the entire request
+//         userPermissions = { error: 'Failed to fetch permissions' };
+//       }
+
+//       // Return the results with permissions
+//       return {
+//         data: question,
+//         totalRows,
+//         totalPages,
+//         ...userPermissions,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async editQuizQuestion(
+//     quizUpdates: EditQuizBatchDto,
+//     orgId: number,
+//   ): Promise<any> {
+//     try {
+//       // Snapshot before state for diff
+//       const beforeRows = await db
+//         .select()
+//         .from(zuvyModuleQuiz)
+//         .where(
+//           and(
+//             eq(zuvyModuleQuiz.id, quizUpdates.id),
+//             eq(zuvyModuleQuiz.orgId, orgId),
+//           ),
+//         )
+//         .limit(1);
+//       const before = beforeRows[0] || null;
+
+//       if (!before) {
+//         return [
+//           {
+//             message: 'Quiz not found or unauthorized',
+//             statusCode: STATUS_CODES.NOT_FOUND,
+//           },
+//           null,
+//         ];
+//       }
+
+//       // Prepare an object to store updated data to return in response
+//       const resultData: any = {
+//         quizDetails: null,
+//         variantMCQs: [],
+//       };
+
+//       // Prepare update object for quiz details
+//       const updateData: any = {};
+//       if (quizUpdates.title !== undefined) updateData.title = quizUpdates.title;
+//       if (quizUpdates.difficulty !== undefined)
+//         updateData.difficulty = quizUpdates.difficulty;
+//       if (quizUpdates.tagId !== undefined) updateData.tagId = quizUpdates.tagId;
+//       if (quizUpdates.content !== undefined)
+//         updateData.content = quizUpdates.content;
+//       if (quizUpdates.isRandomOptions !== undefined)
+//         updateData.isRandomOptions = quizUpdates.isRandomOptions;
+
+//       // Update the main quiz details only if there's something to update
+//       if (Object.keys(updateData).length > 0) {
+//         await db
+//           .update(zuvyModuleQuiz)
+//           .set(updateData)
+//           .where(
+//             and(
+//               eq(zuvyModuleQuiz.id, quizUpdates.id),
+//               eq(zuvyModuleQuiz.orgId, orgId),
+//             ),
+//           );
+//         resultData.quizDetails = updateData; // Store updated quiz details
+//       }
+
+//       // Update specific quiz variants only if variantMCQs is provided
+//       if (quizUpdates.variantMCQs) {
+//         // Runs all variant updates concurrently (they are independent of each other)
+//         await Promise.all(
+//           quizUpdates.variantMCQs.map(async (variant) => {
+//             const variantData: EditQuizVariantDto = {
+//               question: variant.question,
+//               options: variant.options,
+//               correctOption: variant.correctOption,
+//               variantNumber: variant.variantNumber,
+//             };
+
+//             await db
+//               .update(zuvyModuleQuizVariants)
+//               .set(variantData)
+//               .where(
+//                 and(
+//                   eq(zuvyModuleQuizVariants.quizId, quizUpdates.id),
+//                   eq(
+//                     zuvyModuleQuizVariants.variantNumber,
+//                     variant.variantNumber,
+//                   ),
+//                 ),
+//               );
+
+//             // Add each updated variant data to resultData array
+//             resultData.variantMCQs.push(variantData);
+//           }),
+//         );
+//       }
+
+//       return [
+//         null,
+//         {
+//           message: 'Quiz and variants have been updated successfully.',
+//           statusCode: STATUS_CODES.OK,
+//           data: resultData,
+//           before,
+//         },
+//       ];
+//     } catch (err) {
+//       return [
+//         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//         null,
+//       ];
+//     }
+//   }
+
+//   async updateOpenEndedQuestion(
+//     questionId: number,
+//     openEndedBody: UpdateOpenEndedDto,
+//     orgId: number,
+//   ) {
+//     try {
+//       const beforeRows = await db
+//         .select()
+//         .from(zuvyOpenEndedQuestions)
+//         .where(
+//           and(
+//             eq(zuvyOpenEndedQuestions.id, questionId),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         )
+//         .limit(1);
+//       const before = beforeRows[0] || null;
+
+//       if (!before) {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Open ended question not found or unauthorized',
+//         };
+//       }
+
+//       const updatedQuestion = await db
+//         .update(zuvyOpenEndedQuestions)
+//         .set(openEndedBody)
+//         .where(
+//           and(
+//             eq(zuvyOpenEndedQuestions.id, questionId),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         )
+//         .returning();
+//       if (updatedQuestion.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'Open ended question has been updated successfully',
+//           before,
+//           data: updatedQuestion[0],
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Open ended question not available',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteQuiz(id: deleteQuestionDto, orgId: number) {
+//     try {
+//       // perf: only the id column is needed for this existence check, not the full row
+//       const usedQuiz = await db
+//         .select({ id: zuvyModuleQuiz.id })
+//         .from(zuvyModuleQuiz)
+//         .where(
+//           and(
+//             inArray(zuvyModuleQuiz.id, id.questionIds),
+//             gt((zuvyModuleQuiz as any).usage, 0),
+//             eq(zuvyModuleQuiz.orgId, orgId),
+//           ),
+//         );
+//       let deletedQuestions;
+//       if (usedQuiz.length > 0) {
+//         const usedIds = usedQuiz.map((quiz) => quiz.id);
+//         const remainingIds = id.questionIds.filter(
+//           (questionId) => !usedIds.includes(questionId),
+//         );
+//         deletedQuestions =
+//           remainingIds.length > 0
+//             ? await db
+//                 .delete(zuvyModuleQuiz)
+//                 .where(
+//                   and(
+//                     inArray(zuvyModuleQuiz.id, remainingIds),
+//                     eq(zuvyModuleQuiz.orgId, orgId),
+//                   ),
+//                 )
+//                 .returning()
+//             : [];
+//         if (deletedQuestions.length > 0) {
+//           return {
+//             status: 'success',
+//             code: 200,
+//             message: `Quiz questions which is used in other places like chapters and assessment cannot be deleted`,
+//           };
+//         } else {
+//           return {
+//             status: 'error',
+//             code: 400,
+//             message: `Questions cannot be deleted`,
+//           };
+//         }
+//       }
+//       deletedQuestions = await db
+//         .delete(zuvyModuleQuiz)
+//         .where(
+//           and(
+//             inArray(zuvyModuleQuiz.id, id.questionIds),
+//             eq(zuvyModuleQuiz.orgId, orgId),
+//           ),
+//         )
+//         .returning();
+//       if (deletedQuestions.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'The quiz questions has been deleted successfully',
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: `Questions cannot be deleted`,
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteCodingProblem(id: deleteQuestionDto, orgId: number) {
+//     try {
+//       // perf: only the id column is needed for this existence check, not the full row
+//       const usedCodingQuestions = await db
+//         .select({ id: zuvyCodingQuestions.id })
+//         .from(zuvyCodingQuestions)
+//         .where(
+//           and(
+//             inArray(zuvyCodingQuestions.id, id.questionIds),
+//             gt((zuvyCodingQuestions as any).usage, 0),
+//             eq(zuvyCodingQuestions.orgId, orgId),
+//           ),
+//         );
+//       let deletedQuestions;
+//       if (usedCodingQuestions.length > 0) {
+//         const usedIds = usedCodingQuestions.map((problem) => problem.id);
+//         const remainingIds = id.questionIds.filter(
+//           (questionId) => !usedIds.includes(questionId),
+//         );
+//         deletedQuestions =
+//           remainingIds.length > 0
+//             ? await db
+//                 .delete(zuvyCodingQuestions)
+//                 .where(
+//                   and(
+//                     inArray(zuvyCodingQuestions.id, remainingIds),
+//                     eq(zuvyCodingQuestions.orgId, orgId),
+//                   ),
+//                 )
+//                 .returning()
+//             : [];
+//         if (deletedQuestions.length > 0) {
+//           return {
+//             status: 'success',
+//             code: 200,
+//             message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
+//           };
+//         } else {
+//           return {
+//             status: 'error',
+//             code: 400,
+//             message: `Questions cannot be deleted`,
+//           };
+//         }
+//       }
+//       deletedQuestions = await db
+//         .delete(zuvyCodingQuestions)
+//         .where(
+//           and(
+//             inArray(zuvyCodingQuestions.id, id.questionIds),
+//             eq(zuvyCodingQuestions.orgId, orgId),
+//           ),
+//         )
+//         .returning();
+//       if (deletedQuestions.length > 0) {
+//         const deletedTitles = deletedQuestions.map(
+//           (question) => question.title,
+//         );
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'The coding question has been deleted successfully',
+//           questionTitle:
+//             deletedTitles.length === 1 ? deletedTitles[0] : deletedTitles,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: `Questions cannot be deleted`,
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteOpenEndedQuestion(id: deleteQuestionDto, orgId: number) {
+//     try {
+//       const firstQ = await db
+//         .select({ question: zuvyOpenEndedQuestions.question })
+//         .from(zuvyOpenEndedQuestions)
+//         .where(
+//           and(
+//             eq(zuvyOpenEndedQuestions.id, id.questionIds[0]),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         )
+//         .limit(1);
+//       const questionText = firstQ[0]?.question || '';
+//       // perf: only the id column is needed for this existence check, not the full row
+//       const usedOpenEndedQuestions = await db
+//         .select({ id: zuvyOpenEndedQuestions.id })
+//         .from(zuvyOpenEndedQuestions)
+//         .where(
+//           and(
+//             inArray(zuvyOpenEndedQuestions.id, id.questionIds),
+//             gt((zuvyOpenEndedQuestions as any).usage, 0),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         );
+//       let deletedQuestions;
+//       if (usedOpenEndedQuestions.length > 0) {
+//         const usedIds = usedOpenEndedQuestions.map(
+//           (openEndedQues) => openEndedQues.id,
+//         );
+//         const remainingIds = id.questionIds.filter(
+//           (questionId) => !usedIds.includes(questionId),
+//         );
+
+//         deletedQuestions =
+//           remainingIds.length > 0
+//             ? await db
+//                 .delete(zuvyOpenEndedQuestions)
+//                 .where(
+//                   and(
+//                     inArray(zuvyOpenEndedQuestions.id, remainingIds),
+//                     eq(zuvyOpenEndedQuestions.orgId, orgId),
+//                   ),
+//                 )
+//                 .returning()
+//             : [];
+//         if (deletedQuestions.length > 0) {
+//           return {
+//             status: 'success',
+//             code: 200,
+//             message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+//             questionText,
+//           };
+//         } else {
+//           return {
+//             status: 'error',
+//             code: 400,
+//             message: `Questions cannot be deleted`,
+//           };
+//         }
+//       }
+//       deletedQuestions = await db
+//         .delete(zuvyOpenEndedQuestions)
+//         .where(
+//           and(
+//             inArray(zuvyOpenEndedQuestions.id, id.questionIds),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         )
+//         .returning();
+//       if (deletedQuestions.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'The open ended question has been deleted successfully',
+//           questionText,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: `Questions cannot be deleted`,
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllTags(searchTerm: string = '') {
+//     try {
+//       const allTags = await db
+//         .select()
+//         .from(zuvyTags)
+//         .where(sql`LOWER(${zuvyTags.tagName}) LIKE LOWER(${`%${searchTerm}%`})`)
+//         .execute();
+//       if (allTags.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           allTags,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'No tags found.Please create one',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createTag(tagData: CreateTagDto) {
+//     try {
+//       const { tagNames } = tagData;
+
+//       // Remove duplicates and trim
+//       const uniqueTagNames = [...new Set(tagNames.map((name) => name.trim()))];
+
+//       // Check which tags already exist
+//       const existingTags = await db
+//         .select()
+//         .from(zuvyTags)
+//         .where(inArray(zuvyTags.tagName, uniqueTagNames));
+
+//       const existingTagNames = existingTags.map((tag) => tag.tagName);
+//       const newTagNames = uniqueTagNames.filter(
+//         (name) => !existingTagNames.includes(name),
+//       );
+
+//       // Insert only new tags
+//       if (newTagNames.length > 0) {
+//         const tagsToInsert = newTagNames.map((tagName) => ({
+//           tagName: tagName,
+//         }));
+
+//         const newTags = await db
+//           .insert(zuvyTags)
+//           .values(tagsToInsert)
+//           .returning();
+
+//         let message = '';
+//         if (existingTags.length === 0) {
+//           message = `Tags created successfully: ${newTagNames.join(', ')}`;
+//         } else {
+//           message = `Tags created: ${newTagNames.join(', ')}. Cannot add these tags as already there: ${existingTagNames.join(', ')}`;
+//         }
+
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: message,
+//           data: {
+//             createdTags: newTags,
+//             existingTags: existingTags,
+//             createdTagNames: newTagNames,
+//             existingTagNames: existingTagNames,
+//           },
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 409,
+//           message: `Cannot add these tags as already there: ${existingTagNames.join(', ')}`,
+//           data: {
+//             createdTags: [],
+//             existingTags: existingTags,
+//             createdTagNames: [],
+//             existingTagNames: existingTagNames,
+//           },
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async deleteQuestionTag(tagId: number) {
+//     const associatedQuestions = new Map();
+//     associatedQuestions.set(
+//       'quiz',
+//       db
+//         .select()
+//         .from(zuvyModuleQuiz)
+//         .where(eq(zuvyModuleQuiz.tagId, tagId))
+//         .limit(1),
+//     );
+//     associatedQuestions.set(
+//       'coding',
+//       db
+//         .select()
+//         .from(zuvyCodingQuestions)
+//         .where(eq(zuvyCodingQuestions.tagId, tagId))
+//         .limit(1),
+//     );
+//     associatedQuestions.set(
+//       'openEnded',
+//       db
+//         .select()
+//         .from(zuvyOpenEndedQuestions)
+//         .where(eq(zuvyOpenEndedQuestions.tagId, tagId))
+//         .limit(1),
+//     );
+
+//     for (const [key, query] of associatedQuestions) {
+//       const result = await query;
+//       if (result.length > 0) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: `Tag is associated with existing ${key} questions and cannot be deleted.`,
+//         };
+//       }
+//     }
+
+//     try {
+//       const deletedTag = await db
+//         .delete(zuvyTags)
+//         .where(eq(zuvyTags.id, tagId))
+//         .returning();
+//       if (deletedTag.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           message: 'Tag has been deleted successfully.',
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Tag is not created.Please try again.',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllOpenEndedQuestions(
+//     roleName: string[],
+//     tagId: number | number[],
+//     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+//     searchTerm: string = '',
+//     limit: number,
+//     offset: number,
+//     userId: bigint,
+//     orgId: number,
+//   ) {
+//     try {
+//       let conditions = [];
+//       conditions.push(eq(zuvyOpenEndedQuestions.orgId, orgId));
+//       let resourceId = 2;
+//       let tagIdsArray;
+
+//       if (tagId) {
+//         tagIdsArray = Array.isArray(tagId) ? tagId : [tagId];
+//         conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIdsArray));
+//       }
+
+//       let difficultyArray;
+
+//       if (difficulty) {
+//         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+//         conditions.push(
+//           inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray),
+//         );
+//       }
+//       if (searchTerm) {
+//         // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//         // (unescaped) — now bound as a query parameter, closing a SQL-injection hole
+//         conditions.push(
+//           sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${'\\m' + searchTerm.toLowerCase()}`,
+//         );
+//       }
+
+//       const totalRows = await db
+//         .select({ count: sql<number>`count(*)` })
+//         .from(zuvyOpenEndedQuestions)
+//         .where(and(...conditions))
+//         .execute();
+
+//       const result = await db
+//         .select()
+//         .from(zuvyOpenEndedQuestions)
+//         .where(and(...conditions))
+//         .orderBy(
+//           searchTerm
+//             ? // security: searchTerm was string-interpolated into raw SQL via sql.raw()
+//               // (unescaped) — now bound as query parameters, closing a SQL-injection hole
+//               sql`
+//             CASE
+//               WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${searchTerm.toLowerCase() + '%'} THEN 1
+//               WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${'\\m' + searchTerm.toLowerCase()} THEN
+//                 POSITION(${searchTerm.toLowerCase()} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+//               ELSE 9999 -- Push non-matching to end
+//             END
+//           `
+//             : sql`${zuvyOpenEndedQuestions.id} DESC`,
+//         )
+//         .limit(limit)
+//         .offset(offset);
+//       let userPermissions = {};
+
+//       try {
+//         const targetPermissions = [
+//           ResourceList.question.read,
+//           ResourceList.question.create,
+//           ResourceList.question.edit,
+//           ResourceList.question.delete,
+//           ResourceList.topic.read,
+//           ResourceList.topic.create,
+//           ResourceList.topic.edit,
+//           ResourceList.topic.delete,
+//         ];
+//         const permissionsResult = await this.rbacService.getAllPermissions(
+//           roleName,
+//           targetPermissions,
+//           orgId,
+//         );
+//         userPermissions = permissionsResult;
+//       } catch (permissionError) {
+//         // Log the error but don't fail the entire request
+//         console.error('Error fetching user permissions:', permissionError);
+//         userPermissions = { error: 'Failed to fetch permissions' };
+//       }
+
+//       return {
+//         data: result,
+//         totalRows: Number(totalRows[0].count),
+//         totalPages: !Number.isNaN(limit)
+//           ? Math.ceil(totalRows[0].count / limit)
+//           : 1,
+//         ...userPermissions,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getStudentsOfAssessment(
+//     assessmentId: number,
+//     chapterId: number,
+//     moduleId: number,
+//     bootcampId: number,
+//     req,
+//   ) {
+//     try {
+//       let { id } = req.user[0];
+//       // readability/type-safety: typed and/eq helpers instead of a raw sql template
+//       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+//         where: (zuvyOutsourseAssessments, { eq, and }) =>
+//           and(
+//             eq(zuvyOutsourseAssessments.assessmentId, assessmentId),
+//             eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+//             eq(zuvyOutsourseAssessments.chapterId, chapterId),
+//             eq(zuvyOutsourseAssessments.moduleId, moduleId),
+//           ),
+//         with: {
+//           submitedOutsourseAssessments: {
+//             where: (zuvyAssessmentSubmission, { eq }) =>
+//               eq(zuvyAssessmentSubmission.userId, id),
+//             orderBy: [desc(zuvyAssessmentSubmission.startedAt)],
+//             limit: 1,
+//           },
+//           ModuleAssessment: true,
+//         },
+//       });
+
+//       if (!assessment || assessment.length === 0) {
+//         throw new NotFoundException('Assessment not found');
+//       }
+
+//       // Update assessment state using AssessmentStateService; it now returns
+//       // the up-to-date assessment row, avoiding a redundant re-fetch. Run it
+//       // alongside the (independent) question counts below, without fetching
+//       // the full nested question trees just to count them.
+//       const [
+//         updatedAssessment,
+//         quizzesCountRes,
+//         openEndedCountRes,
+//         codingCountRes,
+//       ] = await Promise.all([
+//         this.handleAssessmentUpdate(assessment[0].id),
+//         db
+//           .select({ count: count() })
+//           .from(zuvyOutsourseQuizzes)
+//           .where(
+//             eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessment[0].id),
+//           ),
+//         db
+//           .select({ count: count() })
+//           .from(zuvyOutsourseOpenEndedQuestions)
+//           .where(
+//             eq(
+//               zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId,
+//               assessment[0].id,
+//             ),
+//           ),
+//         db
+//           .select({ count: count() })
+//           .from(zuvyOutsourseCodingQuestions)
+//           .where(
+//             eq(
+//               zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+//               assessment[0].id,
+//             ),
+//           ),
+//       ]);
+//       // fix: guard against a null return (assessment genuinely missing, or
+//       // both the fetch and the state-write failed) so this falls back to the
+//       // default ACTIVE state below instead of throwing on a null dereference.
+//       const safeUpdatedAssessment = updatedAssessment ?? { currentState: null };
+//       if (safeUpdatedAssessment.currentState === null) {
+//         safeUpdatedAssessment.currentState = 2;
+//       }
+
+//       assessment[0]['totalQuizzes'] = quizzesCountRes[0]?.count || 0;
+//       assessment[0]['totalOpenEndedQuestions'] =
+//         openEndedCountRes[0]?.count || 0;
+//       assessment[0]['totalCodingQuestions'] = codingCountRes[0]?.count || 0;
+//       // Check currentState and enforce rules
+//       if (safeUpdatedAssessment.currentState === 0) {
+//         // DRAFT
+//         return {
+//           status: 'success',
+//           statusCode: 200,
+//           assessmentState: 'DRAFT',
+//           message: 'Assessment is not available yet.',
+//         };
+//       }
+//       if (safeUpdatedAssessment.currentState === 1) {
+//         // PUBLISHED
+//         const startTime = assessment[0].startDatetime
+//           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
+//               year: 'numeric',
+//               month: 'numeric',
+//               day: 'numeric',
+//               hour: '2-digit',
+//               minute: '2-digit',
+//               second: '2-digit',
+//               hour12: true,
+//             })
+//           : 'Unknown';
+//         return {
+//           status: 'success',
+//           statusCode: 200,
+//           assessmentState: 'PUBLISHED',
+//           message: `Assessment is published but not started yet. Assessment will start at ${startTime}`,
+//           ...assessment[0],
+//         };
+//       }
+//       if (safeUpdatedAssessment.currentState === 2) {
+//         // ACTIVE
+//         return {
+//           status: 'success',
+//           statusCode: 200,
+//           message:
+//             'The assessment is currently available. Kindly proceed to attempt it.',
+//           assessmentState: 'ACTIVE',
+//           ...assessment[0],
+//         };
+//       }
+//       if (safeUpdatedAssessment.currentState === 3) {
+//         // CLOSED
+//         return {
+//           status: 'success',
+//           statusCode: 200,
+//           assessmentState: 'CLOSED',
+//           message: 'Assessment is closed. You cannot attempt it anymore.',
+//           ...assessment[0],
+//         };
+//       }
+
+//       // fallback
+//       return {
+//         status: 'error',
+//         statusCode: 400,
+//         message: 'Invalid assessment state.',
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async handleAssessmentUpdate(assessmentId: number) {
+//     let assessment;
+//     try {
+//       assessment = await db.query.zuvyOutsourseAssessments.findFirst({
+//         where: eq(zuvyOutsourseAssessments.id, assessmentId),
+//       });
+//     } catch (error) {
+//       this.logger.error(
+//         `Error fetching assessment ${assessmentId} for state update:`,
+//         error,
+//       );
+//       return null;
+//     }
+
+//     if (!assessment) {
+//       this.logger.warn(`Assessment ${assessmentId} not found`);
+//       return null;
+//     }
+
+//     try {
+//       return await this.updateAssessmentState(assessment);
+//     } catch (error) {
+//       // fix: a failed state-write used to be invisible to callers because
+//       // they re-fetched the (unmodified) row themselves afterwards. Now that
+//       // callers use this return value directly, fall back to the
+//       // already-fetched row instead of null so a transient write failure on
+//       // this side-effect doesn't crash an otherwise-successful read request.
+//       this.logger.error(
+//         `Error updating assessment state for ${assessmentId}:`,
+//         error,
+//       );
+//       return assessment;
+//     }
+//   }
+
+//   // Helper method to update assessment state. Returns the up-to-date
+//   // assessment (with currentState/updatedAt reflecting any change just
+//   // applied) so callers don't need a separate re-fetch afterwards.
+//   async updateAssessmentState(assessment: any) {
+//     const now = new Date();
+//     const oldState = assessment.currentState;
+//     let newState = oldState;
+
+//     // Calculate new state based on dates
+//     if (assessment.publishDatetime) {
+//       const publishDate = new Date(assessment.publishDatetime);
+
+//       if (now < publishDate) {
+//         newState = 0; // DRAFT
+//       } else if (assessment.startDatetime) {
+//         const startDate = new Date(assessment.startDatetime);
+
+//         if (now >= publishDate && now < startDate) {
+//           newState = 1; // PUBLISHED
+//         } else if (assessment.endDatetime) {
+//           const endDate = new Date(assessment.endDatetime);
+
+//           if (now >= startDate && now < endDate) {
+//             newState = 2; // ACTIVE
+//           } else if (now >= endDate) {
+//             newState = 3; // CLOSED
+//           }
+//         } else if (now >= startDate) {
+//           newState = 2; // ACTIVE - no end date
+//         }
+//       } else if (now >= publishDate) {
+//         newState = 1; // PUBLISHED - no start date
+//       }
+//     }
+
+//     // If state has changed, update it
+//     if (newState !== oldState) {
+//       const updatedAt = now.toISOString();
+//       await db
+//         .update(zuvyOutsourseAssessments)
+//         .set({
+//           currentState: newState,
+//           updatedAt,
+//         } as any)
+//         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
+//       return { ...assessment, currentState: newState, updatedAt };
+//     }
+//     return assessment;
+//   }
+
+//   async getCodingQuestionsByDifficulty(
+//     difficultyLevel,
+//     assessmentOutsourseId,
+//     limit,
+//     selectedTagIds,
+//     userId,
+//     assessmentSubmissionId,
+//   ) {
+//     try {
+//       // Fetching the combined results with a join
+//       let questions;
+//       assessmentSubmissionId = undefined;
+//       if (assessmentSubmissionId != undefined) {
+//         questions = await db
+//           .select({
+//             codingQuestionId: zuvyCodingQuestions.id,
+//             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
+//             assessmentOutsourseId:
+//               zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+//             title: zuvyCodingQuestions.title, // Add other fields you need
+//             description: zuvyCodingQuestions.description,
+//             constraints: zuvyCodingQuestions.constraints,
+//             difficulty: zuvyCodingQuestions.difficulty,
+//             content: zuvyCodingQuestions.content,
+//             submissionData: {
+//               status: zuvyPracticeCode.status,
+//               sourceCode: zuvyPracticeCode.sourceCode,
+//               createdAt: zuvyPracticeCode.createdAt,
+//             },
+//           })
+//           .from(zuvyOutsourseCodingQuestions)
+//           .innerJoin(
+//             zuvyCodingQuestions,
+//             and(
+//               eq(
+//                 zuvyCodingQuestions.id,
+//                 zuvyOutsourseCodingQuestions.codingQuestionId,
+//               ),
+//               eq(zuvyCodingQuestions.difficulty, difficultyLevel),
+//               inArray(zuvyCodingQuestions.tagId, selectedTagIds),
+//             ),
+//           )
+//           .leftJoin(
+//             zuvyPracticeCode,
+//             and(
+//               eq(zuvyPracticeCode.questionId, zuvyCodingQuestions.id),
+//               eq(zuvyPracticeCode.submissionId, assessmentSubmissionId),
+//               eq(zuvyPracticeCode.userId, userId),
+//             ),
+//           )
+//           .where(
+//             eq(
+//               zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+//               assessmentOutsourseId,
+//             ),
+//           )
+//           .orderBy(
+//             sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`,
+//           ) // Using seed for randomization
+//           .limit(limit);
+//       } else {
+//         questions = await db
+//           .select({
+//             codingQuestionId: zuvyCodingQuestions.id,
+//             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
+//             assessmentOutsourseId:
+//               zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+//             title: zuvyCodingQuestions.title, // Add other fields you need
+//             description: zuvyCodingQuestions.description,
+//             constraints: zuvyCodingQuestions.constraints,
+//             difficulty: zuvyCodingQuestions.difficulty,
+//             content: zuvyCodingQuestions.content,
+//           })
+//           .from(zuvyOutsourseCodingQuestions)
+//           .innerJoin(
+//             zuvyCodingQuestions,
+//             and(
+//               eq(
+//                 zuvyCodingQuestions.id,
+//                 zuvyOutsourseCodingQuestions.codingQuestionId,
+//               ),
+//               eq(zuvyCodingQuestions.difficulty, difficultyLevel),
+//               inArray(zuvyCodingQuestions.tagId, selectedTagIds),
+//             ),
+//           )
+//           .where(
+//             eq(
+//               zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+//               assessmentOutsourseId,
+//             ),
+//           )
+//           .orderBy(
+//             sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`,
+//           ) // Using seed for randomization
+//           .limit(limit);
+//       }
+
+//       return questions;
+//     } catch (error) {
+//       console.error('Error in getCodingQuestionsByDifficulty: ', error);
+//       throw error;
+//     }
+//   }
+
+//   async getCodingQuestionsByAllDifficulties(
+//     assessmentOutsourseId,
+//     assessmentOutsourseData,
+//     userId,
+//     assessmentSubmissionId,
+//   ): Promise<any> {
+//     try {
+//       const difficulties = [
+//         DIFFICULTY.EASY,
+//         DIFFICULTY.MEDIUM,
+//         DIFFICULTY.HARD,
+//       ];
+
+//       const promises = difficulties.map((difficulty) =>
+//         this.getCodingQuestionsByDifficulty(
+//           difficulty,
+//           assessmentOutsourseId,
+//           assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
+//           assessmentOutsourseData.codingQuestionTagId,
+//           userId,
+//           assessmentSubmissionId,
+//         ).then((result) => {
+//           return { difficulty, result };
+//         }),
+//       );
+
+//       const results = await Promise.all(promises);
+
+//       const questionsByDifficulty = results.reduce((acc, curr) => {
+//         acc[curr.difficulty] = curr.result;
+//         return acc;
+//       }, {});
+
+//       return [null, questionsByDifficulty];
+//     } catch (err) {
+//       Logger.error(JSON.stringify(err));
+//       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+//     }
+//   }
+
+//   /**
+//    * Initiates an assessment for a student.
+//    * This function might set up necessary variables, database entries, or other prerequisites
+//    * for a student to begin taking an assessment.
+//    */
+//   async startAssessmentForStudent(
+//     assessmentOutsourseId: number,
+//     newStart: boolean,
+//     user,
+//   ): Promise<any> {
+//     try {
+//       let { id, roles } = user;
+//       const assessmentOutsourseData =
+//         await db.query.zuvyOutsourseAssessments.findFirst({
+//           where: (zuvyOutsourseAssessments, { eq }) =>
+//             eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+//           with: {
+//             ModuleAssessment: true,
+//           },
+//         });
+
+//       // Check if assessment exists
+//       if (!assessmentOutsourseData) {
+//         return [
+//           {
+//             status: 'error',
+//             statusCode: 404,
+//             message:
+//               'Assessment not found. It may have been deleted or is no longer available.',
+//           },
+//         ];
+//       }
+
+//       let submission = [];
+//       let quizzes = [];
+//       if (roles.includes('admin')) {
+//         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
+//       } else {
+//         if (newStart) {
+//           let startedAt = new Date().toISOString();
+//           let insertAssessmentSubmission: any = {
+//             userId: id,
+//             assessmentOutsourseId,
+//             startedAt,
+//           };
+//           submission = await db
+//             .insert(zuvyAssessmentSubmission)
+//             .values(insertAssessmentSubmission)
+//             .returning();
+//         } else {
+//           // readability/type-safety: typed and/eq helpers instead of a raw sql template
+//           submission = await db
+//             .select()
+//             .from(zuvyAssessmentSubmission)
+//             .where(
+//               and(
+//                 eq(zuvyAssessmentSubmission.active, true),
+//                 eq(
+//                   zuvyAssessmentSubmission.assessmentOutsourseId,
+//                   assessmentOutsourseId,
+//                 ),
+//                 eq(zuvyAssessmentSubmission.userId, id),
+//               ),
+//             )
+//             .orderBy(desc(zuvyAssessmentSubmission.id))
+//             .limit(1);
+//           if (!submission) {
+//             return [
+//               { error: 'not started the assessment or not get approvel' },
+//             ];
+//           }
+//         }
+//         quizzes = await db
+//           .select()
+//           .from(zuvyQuizTracking)
+//           .where(
+//             sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`,
+//           );
+//       }
+//       let assessmentSubmissionId;
+//       // Fetching all coding questions at once
+//       const [err, codingQuestions] =
+//         await this.getCodingQuestionsByAllDifficulties(
+//           assessmentOutsourseId,
+//           assessmentOutsourseData,
+//           id,
+//           assessmentSubmissionId,
+//         );
+//       if (err) {
+//         Logger.error(JSON.stringify(err));
+//         return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+//       }
+
+//       // Accessing the questions for each difficulty level
+//       const easyCodingQuestions = codingQuestions[DIFFICULTY.EASY];
+//       const mediumCodingQuestions = codingQuestions[DIFFICULTY.MEDIUM];
+//       const hardCodingQuestions = codingQuestions[DIFFICULTY.HARD];
+
+//       let assessment = {
+//         ...assessmentOutsourseData,
+//         IsQuizzSubmission: quizzes!.length > 0 ? true : false,
+//         codingQuestions: [
+//           ...easyCodingQuestions,
+//           ...mediumCodingQuestions,
+//           ...hardCodingQuestions,
+//         ],
+//         submission: submission[0],
+//       };
+//       // return [null, assessment];
+//       return [
+//         null,
+//         {
+//           message: 'Coding question fetched successfully',
+//           data: assessment,
+//           statusCode: STATUS_CODES.OK,
+//         },
+//       ];
+//     } catch (err) {
+//       Logger.error(JSON.stringify(err));
+//       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+//     }
+//   }
+
+//   async getQuizQuestionsByDifficulty(
+//     difficultyLevel,
+//     assessmentOutsourseId,
+//     limit,
+//     selectedTagIds,
+//     userId,
+//     assessmentSubmissionId,
+//   ): Promise<any> {
+//     try {
+//       let quizzes;
+//       if (!assessmentSubmissionId) {
+//         quizzes = await db
+//           .select({
+//             quizId: zuvyModuleQuiz.id, // ID of the main quiz
+//             quizTitle: zuvyModuleQuiz.title, // Title of the main quiz
+//             difficulty: zuvyModuleQuiz.difficulty, // Difficulty level of the main quiz
+//             variantId: zuvyModuleQuizVariants.id, // ID of the variant
+//             question: zuvyModuleQuizVariants.question, // Question text of the variant
+//             options: zuvyModuleQuizVariants.options, // Options for the variant question
+//             correctOption: zuvyModuleQuizVariants.correctOption, // Correct option of the variant
+//             variantNumber: zuvyModuleQuizVariants.variantNumber, // Variant number
+//             assessmentId: zuvyOutsourseQuizzes.assessmentOutsourseId, // Associated assessment ID
+//           })
+//           .from(zuvyOutsourseQuizzes)
+//           .innerJoin(
+//             zuvyModuleQuizVariants,
+//             eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId), // Joining with quiz variants
+//           )
+//           .innerJoin(
+//             zuvyModuleQuiz,
+//             and(
+//               eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId), // Joining with the main quiz
+//               eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
+//               inArray(zuvyModuleQuiz.tagId, selectedTagIds), // Filtering by tag IDs
+//             ),
+//           )
+//           .orderBy(
+//             sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)`, // Randomized order by user ID
+//           )
+//           .limit(limit);
+//       } else {
+//         quizzes = await db
+//           .select({
+//             quizId: zuvyModuleQuiz.id, // ID of the main quiz
+//             quizTitle: zuvyModuleQuiz.title, // Title of the main quiz
+//             difficulty: zuvyModuleQuiz.difficulty, // Difficulty level of the main quiz
+//             variantId: zuvyModuleQuizVariants.id, // ID of the variant
+//             question: zuvyModuleQuizVariants.question, // Question text of the variant
+//             options: zuvyModuleQuizVariants.options, // Options for the variant question
+//             correctOption: zuvyModuleQuizVariants.correctOption, // Correct option of the variant
+//             variantNumber: zuvyModuleQuizVariants.variantNumber, // Variant number
+//             outsourseQuizzesId: zuvyOutsourseQuizzes.id, // Associated assessment ID
+//             submissionsData: {
+//               id: zuvyQuizTracking.id, // ID from zuvyQuizTracking
+//               userId: zuvyQuizTracking.userId, // User ID from zuvyQuizTracking
+//               attemptCount: zuvyQuizTracking.attemptCount, // Attempt count from zuvyQuizTracking
+//               chosenOption: zuvyQuizTracking.chosenOption, // Chosen option from zuvyQuizTracking
+//               status: zuvyQuizTracking.status, // Status from zuvyQuizTracking
+//               createdAt: zuvyQuizTracking.createdAt,
+//             },
+//           })
+//           .from(zuvyOutsourseQuizzes)
+//           .innerJoin(
+//             zuvyModuleQuizVariants,
+//             eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId), // Joining with quiz variants
+//           )
+//           .innerJoin(
+//             zuvyModuleQuiz,
+//             and(
+//               eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId), // Joining with the main quiz
+//               eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
+//               inArray(zuvyModuleQuiz.tagId, selectedTagIds), // Filtering by tag IDs
+//             ),
+//           )
+//           .leftJoin(
+//             zuvyQuizTracking,
+//             and(
+//               eq(zuvyQuizTracking.variantId, zuvyModuleQuizVariants.id),
+//               eq(
+//                 zuvyQuizTracking.assessmentSubmissionId,
+//                 assessmentSubmissionId,
+//               ),
+//               eq(zuvyQuizTracking.userId, userId),
+//             ),
+//           )
+//           .where(
+//             eq(
+//               zuvyOutsourseQuizzes.assessmentOutsourseId,
+//               assessmentOutsourseId,
+//             ),
+//           ) // Filtering by assessment ID
+//           .orderBy(
+//             sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)`, // Randomized order by user ID
+//           )
+//           .limit(limit);
+//       }
+//       return quizzes;
+//     } catch (err) {
+//       console.error('Error fetching quiz questions: ', err);
+//       return { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST };
+//     }
+//   }
+
+//   async getQuizQuestionsByAllDifficulties(
+//     assessmentOutsourseId,
+//     quizConfig,
+//     userId,
+//     assessmentSubmissionId,
+//   ): Promise<[null | Error, { [key: string]: any[] }]> {
+//     try {
+//       const difficulties = ['easy', 'medium', 'hard'];
+//       const questionsByDifficulty: { [key: string]: any[] } = {};
+
+//       // Fetching quiz questions for all difficulties in parallel
+//       await Promise.all(
+//         difficulties.map(async (difficulty) => {
+//           const capitalizedDifficulty =
+//             difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+
+//           questionsByDifficulty[difficulty] =
+//             await this.getQuizQuestionsByDifficulty(
+//               capitalizedDifficulty,
+//               assessmentOutsourseId,
+//               quizConfig[`${difficulty}McqQuestions`],
+//               quizConfig.mcqTagId,
+//               userId,
+//               assessmentSubmissionId,
+//             );
+//         }),
+//       );
+
+//       return [null, questionsByDifficulty];
+//     } catch (error) {
+//       console.error('Error fetching questions by all difficulties: ', error);
+//       return [error, {}];
+//     }
+//   }
+
+//   async getAssessmentDetailsOfQuiz(
+//     assessmentOutsourseId: number,
+//     user,
+//     userId,
+//     IsAdmin,
+//   ): Promise<any> {
+//     try {
+//       const assessmentOutsourseData =
+//         await db.query.zuvyOutsourseAssessments.findFirst({
+//           where: (zuvyOutsourseAssessments, { eq }) =>
+//             eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+//           with: {
+//             ModuleAssessment: true,
+//             // readability/type-safety: typed eq helper instead of a raw sql template
+//             submitedOutsourseAssessments: {
+//               where: (submissions, { eq }) => eq(submissions.userId, userId),
+//               columns: { id: true },
+//               orderBy: (submissions, { desc }) => [desc(submissions.id)],
+//               limit: 1,
+//             },
+//           },
+//         });
+
+//       if (!IsAdmin && user.roles.includes('admin')) {
+//         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
+//       }
+
+//       const assessmentSubmissionId =
+//         assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
+
+//       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(
+//         assessmentOutsourseId,
+//         assessmentOutsourseData,
+//         userId,
+//         assessmentSubmissionId,
+//       );
+
+//       if (err) {
+//         Logger.error(JSON.stringify(err));
+//         return [
+//           null,
+//           { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//         ];
+//       }
+
+//       // Get marks for each difficulty level
+//       const difficultyMarks = {
+//         easy: assessmentOutsourseData.easyMcqMark || 0,
+//         medium: assessmentOutsourseData.mediumMcqMark || 0,
+//         hard: assessmentOutsourseData.hardMcqMark || 0,
+//       };
+
+//       const mcqs = Object.entries(quizQuestions).flatMap(
+//         ([difficulty, questions]) => {
+//           const raw = Number(difficultyMarks[difficulty.toLowerCase()]);
+//           const mark = Math.trunc(raw * 100) / 100 || 0;
+
+//           return (questions || []).map((question) => ({
+//             quizId: question.quizId,
+//             quizTitle: question.quizTitle,
+//             difficulty:
+//               difficulty.charAt(0).toUpperCase() + difficulty.slice(1),
+//             mark: mark,
+//             variantId: question.variantId,
+//             question: question.question,
+//             options: question.options,
+//             correctOption: question.correctOption,
+//             variantNumber: question.variantNumber,
+//             outsourseQuizzesId:
+//               question.outsourseQuizzesId || question.assessmentId,
+//             submissionsData: question.submissionsData || null,
+//           }));
+//         },
+//       );
+
+//       return [
+//         null,
+//         {
+//           message: 'Quiz questions fetched successfully',
+//           data: { mcqs },
+//           statusCode: STATUS_CODES.OK,
+//         },
+//       ];
+//     } catch (err) {
+//       Logger.error(JSON.stringify(err));
+//       return [
+//         null,
+//         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//       ];
+//     }
+//   }
+
+//   async getAssessmentDetailsOfOpenEnded(
+//     assessment_outsourse_id: number,
+//     userId,
+//   ) {
+//     try {
+//       // readability/type-safety: typed and/eq helpers instead of a raw sql template
+//       const assessmentSubmissionlatest = await db
+//         .select()
+//         .from(zuvyAssessmentSubmission)
+//         .where(
+//           and(
+//             eq(zuvyAssessmentSubmission.userId, userId),
+//             eq(
+//               zuvyAssessmentSubmission.assessmentOutsourseId,
+//               assessment_outsourse_id,
+//             ),
+//           ),
+//         )
+//         .orderBy(desc(zuvyAssessmentSubmission.id))
+//         .limit(1);
+//       const assessment =
+//         await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
+//           where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
+//             eq(
+//               zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId,
+//               assessment_outsourse_id,
+//             ),
+//           with: {
+//             submissionsData: {
+//               where: (zuvyOpenEndedQuestionSubmission, { eq }) =>
+//                 and(
+//                   eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+//                   eq(
+//                     zuvyOpenEndedQuestionSubmission.assessmentSubmissionId,
+//                     assessmentSubmissionlatest[0]?.id,
+//                   ),
+//                 ),
+//               columns: {
+//                 id: true,
+//                 userId: true,
+//                 answer: true,
+//                 questionId: true,
+//                 submitAt: true,
+//                 assessmentSubmissionId: true,
+//               },
+//             },
+//             OpenEndedQuestion: {
+//               columns: {
+//                 id: true,
+//                 question: true,
+//                 difficulty: true,
+//               },
+//             },
+//           },
+//         });
+//       if (assessment.length == 0) {
+//         return [];
+//       }
+//       return assessment;
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllQuestionTypes() {
+//     try {
+//       const allQuestionTypes = await db.select().from(zuvyQuestionTypes);
+//       if (allQuestionTypes.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           allQuestionTypes,
+//         };
+//       } else {
+//         return [];
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createQuestionType(questionType: CreateTypeDto) {
+//     try {
+//       const newQuestionType = await db
+//         .insert(zuvyQuestionTypes)
+//         .values(questionType)
+//         .returning();
+//       if (newQuestionType.length > 0) {
+//         return {
+//           status: 'success',
+//           code: 200,
+//           newQuestionType,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message: 'Question Type is not created.Please try again.',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async createFormForModule(chapterId: number, form: formBatchDto) {
+//     try {
+//       if (isNaN(chapterId)) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'Invalid chapterId. Please provide a valid number.',
+//         };
+//       }
+
+//       const formQuestion = form.questions.map((f) => ({
+//         chapterId,
+//         question: f.question,
+//         options: f.options,
+//         typeId: f.typeId,
+//         isRequired: f.isRequired,
+//       }));
+
+//       const allFieldsFilled = formQuestion.every(
+//         (question) =>
+//           question.question !== null &&
+//           question.options !== null &&
+//           question.typeId !== null &&
+//           question.isRequired !== null,
+//       );
+//       if (!allFieldsFilled) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: ' One or more fields are empty. Please try again.',
+//         };
+//       }
+
+//       const result = await db
+//         .insert(zuvyModuleForm)
+//         .values(formQuestion)
+//         .returning();
+
+//       const formIds = result.length > 0 ? result.map((obj) => obj.id) : [];
+
+//       const existingChapter = await db
+//         .select()
+//         .from(zuvyModuleChapter)
+//         .where(eq(zuvyModuleChapter.id, chapterId))
+//         .limit(1);
+
+//       const chapter = existingChapter[0] as { formQuestions: number[] };
+
+//       const existingFormQuestions = chapter.formQuestions || [];
+
+//       const updatedFormQuestions = [...existingFormQuestions, ...formIds];
+
+//       const updatedChapter = await db
+//         .update(zuvyModuleChapter)
+//         .set({
+//           formQuestions: updatedFormQuestions,
+//         })
+//         .where(eq(zuvyModuleChapter.id, formQuestion[0].chapterId))
+//         .returning();
+
+//       if (result.length > 0 || updatedChapter.length > 0) {
+//         const trackingContext = await this.getChapterTrackingContext(
+//           chapterId,
+//           updatedChapter[0].moduleId,
+//         );
+//         return {
+//           status: 'success',
+//           code: 200,
+//           result,
+//           updatedChapter,
+//           ...trackingContext,
+//         };
+//       } else {
+//         return {
+//           status: 'error',
+//           code: 404,
+//           message:
+//             'Form questions did not create successfully.Please try again',
+//         };
+//       }
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getAllFormQuestions(
+//     chapterId: number,
+//     typeId: number,
+//     searchTerm: string = '',
+//   ) {
+//     try {
+//       // readability/type-safety: typed eq helpers instead of raw sql templates
+//       let queryString;
+//       if (!Number.isNaN(typeId) && questionType == undefined) {
+//         queryString = eq(zuvyModuleForm.typeId, typeId);
+//       }
+//       const result = await db
+//         .select()
+//         .from(zuvyModuleForm)
+//         .where(
+//           and(
+//             queryString,
+//             eq(zuvyModuleForm.chapterId, chapterId),
+//             sql`((LOWER(${zuvyModuleForm.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+//           ),
+//         );
+//       return result;
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async editFormQuestions(
+//     chapterId: number,
+//     editFormDetails: editFormBatchDto,
+//   ) {
+//     try {
+//       const editFormQuestions = editFormDetails.questions.map((f) => ({
+//         chapterId,
+//         id: f.id,
+//         question: f.question,
+//         options: f.options,
+//         typeId: f.typeId,
+//         isRequired: f.isRequired,
+//       }));
+
+//       const allFieldsFilled = editFormQuestions.every(
+//         (question) =>
+//           question.question !== null &&
+//           question.options !== null &&
+//           question.typeId !== null &&
+//           question.isRequired !== null,
+//       );
+
+//       if (!allFieldsFilled) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'One or more fields are empty. Please try again.',
+//         };
+//       }
+
+//       const results = [];
+
+//       const existingFormRecords = await db
+//         .select()
+//         .from(zuvyModuleForm)
+//         .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+//       const existingFormIds = existingFormRecords.map((record) => record.id);
+//       const providedFormIds = editFormQuestions.map((question) => question.id);
+//       const idsToRemove = existingFormIds.filter(
+//         (id) => !providedFormIds.includes(id),
+//       );
+
+//       if (idsToRemove.length > 0) {
+//         await db
+//           .delete(zuvyModuleForm)
+//           .where(inArray(zuvyModuleForm.id, idsToRemove));
+//       }
+
+//       for (const formQuestion of editFormQuestions) {
+//         if (formQuestion.id) {
+//           // Looked up from the already-fetched existingFormRecords instead of
+//           // a redundant per-row SELECT. Kept as a (possibly empty) array,
+//           // matching the previous .select() result shape/truthiness exactly.
+//           const existingRecord = existingFormRecords.filter(
+//             (record) => record.id === formQuestion.id,
+//           );
+
+//           if (existingRecord) {
+//             let updateModuleForm: any = {
+//               chapterId: formQuestion.chapterId,
+//               question: formQuestion.question,
+//               options: formQuestion.options,
+//               typeId: formQuestion.typeId,
+//               isRequired: formQuestion.isRequired,
+//             };
+//             const result = await db
+//               .update(zuvyModuleForm)
+//               .set(updateModuleForm)
+//               .where(eq(zuvyModuleForm.id, formQuestion.id))
+//               .returning();
+//             results.push(result);
+//           } else {
+//             return {
+//               status: 'Error',
+//               code: 400,
+//               message: 'Form question id(s) are invalid',
+//             };
+//           }
+//         } else {
+//           return {
+//             status: 'Error',
+//             code: 400,
+//             message: 'Form question ids(s) are missing',
+//           };
+//         }
+//       }
+
+//       const formIds = results.flat().map((obj) => obj.id);
+
+//       const updatedChapter = await db
+//         .update(zuvyModuleChapter)
+//         .set({
+//           formQuestions: formIds,
+//         })
+//         .where(eq(zuvyModuleChapter.id, chapterId))
+//         .returning();
+
+//       const trackingContext = await this.getChapterTrackingContext(
+//         chapterId,
+//         updatedChapter[0].moduleId,
+//       );
+
+//       return {
+//         status: 'success',
+//         code: 200,
+//         message: 'Form questions are updated successfully',
+//         results,
+//         updatedChapter,
+//         before: { formQuestions: existingFormIds },
+//         data: updatedChapter[0],
+//         ...trackingContext,
+//       };
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async createAndEditFormQuestions(
+//     chapterId: number,
+//     form: CreateAndEditFormBody,
+//   ) {
+//     try {
+//       if (isNaN(chapterId)) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'Invalid chapterId. Please provide a valid number.',
+//         };
+//       }
+
+//       // Combine all questions (both edit and create)
+//       const allQuestions = [];
+
+//       if (form.editFormQuestionDto?.questions) {
+//         allQuestions.push(...form.editFormQuestionDto.questions);
+//       }
+
+//       if (form.formQuestionDto?.questions) {
+//         allQuestions.push(...form.formQuestionDto.questions);
+//       }
+
+//       if (allQuestions.length === 0) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'No questions provided.',
+//         };
+//       }
+
+//       // Validate all questions have required fields
+//       const allFieldsFilled = allQuestions.every(
+//         (question) =>
+//           question.question !== null &&
+//           question.question !== undefined &&
+//           question.options !== null &&
+//           question.options !== undefined &&
+//           question.typeId !== null &&
+//           question.typeId !== undefined &&
+//           question.isRequired !== null &&
+//           question.isRequired !== undefined,
+//       );
+
+//       if (!allFieldsFilled) {
+//         return {
+//           status: 'error',
+//           code: 400,
+//           message: 'One or more fields are empty. Please try again.',
+//         };
+//       }
+
+//       // Get existing form records for this chapter
+//       const existingFormRecords = await db
+//         .select()
+//         .from(zuvyModuleForm)
+//         .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+//       const existingFormIds = existingFormRecords.map((record) => record.id);
+//       const providedFormIds = allQuestions.filter((q) => q.id).map((q) => q.id);
+
+//       // Delete questions that exist in DB but not in the request
+//       const idsToRemove = existingFormIds.filter(
+//         (id) => !providedFormIds.includes(id),
+//       );
+
+//       if (idsToRemove.length > 0) {
+//         await db
+//           .delete(zuvyModuleForm)
+//           .where(inArray(zuvyModuleForm.id, idsToRemove));
+//       }
+
+//       const finalFormIds = [];
+
+//       // Process each question
+//       for (const question of allQuestions) {
+//         if (question.id) {
+//           // Update existing question
+//           const existingRecord = existingFormRecords.find(
+//             (record) => record.id === question.id,
+//           );
+
+//           if (!existingRecord) {
+//             return {
+//               status: 'error',
+//               code: 400,
+//               message: `Form question with id ${question.id} does not exist.`,
+//             };
+//           }
+
+//           const updateData: any = {
+//             chapterId: chapterId,
+//             question: question.question,
+//             options: question.options,
+//             typeId: question.typeId,
+//             isRequired: question.isRequired,
+//           };
+
+//           const updated = await db
+//             .update(zuvyModuleForm)
+//             .set(updateData)
+//             .where(eq(zuvyModuleForm.id, question.id))
+//             .returning();
+
+//           if (updated.length > 0) {
+//             finalFormIds.push(updated[0].id);
+//           }
+//         } else {
+//           // Create new question
+//           const insertData: any = {
+//             chapterId: chapterId,
+//             isRequired: question.isRequired,
+//           };
+
+//           // Only add optional fields if they exist in the schema
+//           if ('question' in zuvyModuleForm)
+//             insertData.question = question.question;
+//           if ('options' in zuvyModuleForm)
+//             insertData.options = question.options;
+//           if ('typeId' in zuvyModuleForm) insertData.typeId = question.typeId;
+
+//           const newQuestion = await db
+//             .insert(zuvyModuleForm)
+//             .values(insertData)
+//             .returning();
+
+//           if (newQuestion.length > 0) {
+//             finalFormIds.push(newQuestion[0].id);
+//           }
+//         }
+//       }
+
+//       // Update chapter with final form IDs, using .returning() instead of a
+//       // separate re-select for the row we just wrote.
+//       const res2 = await db
+//         .update(zuvyModuleChapter)
+//         .set({
+//           formQuestions: finalFormIds,
+//         })
+//         .where(eq(zuvyModuleChapter.id, chapterId))
+//         .returning();
+
+//       const res1 = await db
+//         .select()
+//         .from(zuvyModuleForm)
+//         .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+//       const trackingContext = await this.getChapterTrackingContext(
+//         chapterId,
+//         res2[0].moduleId,
+//       );
+
+//       return {
+//         status: 'success',
+//         code: 200,
+//         message: 'Form questions are updated successfully',
+//         res1,
+//         res2,
+//         before: { formQuestions: existingFormIds },
+//         data: res2[0],
+//         ...trackingContext,
+//       };
+//     } catch (err) {
+//       throw err;
+//     }
+//   }
+
+//   async getOpenendedQuestionDetails(id: number, orgId: number): Promise<any> {
+//     try {
+//       const openEnded = await db
+//         .select()
+//         .from(zuvyOpenEndedQuestions)
+//         .where(
+//           and(
+//             eq(zuvyOpenEndedQuestions.id, id),
+//             eq(zuvyOpenEndedQuestions.orgId, orgId),
+//           ),
+//         );
+//       if (openEnded.length > 0) {
+//         return [null, { data: openEnded }];
+//       }
+//       return [
+//         {
+//           statusCode: STATUS_CODES.NOT_FOUND,
+//           message: 'The openended question is not found',
+//         },
+//       ];
+//     } catch (err) {
+//       return [{ message: err.message }];
+//     }
+//   }
+
+//   async getCodingQuestionDetails(id: number, orgId: number): Promise<any> {
+//     try {
+//       const codingQuestion = await db
+//         .select()
+//         .from(zuvyCodingQuestions)
+//         .where(
+//           and(
+//             eq(zuvyCodingQuestions.id, id),
+//             eq(zuvyCodingQuestions.orgId, orgId),
+//           ),
+//         );
+//       if (codingQuestion.length > 0) {
+//         return [null, { data: codingQuestion }];
+//       }
+//       return [
+//         {
+//           statusCode: STATUS_CODES.NOT_FOUND,
+//           message: 'The coding question is not found',
+//         },
+//       ];
+//     } catch (err) {
+//       return [{ message: err.message }];
+//     }
+//   }
+
+//   async getQuizQuestionDetails(id: number, orgId: number): Promise<any> {
+//     try {
+//       const quizQuestion = await db
+//         .select()
+//         .from(zuvyModuleQuiz)
+//         .where(and(eq(zuvyModuleQuiz.id, id), eq(zuvyModuleQuiz.orgId, orgId)));
+//       if (quizQuestion.length > 0) {
+//         return [null, { data: quizQuestion }];
+//       }
+//       return [
+//         {
+//           statusCode: STATUS_CODES.NOT_FOUND,
+//           message: 'The quiz question is not found',
+//         },
+//       ];
+//     } catch (err) {
+//       return [{ message: err.message }];
+//     }
+//   }
+
+//   async getAllQuizVariants(quizId: number, orgId: number): Promise<any> {
+//     try {
+//       const result = await db.query.zuvyModuleQuiz
+//         .findMany({
+//           where: (zuvyModuleQuiz, { eq, and }) =>
+//             and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
+//           with: {
+//             quizVariants: {
+//               where: (zuvyModuleQuizVariants, { eq }) =>
+//                 eq(zuvyModuleQuizVariants.quizId, quizId),
+//               orderBy: (quizVariants, { asc }) => asc(quizVariants.id),
+//             },
+//           },
+//         })
+//         .execute();
+
+//       if (result.length === 0) {
+//         return [
+//           null,
+//           {
+//             message: 'No variants found for the provided quiz ID',
+//             statusCode: STATUS_CODES.NOT_FOUND,
+//             data: [],
+//           },
+//         ];
+//       }
+
+//       return [
+//         null,
+//         {
+//           message: 'Variants retrieved successfully',
+//           statusCode: STATUS_CODES.OK,
+//           data: result,
+//         },
+//       ];
+//     } catch (err) {
+//       return [
+//         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//         null,
+//       ];
+//     }
+//   }
+
+//   async addQuizVariants(
+//     addQuizVariantsDto: AddQuizVariantsDto,
+//     orgId: number,
+//   ): Promise<any> {
+//     const { quizId, variantMCQs } = addQuizVariantsDto;
+
+//     try {
+//       // Check if quizId exists in the main quiz table and belongs to the orgId
+//       const mainQuizExists = await db
+//         .select({ id: zuvyModuleQuiz.id })
+//         .from(zuvyModuleQuiz)
+//         .where(
+//           and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
+//         );
+
+//       if (mainQuizExists.length === 0) {
+//         return [
+//           {
+//             message: `Quiz ID ${quizId} does not exist in the main quiz table.`,
+//             statusCode: STATUS_CODES.NOT_FOUND,
+//           },
+//           null,
+//         ];
+//       }
+
+//       // Fetch all variants for this quiz and find the current highest variant number
+//       const existingVariants = await db
+//         .select({ variantNumber: zuvyModuleQuizVariants.variantNumber })
+//         .from(zuvyModuleQuizVariants)
+//         .where(eq(zuvyModuleQuizVariants.quizId, quizId));
+
+//       const maxVariantNumber = existingVariants.reduce(
+//         (max, variant) => Math.max(max, variant.variantNumber),
+//         0,
+//       );
+//       let nextVariantNumber = maxVariantNumber + 1;
+
+//       // Prepare new variant data with incremented variant numbers
+//       const variantData = variantMCQs.map((variant: CreateQuizVariantDto) => ({
+//         quizId,
+//         variantNumber: nextVariantNumber++,
+//         question: variant.question,
+//         options: variant.options,
+//         correctOption: variant.correctOption,
+//       }));
+
+//       // Insert new variants into the variants table
+//       const insertedVariants = await db
+//         .insert(zuvyModuleQuizVariants)
+//         .values(variantData)
+//         .returning();
+
+//       const variantsWithIds = insertedVariants.map(
+//         (insertedVariant, index) => ({
+//           ...variantData[index],
+//           id: insertedVariant.id,
+//         }),
+//       );
+
+//       return [
+//         null,
+//         {
+//           message: 'Variants added successfully.',
+//           statusCode: STATUS_CODES.CREATED,
+//           data: variantsWithIds,
+//         },
+//       ];
+//     } catch (err) {
+//       return [
+//         { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+//         null,
+//       ];
+//     }
+//   }
+
+//   async deleteQuizOrVariant(
+//     deleteDto: deleteQuestionOrVariantDto,
+//     orgId: number,
+//   ): Promise<any> {
+//     try {
+//       let mainQuizIds: number[] = [];
+//       let variantDeletions: { id: number; quizId: number }[] = [];
+//       let deletedQuizIds: number[] = [];
+//       let deletedVariantIds: number[] = [];
+//       const deletedQuizTitles = new Set<string>();
+//       const deletedVariantTitles = new Set<string>();
+//       const firstMainId = deleteDto.questionIds.find(
+//         (q) => q.type === 'main',
+//       )?.id;
+//       const firstVariantId = deleteDto.questionIds.find(
+//         (q) => q.type === 'variant',
+//       )?.id;
+
+//       // Resolve every requested variant id's parent quiz id in a single
+//       // batched query instead of one SELECT per variant id.
+//       const requestedVariantIds = deleteDto.questionIds
+//         .filter((q) => q.type === 'variant')
+//         .map((q) => q.id);
+//       const variantQuizIdMap = new Map<number, number>();
+//       if (requestedVariantIds.length > 0) {
+//         const variantQuizRows = await db
+//           .select({
+//             id: zuvyModuleQuizVariants.id,
+//             quizId: zuvyModuleQuizVariants.quizId,
+//           })
+//           .from(zuvyModuleQuizVariants)
+//           .innerJoin(
+//             zuvyModuleQuiz,
+//             eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+//           )
+//           .where(
+//             and(
+//               inArray(zuvyModuleQuizVariants.id, requestedVariantIds),
+//               eq(zuvyModuleQuiz.orgId, orgId),
+//             ),
+//           );
+//         for (const row of variantQuizRows) {
+//           variantQuizIdMap.set(row.id, row.quizId);
+//         }
+//       }
+
+//       if (firstMainId) {
+//         const titleRes = await db
+//           .select({ title: zuvyModuleQuiz.title })
+//           .from(zuvyModuleQuiz)
+//           .where(
+//             and(
+//               eq(zuvyModuleQuiz.id, firstMainId),
+//               eq(zuvyModuleQuiz.orgId, orgId),
+//             ),
+//           )
+//           .limit(1);
+//         const mainQuizTitle = titleRes[0]?.title || '';
+//         if (mainQuizTitle) deletedQuizTitles.add(mainQuizTitle);
+//       } else if (firstVariantId) {
+//         const firstVariantQuizId = variantQuizIdMap.get(firstVariantId);
+//         if (firstVariantQuizId) {
+//           const titleRes = await db
+//             .select({ title: zuvyModuleQuiz.title })
+//             .from(zuvyModuleQuiz)
+//             .where(
+//               and(
+//                 eq(zuvyModuleQuiz.id, firstVariantQuizId),
+//                 eq(zuvyModuleQuiz.orgId, orgId),
+//               ),
+//             )
+//             .limit(1);
+//           const variantParentTitle = titleRes[0]?.title || '';
+//           if (variantParentTitle) deletedQuizTitles.add(variantParentTitle);
+//         }
+//       }
+
+//       // Process deleteDto based on its type
+//       for (const item of deleteDto.questionIds) {
+//         if (item.type === 'main') {
+//           mainQuizIds.push(item.id);
+//         } else if (item.type === 'variant') {
+//           const quizId = variantQuizIdMap.get(item.id);
+//           if (quizId !== undefined) {
+//             variantDeletions.push({ id: item.id, quizId });
+//           }
+//         }
+//       }
+
+//       const quizTitle = Array.from(deletedQuizTitles).join(', ');
+
+//       // Deletion logic for main quizzes
+//       if (mainQuizIds.length > 0) {
+//         const usedQuizzes = await db
+//           .select()
+//           .from(zuvyModuleQuiz)
+//           .where(
+//             and(
+//               inArray(zuvyModuleQuiz.id, mainQuizIds),
+//               gt((zuvyModuleQuiz as any).usage, 0),
+//               eq(zuvyModuleQuiz.orgId, orgId),
+//             ),
+//           );
+
+//         const usedQuizIds = usedQuizzes.map((quiz) => quiz.id);
+//         const deletableQuizIds = mainQuizIds.filter(
+//           (id) => !usedQuizIds.includes(id),
+//         );
+
+//         if (deletableQuizIds.length > 0) {
+//           // Verify that all deletableQuizIds belong to the orgId
+//           const orgQuizzes = await db
+//             .select({ id: zuvyModuleQuiz.id, title: zuvyModuleQuiz.title })
+//             .from(zuvyModuleQuiz)
+//             .where(
+//               and(
+//                 inArray(zuvyModuleQuiz.id, deletableQuizIds),
+//                 eq(zuvyModuleQuiz.orgId, orgId),
+//               ),
+//             );
+//           const authorizedIds = orgQuizzes.map((q) => q.id);
+
+//           orgQuizzes.forEach((quiz) => {
+//             if (quiz.title) deletedQuizTitles.add(quiz.title);
+//           });
+
+//           if (authorizedIds.length > 0) {
+//             const variants = await db
+//               .select({
+//                 quizId: zuvyModuleQuizVariants.quizId,
+//                 question: zuvyModuleQuizVariants.question,
+//               })
+//               .from(zuvyModuleQuizVariants)
+//               .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds))
+//               .orderBy(
+//                 asc(zuvyModuleQuizVariants.quizId),
+//                 asc(zuvyModuleQuizVariants.variantNumber),
+//               );
+
+//             const firstVariantQuestionByQuiz = new Map<number, string>();
+//             for (const variant of variants) {
+//               if (
+//                 variant.question &&
+//                 !firstVariantQuestionByQuiz.has(variant.quizId)
+//               ) {
+//                 firstVariantQuestionByQuiz.set(
+//                   variant.quizId,
+//                   variant.question,
+//                 );
+//               }
+//             }
+//             firstVariantQuestionByQuiz.forEach((question) =>
+//               deletedVariantTitles.add(question),
+//             );
+
+//             await db
+//               .delete(zuvyModuleQuizVariants)
+//               .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds));
+//             await db
+//               .delete(zuvyModuleQuiz)
+//               .where(
+//                 and(
+//                   inArray(zuvyModuleQuiz.id, authorizedIds),
+//                   eq(zuvyModuleQuiz.orgId, orgId),
+//                 ),
+//               )
+//               .returning();
+//             deletedQuizIds = authorizedIds;
+//           }
+//         }
+
+//         if (usedQuizIds.length > 0) {
+//           return [
+//             {
+//               message: `Quizzes with IDs ${usedQuizIds.join(', ')} cannot be deleted as they are in use.`,
+//               statusCode: STATUS_CODES.BAD_REQUEST,
+//             },
+//             null,
+//           ];
+//         }
+//       }
+
+//       // Deletion logic for quiz variants
+//       if (variantDeletions.length > 0) {
+//         const distinctVariantQuizIds = Array.from(
+//           new Set(variantDeletions.map((v) => v.quizId)),
+//         );
+
+//         // Batch: current variant count per quiz (used for the "last
+//         // remaining variant" check below). Tracked & decremented in-memory
+//         // as variants are deleted, exactly mirroring what a fresh per-item
+//         // re-query would have observed within this same request.
+//         const variantCountRows = await db
+//           .select({
+//             quizId: zuvyModuleQuizVariants.quizId,
+//             cnt: count(),
+//           })
+//           .from(zuvyModuleQuizVariants)
+//           .where(inArray(zuvyModuleQuizVariants.quizId, distinctVariantQuizIds))
+//           .groupBy(zuvyModuleQuizVariants.quizId);
+//         const remainingVariantCount = new Map<number, number>();
+//         for (const row of variantCountRows) {
+//           remainingVariantCount.set(row.quizId, row.cnt);
+//         }
+
+//         // Batch: main quiz usage per quiz. Nothing in this loop modifies
+//         // zuvyModuleQuiz.usage, so a single upfront read is equivalent to
+//         // re-querying it per item.
+//         const mainQuizUsageRows = await db
+//           .select({
+//             id: zuvyModuleQuiz.id,
+//             usage: (zuvyModuleQuiz as any).usage,
+//           })
+//           .from(zuvyModuleQuiz)
+//           .where(
+//             and(
+//               inArray(zuvyModuleQuiz.id, distinctVariantQuizIds),
+//               eq(zuvyModuleQuiz.orgId, orgId),
+//             ),
+//           );
+//         const mainQuizUsageMap = new Map<number, number>();
+//         for (const row of mainQuizUsageRows) {
+//           mainQuizUsageMap.set(row.id, (row as any).usage);
+//         }
+
+//         for (const { id: variantId, quizId } of variantDeletions) {
+//           const currentVariantCount = remainingVariantCount.get(quizId) ?? 0;
+
+//           if (currentVariantCount <= 1) {
+//             return [
+//               {
+//                 message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
+//                 statusCode: STATUS_CODES.BAD_REQUEST,
+//               },
+//               null,
+//             ];
+//           }
+
+//           // Check if the main quiz of this variant has `usage` > 0
+//           const mainQuizUsage = mainQuizUsageMap.get(quizId);
+
+//           if (mainQuizUsage !== undefined && mainQuizUsage > 0) {
+//             return [
+//               {
+//                 message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
+//                 statusCode: STATUS_CODES.BAD_REQUEST,
+//               },
+//               null,
+//             ];
+//           }
+
+//           // Variant numbers can shift mid-batch when multiple variants of
+//           // the same quiz are deleted in this same request, so this lookup
+//           // (unlike the two above) still needs a fresh per-item read.
+//           const variantToDelete = await db
+//             .select({
+//               variantNumber: zuvyModuleQuizVariants.variantNumber,
+//               variantQuestion: zuvyModuleQuizVariants.question,
+//               quizTitle: zuvyModuleQuiz.title,
+//             })
+//             .from(zuvyModuleQuizVariants)
+//             .innerJoin(
+//               zuvyModuleQuiz,
+//               eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+//             )
+//             .where(
+//               and(
+//                 eq(zuvyModuleQuizVariants.id, variantId),
+//                 eq(zuvyModuleQuiz.orgId, orgId),
+//               ),
+//             );
+
+//           if (!variantToDelete.length) {
+//             return [
+//               {
+//                 message: `Variant with ID ${variantId} not found or unauthorized.`,
+//                 statusCode: STATUS_CODES.NOT_FOUND,
+//               },
+//               null,
+//             ];
+//           }
+
+//           const {
+//             variantNumber,
+//             variantQuestion,
+//             quizTitle: variantParentTitle,
+//           } = variantToDelete[0];
+
+//           if (variantParentTitle) {
+//             deletedQuizTitles.add(variantParentTitle);
+//           }
+
+//           if (variantQuestion) {
+//             deletedVariantTitles.add(variantQuestion);
+//           }
+
+//           await db
+//             .delete(zuvyModuleQuizVariants)
+//             .where(eq(zuvyModuleQuizVariants.id, variantId))
+//             .returning();
+//           deletedVariantIds.push(variantId);
+
+//           // Update the variant numbers for remaining variants
+//           await db
+//             .update(zuvyModuleQuizVariants)
+//             .set({
+//               variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1`,
+//             })
+//             .where(
+//               sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`,
+//             )
+//             .returning();
+
+//           // Reflect this deletion in the running count so a later iteration
+//           // targeting the same quiz sees the updated remaining count.
+//           remainingVariantCount.set(quizId, currentVariantCount - 1);
+//         }
+//       }
+
+//       return [
+//         null,
+//         {
+//           message:
+//             'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
+//           statusCode: STATUS_CODES.OK,
+//           quizTitle: Array.from(deletedQuizTitles).join(', '),
+//           variantTitle: Array.from(deletedVariantTitles).join(', '),
+//           data: {
+//             deletedQuizIds:
+//               deletedQuizIds.length > 0 ? deletedQuizIds : mainQuizIds,
+//             deletedVariantIds,
+//           },
+//         },
+//       ];
+//     } catch (error) {
+//       Logger.log(`Error in deleteQuizOrVariant: ${error.message}`);
+//       return [
+//         {
+//           message: error.message,
+//           statusCode: STATUS_CODES.BAD_REQUEST,
+//         },
+//         null,
+//       ];
+//     }
+//   }
+// }
+
 import {
   BadRequestException,
   ForbiddenException,
@@ -584,17 +6541,26 @@ export class ContentService {
 
     // Name: centered just above the blank line, shrunk to fit long names
     const name = this.toEncodableText(nameFont, studentName);
+    // Zuvy template: name goes left-aligned in the blank space between
+    // "This certifies that" and the horizontal line (which is ~5 font sizes below)
+    const certifies = anchors?.certifies;
     const nameCenterX = anchors?.line
       ? anchors.line.x + anchors.line.width / 2
       : anchors?.heading
         ? anchors.heading.x + anchors.heading.width / 2
         : width / 2;
-    const nameMaxWidth = anchors?.line ? anchors.line.width : width * 0.65;
-    const nameY = anchors?.line
-      ? anchors.line.y + anchors.line.fontSize * 0.4
-      : anchors?.heading
-        ? anchors.heading.y - anchors.heading.fontSize * 2.1
-        : height * 0.392;
+    const nameMaxWidth = certifies
+      ? width * 0.47
+      : anchors?.line
+        ? anchors.line.width
+        : width * 0.65;
+    const nameY = certifies
+      ? certifies.y - certifies.fontSize * 4.6
+      : anchors?.line
+        ? anchors.line.y + anchors.line.fontSize * 0.4
+        : anchors?.heading
+          ? anchors.heading.y - anchors.heading.fontSize * 2.1
+          : height * 0.392;
     let nameSize = anchors?.heading
       ? anchors.heading.fontSize * 1.3
       : height * 0.042;
@@ -606,7 +6572,9 @@ export class ContentService {
       nameSize -= 0.5;
     }
     page.drawText(name, {
-      x: nameCenterX - nameFont.widthOfTextAtSize(name, nameSize) / 2,
+      x: certifies
+        ? certifies.x
+        : nameCenterX - nameFont.widthOfTextAtSize(name, nameSize) / 2,
       y: nameY,
       size: nameSize,
       font: nameFont,
@@ -627,7 +6595,7 @@ export class ContentService {
 
     const dateSize = anchors?.date ? anchors.date.fontSize : height * 0.024;
 
-    const dateY = anchors?.date ? anchors.date.y + 5 : height * 0.1429;
+    const dateY = anchors?.date ? anchors.date.y : height * 0.1429;
 
     page.drawText(issuedDate, {
       x: anchors?.date
@@ -649,7 +6617,12 @@ export class ContentService {
 
   private async findCertificateAnchors(pdfBuffer: Buffer) {
     type TextBox = { x: number; y: number; width: number; fontSize: number };
-    const anchors: { heading?: TextBox; line?: TextBox; date?: TextBox } = {};
+    const anchors: {
+      heading?: TextBox;
+      line?: TextBox;
+      date?: TextBox;
+      certifies?: TextBox;
+    } = {};
 
     try {
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -658,6 +6631,35 @@ export class ContentService {
         useSystemFonts: true,
       }).promise;
       const content = await (await doc.getPage(1)).getTextContent();
+
+      // "This certifies that" is split into several text items; join items
+      // sharing a baseline and keep the first item's position
+      const rows = new Map<number, { text: string; box: TextBox }>();
+      for (const item of content.items) {
+        if (!('str' in item)) continue;
+        const y = Math.round(item.transform[5]);
+        const row = rows.get(y);
+        if (row) {
+          row.text += item.str;
+        } else {
+          rows.set(y, {
+            text: item.str,
+            box: {
+              x: item.transform[4],
+              y: item.transform[5],
+              width: item.width,
+              fontSize:
+                Math.abs(item.transform[3]) || Math.abs(item.transform[0]),
+            },
+          });
+        }
+      }
+      for (const row of rows.values()) {
+        if (/this\s*certifies\s*that/i.test(row.text)) {
+          anchors.certifies = row.box;
+          break;
+        }
+      }
 
       for (const item of content.items) {
         if (!('str' in item)) continue;
