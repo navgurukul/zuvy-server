@@ -28,12 +28,14 @@ export class RbacService {
     roleName: string[],
     targetPermissions: string[],
     orgId: number | null,
+    bootcampId?: number | null,
   ): Promise<any> {
     try {
       return await this.permissionAllocationService.getAllPermissions(
         roleName,
         targetPermissions,
         orgId,
+        bootcampId,
       );
     } catch (err) {
       this.logger.error('Error retrieving all permissions:', err);

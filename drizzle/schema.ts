@@ -2114,14 +2114,18 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   orgId: integer('org_id').references(() => zuvyOrganizations.id),
+  // NULL = organization-level assignment; set = assignment for that course only.
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 },
   (table) => ({
-    uniqRolePermission: unique("uniq_role_permission").on(
-      table.roleId,
-      table.permissionId
-    )
+    uniqRolePermission: uniqueIndex("uniq_role_permission")
+      .on(table.roleId, table.permissionId)
+      .where(sql`bootcamp_id IS NULL`),
+    uniqRolePermissionBootcamp: uniqueIndex("uniq_role_permission_bootcamp")
+      .on(table.roleId, table.permissionId, table.bootcampId)
+      .where(sql`bootcamp_id IS NOT NULL`),
   })
 );
 export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({

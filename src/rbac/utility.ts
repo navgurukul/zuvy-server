@@ -55,6 +55,11 @@ export enum Role {
   INSTRUCTOR = 'instructor',
 }
 
+// Mentorship is the only course-scoped resource: its role assignments are
+// stored per course (zuvy_permissions_roles.bootcamp_id).
+export const MENTORSHIP_RESOURCE_KEY = 'Mentorship';
+export const VIEW_MENTORSHIP_PERMISSION = 'viewMentorship';
+
 // utils/resource-keys.ts (single source of truth)
 export const ResourceKeys = [
   'Course',

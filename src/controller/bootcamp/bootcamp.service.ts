@@ -46,7 +46,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { getStudentIdsByUserId } from 'src/helpers/studentIds';
 import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
-import { ResourceList } from 'src/rbac/utility';
+import { ResourceList, VIEW_MENTORSHIP_PERMISSION } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
 import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 
@@ -608,11 +608,25 @@ export class BootcampService {
         ResourceList.submission.read,
         ResourceList.setting.read,
       ];
-      const grantedPermissions = await this.rbacService.getAllPermissions(
-        role,
-        targetPermissions,
-        orgId,
-      );
+      const [grantedPermissions, [bootcampType]] = await Promise.all([
+        this.rbacService.getAllPermissions(
+          role,
+          [...targetPermissions, VIEW_MENTORSHIP_PERMISSION],
+          orgId,
+          id,
+        ),
+        db
+          .select({ mentorshipEnabled: zuvyBootcampType.mentorshipEnabled })
+          .from(zuvyBootcampType)
+          .where(eq(zuvyBootcampType.bootcampId, id))
+          .limit(1),
+      ]);
+      // Mentorship tab: needs the course setting AND the (course-scoped) permission.
+      if (grantedPermissions?.permissions) {
+        grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION] =
+          Boolean(grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION]) &&
+          Boolean(bootcampType?.mentorshipEnabled);
+      }
       return [
         null,
         {

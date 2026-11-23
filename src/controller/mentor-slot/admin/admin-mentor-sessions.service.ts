@@ -44,6 +44,8 @@ import {
   AdminMentorsQueryDto,
   MentorSessionAttendanceFilter,
 } from './dto/admin-mentor-sessions-query.dto';
+import { RbacPermissionService } from '../../../rbac/rbac.permission.service';
+import { VIEW_MENTORSHIP_PERMISSION } from '../../../rbac/utility';
 import {
   LATE_JOIN_THRESHOLD_MINUTES,
   summarizeBookingAttendance,
@@ -73,6 +75,8 @@ interface AdminRequester {
 
 @Injectable()
 export class AdminMentorSessionsService {
+  constructor(private readonly rbacPermissionService: RbacPermissionService) {}
+
   /* ==========================================================================
      ORG ACCESS RESOLUTION
   ========================================================================== */
@@ -100,9 +104,9 @@ export class AdminMentorSessionsService {
       return requestedOrgId;
     }
 
-    if (!roles.has('admin')) {
-      throw new ForbiddenException('Only admins can view mentorship sessions.');
-    }
+    // Non-admin roles are allowed past this point only for the token's org;
+    // every caller then enforces course-level viewMentorship via
+    // assertMentorshipAccess.
 
     // Roles on the JWT user are resolved for the token's org, so an org admin
     // is only trusted for that org — never for an arbitrary orgId.
@@ -143,6 +147,44 @@ export class AdminMentorSessionsService {
     }
   }
 
+  private isOrgAdmin(user: AdminRequester): boolean {
+    const roles = new Set(Array.isArray(user?.roles) ? user.roles : []);
+    return roles.has('super_admin') || roles.has('admin');
+  }
+
+  /**
+   * Every role: mentorship must be enabled for the course.
+   * Admin / Super Admin have viewMentorship by default; any other role also
+   * needs viewMentorship granted for this exact course.
+   */
+  private async assertMentorshipAccess(
+    user: AdminRequester,
+    orgId: number | null,
+    bootcampId: number | null | undefined,
+  ) {
+    const isOrgAdmin = this.isOrgAdmin(user);
+    if (!isOrgAdmin && !bootcampId) {
+      throw new ForbiddenException(
+        'Select a course to view mentorship sessions.',
+      );
+    }
+
+    await this.assertMentorshipEnabled(bootcampId);
+    if (isOrgAdmin) return;
+
+    const allowed = await this.rbacPermissionService.userHasPermissions(
+      Number(user.id),
+      [VIEW_MENTORSHIP_PERMISSION],
+      orgId,
+      bootcampId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'You do not have permission to view mentorship for this course.',
+      );
+    }
+  }
+
   /* ==========================================================================
      SHARED FILTERS
   ========================================================================== */
@@ -160,9 +202,10 @@ export class AdminMentorSessionsService {
     const orgId = await this.resolveOrganizationScope(user, query.orgId);
 
     // Without a requested course, this endpoint can intentionally span
-    // multiple bootcamps, so do not let one disabled course block others.
-    if (query.bootcampId) {
-      await this.assertMentorshipEnabled(query.bootcampId);
+    // multiple bootcamps for admins, so do not let one disabled course block
+    // others. Non-admin roles must always select a permitted course.
+    if (query.bootcampId || !this.isOrgAdmin(user)) {
+      await this.assertMentorshipAccess(user, orgId, query.bootcampId);
     }
 
     const conditions: SQL[] = [];
@@ -260,8 +303,8 @@ export class AdminMentorSessionsService {
       throw new ForbiddenException('Organization context missing');
     }
 
-    if (query.bootcampId) {
-      await this.assertMentorshipEnabled(query.bootcampId);
+    if (query.bootcampId || !this.isOrgAdmin(user)) {
+      await this.assertMentorshipAccess(user, orgId, query.bootcampId);
     }
 
     const conditions: SQL[] = [
@@ -740,7 +783,7 @@ export class AdminMentorSessionsService {
 
     if (!row) throw new NotFoundException('Booking not found');
 
-    await this.assertMentorshipEnabled(row.bootcampId);
+    await this.assertMentorshipAccess(user, orgId, row.bootcampId);
 
     const now = new Date();
     const [attendanceByBooking, recordings, intervals, meetingEvents] =

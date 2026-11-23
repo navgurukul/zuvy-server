@@ -34,7 +34,9 @@ import {
   zuvyUserRoles,
   zuvyUserRolesAssigned,
   zuvyAuditLogs,
+  zuvyBootcamps,
 } from 'drizzle/schema';
+import { MENTORSHIP_RESOURCE_KEY } from 'src/rbac/utility';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuthService } from 'src/auth/auth.service';
@@ -261,6 +263,7 @@ export class PermissionsService {
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             eq(zuvyUserRolesAssigned.organizationId, orgId),
             eq(zuvyPermissionsRoles.orgId, orgId),
+            isNull(zuvyPermissionsRoles.bootcampId),
           ),
         );
 
@@ -460,6 +463,31 @@ export class PermissionsService {
           .limit(1);
         if (!role) throw new NotFoundException('Role not found');
 
+        // Only Mentorship is course-scoped; every other resource stays org-level.
+        let bootcampId: number | null = null;
+        if (resource.key === MENTORSHIP_RESOURCE_KEY) {
+          if (!dto.bootcampId)
+            throw new BadRequestException(
+              'bootcampId is required for Mentorship permissions',
+            );
+          const [bootcamp] = await tx
+            .select({ organizationId: zuvyBootcamps.organizationId })
+            .from(zuvyBootcamps)
+            .where(eq(zuvyBootcamps.id, dto.bootcampId))
+            .limit(1);
+          if (
+            !bootcamp ||
+            (orgId !== undefined &&
+              orgId !== null &&
+              Number(bootcamp.organizationId) !== Number(orgId))
+          )
+            throw new NotFoundException('Course not found');
+          bootcampId = dto.bootcampId;
+        }
+        const permissionRoleBootcampCondition = bootcampId
+          ? eq(zuvyPermissionsRoles.bootcampId, bootcampId)
+          : isNull(zuvyPermissionsRoles.bootcampId);
+
         const resourcePerms = await tx
           .select({ id: zuvyPermissions.id })
           .from(zuvyPermissions)
@@ -500,14 +528,27 @@ export class PermissionsService {
                 roleId,
                 permissionId,
                 orgId,
+                bootcampId,
               })),
             )
-            .onConflictDoNothing({
-              target: [
-                zuvyPermissionsRoles.roleId,
-                zuvyPermissionsRoles.permissionId,
-              ],
-            });
+            .onConflictDoNothing(
+              bootcampId
+                ? {
+                    target: [
+                      zuvyPermissionsRoles.roleId,
+                      zuvyPermissionsRoles.permissionId,
+                      zuvyPermissionsRoles.bootcampId,
+                    ],
+                    where: sql.raw('bootcamp_id IS NOT NULL'),
+                  }
+                : {
+                    target: [
+                      zuvyPermissionsRoles.roleId,
+                      zuvyPermissionsRoles.permissionId,
+                    ],
+                    where: sql.raw('bootcamp_id IS NULL'),
+                  },
+            );
         }
 
         if (disableIds.length) {
@@ -517,6 +558,7 @@ export class PermissionsService {
               and(
                 eq(zuvyPermissionsRoles.roleId, roleId),
                 permissionRoleOrgCondition,
+                permissionRoleBootcampCondition,
                 inArray(zuvyPermissionsRoles.permissionId, disableIds),
               ),
             );
@@ -529,6 +571,7 @@ export class PermissionsService {
             and(
               eq(zuvyPermissionsRoles.roleId, roleId),
               permissionRoleOrgCondition,
+              permissionRoleBootcampCondition,
             ),
           );
 
@@ -626,7 +669,11 @@ export class PermissionsService {
     if (!role) throw new NotFoundException('Role not found');
   }
 
-  async getPermissionsByRoleAndResource(roleId: number, resourceId: number) {
+  async getPermissionsByRoleAndResource(
+    roleId: number,
+    resourceId: number,
+    bootcampId?: number,
+  ) {
     try {
       // Ensure role exists
       await this.ensureExists(roleId);
@@ -656,6 +703,10 @@ export class PermissionsService {
                 and(
                   eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id),
                   eq(zuvyPermissionsRoles.roleId, roleId),
+                  // Mentorship grants are read for the selected course only.
+                  resource.key === MENTORSHIP_RESOURCE_KEY && bootcampId
+                    ? eq(zuvyPermissionsRoles.bootcampId, bootcampId)
+                    : isNull(zuvyPermissionsRoles.bootcampId),
                 ),
               ),
           ),

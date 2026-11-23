@@ -236,6 +236,16 @@ export class AssignPermissionsToRoleDto {
   orgId?: number;
 
   @ApiProperty({
+    description:
+      'Course (bootcamp) ID. Required for course-scoped resources (Mentorship); ignored for all other resources.',
+    example: 34,
+    required: false,
+  })
+  @IsNumber()
+  @IsOptional()
+  bootcampId?: number;
+
+  @ApiProperty({
     description: 'Resource ID to assign the permissions to',
     example: { 1: true, 2: false },
   })

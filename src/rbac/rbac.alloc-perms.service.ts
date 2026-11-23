@@ -128,6 +128,7 @@ export class RbacAllocPermsService {
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             sql`${zuvyUserRolesAssigned.organizationId} IS NOT DISTINCT FROM ${orgId}`,
             sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`,
+            sql`${zuvyPermissionsRoles.bootcampId} IS NULL`,
             eq(zuvyResources.id, Number(resourceId)),
             eq(zuvyPermissions.name, permissionName),
           ),

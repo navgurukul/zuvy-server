@@ -24,7 +24,9 @@ import {
   zuvyUserRoles,
   zuvyUserRolesAssigned,
   zuvyAuditLogs,
+  zuvyBootcamps,
 } from 'drizzle/schema';
+import { MENTORSHIP_RESOURCE_KEY } from './utility';
 import { AuthService } from 'src/auth/auth.service';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
@@ -223,9 +225,15 @@ export class RbacPermissionService {
     }
   }
 
+  /**
+   * Org-level assignments (bootcamp_id IS NULL) always apply. When bootcampId
+   * is given, assignments made for that course apply as well — never those of
+   * another course.
+   */
   async getUserPermissions(
     userId: number,
     orgId: number | null,
+    bootcampId?: number | null,
   ): Promise<{ permission: string; resource: string }[]> {
     try {
       // Drizzle ORM equivalent for the above SQL
@@ -260,6 +268,12 @@ export class RbacPermissionService {
             orgId !== null
               ? eq(zuvyPermissionsRoles.orgId, orgId)
               : isNull(zuvyPermissionsRoles.orgId),
+            bootcampId
+              ? or(
+                  isNull(zuvyPermissionsRoles.bootcampId),
+                  eq(zuvyPermissionsRoles.bootcampId, bootcampId),
+                )
+              : isNull(zuvyPermissionsRoles.bootcampId),
           ),
         );
 
@@ -279,6 +293,7 @@ export class RbacPermissionService {
     userId: number,
     requiredPermissions: string[],
     orgId: number | null,
+    bootcampId?: number | null,
   ): Promise<boolean> {
     try {
       if (!requiredPermissions || requiredPermissions.length === 0) {
@@ -304,7 +319,11 @@ export class RbacPermissionService {
         return true;
       }
 
-      const userPermissions = await this.getUserPermissions(userId, orgId);
+      const userPermissions = await this.getUserPermissions(
+        userId,
+        orgId,
+        bootcampId,
+      );
       const userPermissionsSet = new Set(
         userPermissions.map((up) => up.permission),
       );
@@ -477,6 +496,31 @@ export class RbacPermissionService {
           .limit(1);
         if (!role) throw new NotFoundException('Role not found');
 
+        // Only Mentorship is course-scoped; every other resource stays org-level.
+        let bootcampId: number | null = null;
+        if (resource.key === MENTORSHIP_RESOURCE_KEY) {
+          if (!dto.bootcampId)
+            throw new BadRequestException(
+              'bootcampId is required for Mentorship permissions',
+            );
+          const [bootcamp] = await tx
+            .select({ organizationId: zuvyBootcamps.organizationId })
+            .from(zuvyBootcamps)
+            .where(eq(zuvyBootcamps.id, dto.bootcampId))
+            .limit(1);
+          if (
+            !bootcamp ||
+            (orgId !== undefined &&
+              orgId !== null &&
+              Number(bootcamp.organizationId) !== Number(orgId))
+          )
+            throw new NotFoundException('Course not found');
+          bootcampId = dto.bootcampId;
+        }
+        const permissionRoleBootcampCondition = bootcampId
+          ? eq(zuvyPermissionsRoles.bootcampId, bootcampId)
+          : isNull(zuvyPermissionsRoles.bootcampId);
+
         const resourcePerms = await tx
           .select({ id: zuvyPermissions.id })
           .from(zuvyPermissions)
@@ -507,14 +551,27 @@ export class RbacPermissionService {
                 roleId,
                 permissionId,
                 orgId,
+                bootcampId,
               })),
             )
-            .onConflictDoNothing({
-              target: [
-                zuvyPermissionsRoles.roleId,
-                zuvyPermissionsRoles.permissionId,
-              ],
-            });
+            .onConflictDoNothing(
+              bootcampId
+                ? {
+                    target: [
+                      zuvyPermissionsRoles.roleId,
+                      zuvyPermissionsRoles.permissionId,
+                      zuvyPermissionsRoles.bootcampId,
+                    ],
+                    where: sql.raw('bootcamp_id IS NOT NULL'),
+                  }
+                : {
+                    target: [
+                      zuvyPermissionsRoles.roleId,
+                      zuvyPermissionsRoles.permissionId,
+                    ],
+                    where: sql.raw('bootcamp_id IS NULL'),
+                  },
+            );
         }
 
         if (disableIds.length) {
@@ -524,6 +581,7 @@ export class RbacPermissionService {
               and(
                 eq(zuvyPermissionsRoles.roleId, roleId),
                 permissionRoleOrgCondition,
+                permissionRoleBootcampCondition,
                 inArray(zuvyPermissionsRoles.permissionId, disableIds),
               ),
             );
@@ -536,6 +594,7 @@ export class RbacPermissionService {
             and(
               eq(zuvyPermissionsRoles.roleId, roleId),
               permissionRoleOrgCondition,
+              permissionRoleBootcampCondition,
             ),
           );
 

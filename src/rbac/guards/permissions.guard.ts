@@ -118,12 +118,14 @@ export class PermissionsGuard implements CanActivate {
     }
 
     try {
-      // Check if user has all required permissions
+      // Check if user has all required permissions. Course-scoped grants
+      // (e.g. viewMentorship) only count for the course in this request.
       const hasPermissions =
         await this.rbacPermissionService.userHasPermissions(
           user.id,
           requiredPermissions,
           orgId,
+          bootcampId,
         );
 
       if (!hasPermissions) {

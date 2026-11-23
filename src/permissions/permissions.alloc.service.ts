@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { inArray, sql, eq, and, isNull } from 'drizzle-orm';
+import { inArray, sql, eq, and, isNull, or } from 'drizzle-orm';
 import {
   userRoles,
   users,
@@ -79,6 +79,7 @@ export class PermissionsAllocationService {
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
             sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`, // ✅ better handling
+            isNull(zuvyPermissionsRoles.bootcampId),
             eq(zuvyPermissions.resourcesId, resourceId),
           ),
         );
@@ -271,6 +272,7 @@ export class PermissionsAllocationService {
             orgId !== null
               ? eq(zuvyPermissionsRoles.orgId, orgId)
               : isNull(zuvyPermissionsRoles.orgId),
+            isNull(zuvyPermissionsRoles.bootcampId),
             eq(zuvyResources.id, resourceId),
             eq(zuvyPermissions.name, permissionName),
           ),
@@ -362,6 +364,7 @@ export class PermissionsAllocationService {
     roleNames: string[],
     targetPermissions: string[],
     orgId: number | null,
+    bootcampId?: number | null,
   ): Promise<any> {
     try {
       if (!roleNames || roleNames.length === 0) {
@@ -425,6 +428,13 @@ export class PermissionsAllocationService {
             orgId !== null
               ? eq(zuvyPermissionsRoles.orgId, orgId)
               : isNull(zuvyPermissionsRoles.orgId),
+            // Org-level grants always; course grants only for the given course.
+            bootcampId
+              ? or(
+                  isNull(zuvyPermissionsRoles.bootcampId),
+                  eq(zuvyPermissionsRoles.bootcampId, bootcampId),
+                )
+              : isNull(zuvyPermissionsRoles.bootcampId),
           ),
         );
 

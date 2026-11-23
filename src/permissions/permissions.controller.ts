@@ -441,13 +441,22 @@ export class PermissionsController {
   @ApiParam({ name: 'resourceId', example: 1, description: 'Resource ID' })
   @ApiOkResponse({ description: 'Permissions retrieved' })
   @ApiNotFoundResponse({ description: 'Role or Resource not found' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: false,
+    type: Number,
+    description:
+      'Course ID; for the Mentorship resource, returns grants for this course',
+  })
   async getPermissionsByRoleAndResource(
     @Param('roleId') roleId: number,
     @Param('resourceId') resourceId: number,
+    @Query('bootcampId') bootcampId?: number,
   ) {
     return this.permissionsService.getPermissionsByRoleAndResource(
       +roleId,
       +resourceId,
+      bootcampId ? +bootcampId : undefined,
     );
   }
 }
