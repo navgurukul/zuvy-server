@@ -673,7 +673,8 @@ export class ContentService {
         data: new Uint8Array(pdfBuffer),
         useSystemFonts: true,
       }).promise;
-      const content = await (await doc.getPage(1)).getTextContent();
+      const pdfPage = await doc.getPage(1);
+      const content = await pdfPage.getTextContent();
 
       // "This certifies that" is split into several text items; join items
       // sharing a baseline and keep the first item's position
@@ -724,6 +725,10 @@ export class ContentService {
           }
         }
       }
+      // Image-only templates (e.g. AFE): find the "Date:" label in the image
+      if (!anchors.date) {
+        anchors.date = await this.findDateLabelInImage(pdfjsLib, pdfPage);
+      }
       await doc.destroy();
     } catch (err) {
       this.logger?.warn?.(`Certificate text lookup failed: ${err?.message}`);
@@ -738,6 +743,85 @@ export class ContentService {
     }
     return anchors;
   }
+  // Locates the dark "Date:" label in the bottom-right of a template whose
+  // page is a single embedded image, returning its box in page coordinates
+  // (y = baseline, fontSize estimated from the cap height).
+  private async findDateLabelInImage(pdfjsLib: any, pdfPage: any) {
+    const { OPS } = pdfjsLib;
+    const ops = await pdfPage.getOperatorList();
+    const [, , pageW, pageH] = pdfPage.view;
+
+    // Track the transform matrix to know where the image is drawn
+    type Matrix = number[];
+    const multiply = (m: Matrix, n: Matrix): Matrix => [
+      m[0] * n[0] + m[2] * n[1],
+      m[1] * n[0] + m[3] * n[1],
+      m[0] * n[2] + m[2] * n[3],
+      m[1] * n[2] + m[3] * n[3],
+      m[0] * n[4] + m[2] * n[5] + m[4],
+      m[1] * n[4] + m[3] * n[5] + m[5],
+    ];
+    let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+    const stack: Matrix[] = [];
+    let imageId: string | undefined;
+    let imageCtm: Matrix | undefined;
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i];
+      if (fn === OPS.save) stack.push(ctm);
+      else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+      else if (fn === OPS.transform) ctm = multiply(ctm, ops.argsArray[i]);
+      else if (fn === OPS.paintImageXObject) {
+        imageId = ops.argsArray[i][0];
+        imageCtm = ctm;
+      }
+    }
+    if (!imageId || !imageCtm) return undefined;
+    const [a, b, c, d, e, f] = imageCtm;
+    if (b !== 0 || c !== 0 || a <= 0 || d <= 0) return undefined;
+
+    const img: any = await new Promise((resolve) =>
+      pdfPage.objs.get(imageId, resolve),
+    );
+    const channels = img?.kind === 2 ? 3 : img?.kind === 3 ? 4 : 0;
+    if (!channels || !img.data) return undefined;
+
+    // Page point -> image pixel (image rows run top to bottom)
+    const toPx = (x: number) => Math.round(((x - e) / a) * img.width);
+    const toPy = (y: number) => Math.round((1 - (y - f) / d) * img.height);
+    const x0 = Math.max(0, toPx(pageW * 0.62));
+    const x1 = Math.min(img.width - 1, toPx(pageW * 0.92));
+    const y0 = Math.max(0, toPy(pageH * 0.24));
+    const y1 = Math.min(img.height - 1, toPy(pageH * 0.08));
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const k = (y * img.width + x) * channels;
+        if (img.data[k] + img.data[k + 1] + img.data[k + 2] < 300) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (minX === Infinity) return undefined;
+
+    const scaleX = a / img.width;
+    const scaleY = d / img.height;
+    const capHeight = (maxY - minY + 1) * scaleY;
+    return {
+      x: e + minX * scaleX,
+      y: f + d - (maxY + 1) * scaleY,
+      width: (maxX - minX + 1) * scaleX,
+      // Helvetica cap height is ~0.718 of the font size
+      fontSize: capHeight / 0.718,
+    };
+  }
+
   // Standard PDF fonts only cover WinAnsi characters; drop anything else
   private toEncodableText(font: PDFFont, text: string): string {
     const supported = new Set(font.getCharacterSet());
