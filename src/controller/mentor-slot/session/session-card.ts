@@ -420,7 +420,7 @@ function cancelledBy(value: string | null): 'you' | 'mentor' | 'ops' {
   return 'ops';
 }
 
-export function recordingState(
+function recordingState(
   input: SessionCardInput,
   now: Date,
 ): { state: RecordingState; url: string | null } {

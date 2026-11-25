@@ -9,8 +9,6 @@ import {
   assertCanChangeSession,
   assertCreditsAllowBooking,
   assertSlotHasNotice,
-  assertSlotLeadTime,
-  istWeekRange,
   computeCreditState,
   earliestBookableStart,
   formatIstDateTime,
@@ -291,61 +289,6 @@ describe('cancel and reschedule close at the notice (ST4)', () => {
   });
 });
 
-describe('new mentor slots: at least slot_min_lead_days ahead (MT2)', () => {
-  const now = ist('2026-11-04T18:00:00');
-
-  it('refuses a slot a minute short of 4 days, accepts exactly 4 days', () => {
-    const tooSoon = refusal(() =>
-      assertSlotLeadTime(
-        new Date(now.getTime() + 4 * 24 * HOUR - MIN),
-        now,
-        config,
-      ),
-    );
-    expect(tooSoon?.code).toBe('SLOT_LEAD_TOO_SHORT');
-    expect(tooSoon?.message).toBe(
-      'Slots need to start at least 4 days from now. Pick a time from 8 Nov 2026, 6:00 pm on.',
-    );
-    expect(
-      refusal(() =>
-        assertSlotLeadTime(
-          new Date(now.getTime() + 4 * 24 * HOUR),
-          now,
-          config,
-        ),
-      ),
-    ).toBeNull();
-  });
-
-  it('0 days turns the rule off', () => {
-    expect(
-      refusal(() =>
-        assertSlotLeadTime(new Date(now.getTime() + MIN), now, {
-          ...config,
-          minSlotLeadDays: 0,
-        }),
-      ),
-    ).toBeNull();
-  });
-});
-
-describe('the availability week is Monday-Sunday in India time', () => {
-  it('a Monday 3:00 am IST belongs to that week, not the one before', () => {
-    // Mon 9 Nov 2026, 03:00 IST = Sun 8 Nov 21:30 UTC.
-    const { start, end } = istWeekRange(ist('2026-11-09T03:00:00'));
-    expect(start).toEqual(ist('2026-11-09T00:00:00'));
-    expect(end).toEqual(ist('2026-11-16T00:00:00'));
-  });
-
-  it('Sunday night stays in its week; the offset moves whole weeks', () => {
-    const { start } = istWeekRange(ist('2026-11-15T23:30:00'));
-    expect(start).toEqual(ist('2026-11-09T00:00:00'));
-    expect(istWeekRange(ist('2026-11-15T23:30:00'), 1).start).toEqual(
-      ist('2026-11-16T00:00:00'),
-    );
-  });
-});
-
 describe('config from the table', () => {
   it('uses the defaults for missing keys', () => {
     const { config: parsed, problems } = parseMentorshipConfig([]);
@@ -369,7 +312,6 @@ describe('config from the table', () => {
       noticeHours: 24,
       joinOpenMinutes: 15,
       maxAcceptedReschedules: 2,
-      minSlotLeadDays: 4,
       creditsCountedFrom: new Date('2026-12-01T00:00:00.000Z'),
     });
   });

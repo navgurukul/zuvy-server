@@ -14,8 +14,6 @@ export interface MentorshipConfig {
   joinOpenMinutes: number;
   /** Accepted reschedules allowed per booking. */
   maxAcceptedReschedules: number;
-  /** A new mentor slot must start at least this many days from now. */
-  minSlotLeadDays: number;
   /** Only bookings made from this moment use a credit. */
   creditsCountedFrom: Date;
 }
@@ -28,7 +26,6 @@ export const DEFAULT_MENTORSHIP_CONFIG: Readonly<MentorshipConfig> =
     noticeHours: 72,
     joinOpenMinutes: 10,
     maxAcceptedReschedules: 1,
-    minSlotLeadDays: 4,
     creditsCountedFrom: new Date('2026-04-15T00:00:00.000Z'),
   });
 
@@ -38,7 +35,6 @@ const KEYS: Record<keyof MentorshipConfig, string> = {
   noticeHours: 'notice_hours',
   joinOpenMinutes: 'join_open_minutes',
   maxAcceptedReschedules: 'max_accepted_reschedules',
-  minSlotLeadDays: 'slot_min_lead_days',
   creditsCountedFrom: 'credits_counted_from',
 };
 

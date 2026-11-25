@@ -1307,7 +1307,7 @@ async function main() {
       await expectRefused(
         'booked slot cannot be removed',
         () => svc.removeSlot(MENTOR, booked.id, ORG),
-        /Booked slots can't be removed. Cancel the booking first./,
+        /Booked slots cannot be deleted/,
       );
       report(
         'booked slot keeps its hold',

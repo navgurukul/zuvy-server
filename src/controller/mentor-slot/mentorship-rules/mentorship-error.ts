@@ -12,10 +12,7 @@ export type MentorshipErrorCode =
   | 'ALREADY_CANCELLED'
   | 'SESSION_ENDED'
   | 'RESCHEDULE_PENDING'
-  | 'RESCHEDULE_LIMIT'
-  | 'SLOT_LEAD_TOO_SHORT'
-  | 'SLOT_BOOKED'
-  | 'JOIN_NOT_OPEN';
+  | 'RESCHEDULE_LIMIT';
 
 const STATUS: Record<MentorshipErrorCode, HttpStatus> = {
   SLOT_TOO_SOON: HttpStatus.BAD_REQUEST,
@@ -28,9 +25,6 @@ const STATUS: Record<MentorshipErrorCode, HttpStatus> = {
   SESSION_ENDED: HttpStatus.BAD_REQUEST,
   RESCHEDULE_PENDING: HttpStatus.BAD_REQUEST,
   RESCHEDULE_LIMIT: HttpStatus.BAD_REQUEST,
-  SLOT_LEAD_TOO_SHORT: HttpStatus.BAD_REQUEST,
-  SLOT_BOOKED: HttpStatus.BAD_REQUEST,
-  JOIN_NOT_OPEN: HttpStatus.BAD_REQUEST,
 };
 
 /**

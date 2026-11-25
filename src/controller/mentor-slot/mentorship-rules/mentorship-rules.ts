@@ -171,51 +171,6 @@ export function goodToKnow(config: MentorshipConfig) {
   ] as const;
 }
 
-const IST_OFFSET_MS = 330 * 60 * 1000;
-
-/**
- * The Monday 00:00 - next Monday 00:00 week (India time) that `now` falls
- * in, moved by `weekOffset` weeks, as UTC instants.
- */
-export function istWeekRange(now: Date, weekOffset = 0) {
-  const ist = new Date(now.getTime() + IST_OFFSET_MS);
-  const day = ist.getUTCDay();
-  const toMonday = day === 0 ? -6 : 1 - day;
-  const mondayIstMidnight = Date.UTC(
-    ist.getUTCFullYear(),
-    ist.getUTCMonth(),
-    ist.getUTCDate() + toMonday + weekOffset * 7,
-  );
-  const start = new Date(mondayIstMidnight - IST_OFFSET_MS);
-  return { start, end: new Date(start.getTime() + 7 * DAY_MS) };
-}
-
-/** The earliest start a new mentor slot can have (slot_min_lead_days). */
-export function earliestSlotStart(now: Date, config: MentorshipConfig): Date {
-  return new Date(now.getTime() + config.minSlotLeadDays * DAY_MS);
-}
-
-/**
- * A mentor creates slots at least `minSlotLeadDays` ahead (decision,
- * 17 Nov 2026: T+4 days, so Ops has time to share them). Exactly the lead
- * is allowed. 0 days turns the rule off.
- */
-export function assertSlotLeadTime(
-  slotStart: Date,
-  now: Date,
-  config: MentorshipConfig,
-) {
-  if (config.minSlotLeadDays <= 0) return;
-  const earliest = earliestSlotStart(now, config);
-  if (slotStart.getTime() < earliest.getTime()) {
-    throw new MentorshipError(
-      'SLOT_LEAD_TOO_SHORT',
-      `Slots need to start at least ${plural(config.minSlotLeadDays, 'day')} from now. Pick a time from ${formatIstDateTime(earliest)} on.`,
-      { minSlotLeadDays: config.minSlotLeadDays, earliestStart: earliest },
-    );
-  }
-}
-
 /** The credit fields every response carries. */
 export function creditData(state: CreditState) {
   return {
