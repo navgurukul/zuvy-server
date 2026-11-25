@@ -56,6 +56,7 @@ import {
   MentorshipConfigService,
 } from './mentorship-rules/mentorship-config.service';
 import { CreditService } from './mentorship-rules/credit.service';
+import { formatDayTime } from './session/session-card';
 import { MentorSkillsService } from './skills/mentor-skills.service';
 import { splitSkillList } from './skills/skill-key';
 import {
@@ -63,6 +64,10 @@ import {
   assertCreditsAllowBooking,
   assertCanChangeSession,
   assertSlotHasNotice,
+  assertSlotLeadTime,
+  changesCloseAt,
+  earliestSlotStart,
+  istWeekRange,
   computeCreditState,
   creditData,
   earliestBookableStart,
@@ -79,6 +84,18 @@ const rescheduleTarget = alias(zuvyMentorSlotAvailability, 'reschedule_target');
 // Back to SCHEDULED only if the session is still waiting on the request.
 const stillWaitingToScheduled = () =>
   sql`CASE WHEN ${zuvyMentorSlotBooking.sessionLifecycleState} = 'RESCHEDULE_PENDING' THEN 'SCHEDULED' ELSE ${zuvyMentorSlotBooking.sessionLifecycleState} END`;
+
+/** "Karan Patel" -> "Karan P." */
+const shortName = (name: string | null) => {
+  const parts = String(name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return null;
+  return parts.length === 1
+    ? parts[0]
+    : `${parts[0]} ${parts[parts.length - 1][0]}.`;
+};
 
 // A booking still without its join link this long after it was made is
 // treated as abandoned between bookSlot's steps: the abandoned-booking job
@@ -2341,46 +2358,53 @@ export class MentorSlotService {
       organizationId,
     );
 
-    const [slot] = await db
-      .select()
-      .from(zuvyMentorSlotAvailability)
-      .where(eq(zuvyMentorSlotAvailability.id, slotId))
-      .limit(1);
-
-    if (!slot) {
-      throw new NotFoundException('Slot not found.');
-    }
-
-    if (slot.mentorSlotManagementId !== mentorProfile.id) {
-      throw new ForbiddenException('You do not own this slot.');
-    }
-
-    if (new Date(slot.slotStartDateTime) <= new Date()) {
-      throw new BadRequestException('Only upcoming slots can be deleted.');
-    }
-
-    if (slot.currentBookedCount > 0) {
-      throw new BadRequestException('Booked slots cannot be deleted.');
-    }
-
-    const [{ count: bookingCount }] = await db
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(
-        and(
-          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
-          ne(zuvyMentorSlotBooking.status, 'cancelled'),
-        ),
-      );
-
-    if (Number(bookingCount) > 0) {
-      throw new BadRequestException('Booked slots cannot be deleted.');
-    }
-
-    // 12-hour deletion notice is temporarily disabled for short-notice slots.
-    // this.enforceMinimumNotice(slot.slotStartDateTime);
-
+    // Everything is checked on the locked slot row, in the same transaction
+    // as the delete: a booking (or a reschedule hold) made between a check
+    // and the delete would otherwise be deleted along with the slot.
+    // Lock order as bookSlot: slot row, then licence pool.
     const result = await db.transaction(async (trx) => {
+      const [slot] = await trx
+        .select()
+        .from(zuvyMentorSlotAvailability)
+        .where(eq(zuvyMentorSlotAvailability.id, slotId))
+        .for('update');
+
+      if (!slot) {
+        throw new NotFoundException('Slot not found.');
+      }
+
+      if (slot.mentorSlotManagementId !== mentorProfile.id) {
+        throw new ForbiddenException('You do not own this slot.');
+      }
+
+      if (new Date(slot.slotStartDateTime) <= new Date()) {
+        throw new BadRequestException('Only upcoming slots can be deleted.');
+      }
+
+      // An open slot can be removed at any time (no lead-time limit). A
+      // booked one can't, nor one a reschedule request holds a seat on.
+      const [{ count: holders }] = await trx
+        .select({ count: count() })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            ne(zuvyMentorSlotBooking.status, 'cancelled'),
+            or(
+              eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+              and(
+                eq(zuvyMentorSlotBooking.rescheduleProposedSlotId, slotId),
+                eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+              ),
+            ),
+          ),
+        );
+      if (slot.currentBookedCount > 0 || Number(holders) > 0) {
+        throw new MentorshipError(
+          'SLOT_BOOKED',
+          "Booked slots can't be removed. Cancel the booking first.",
+        );
+      }
+
       await this.zoomLicenseService.releaseMentorSlotAssignment(trx, slotId);
 
       return trx
@@ -3105,6 +3129,9 @@ export class MentorSlotService {
       throw new BadRequestException('Cannot create past slot.');
     }
 
+    // New slots start at least slot_min_lead_days ahead (T+4 days).
+    assertSlotLeadTime(start, new Date(), await this.mentorshipConfig.get());
+
     const durationMinutes = Math.round(
       (end.getTime() - start.getTime()) / (1000 * 60),
     );
@@ -3220,10 +3247,35 @@ export class MentorSlotService {
       { lock: false },
     );
 
+    // The slot form's other checks: the lead time a new slot needs, and
+    // until when students could book it.
+    const config = await this.mentorshipConfig.get();
+    const now = new Date();
+    let leadTime: { ok: boolean; message: string | null } = {
+      ok: true,
+      message: null,
+    };
+    try {
+      assertSlotLeadTime(start, now, config);
+    } catch (error) {
+      if (!(error instanceof MentorshipError)) throw error;
+      leadTime = { ok: false, message: error.message };
+    }
+
     return {
       available: licence.available,
       nextAvailableAt: licence.nextAvailableAt,
       message: licence.message,
+      // NEW: the slot can be created (licence free and lead time met).
+      canCreate: licence.available && leadTime.ok,
+      leadTime: {
+        ...leadTime,
+        minSlotLeadDays: config.minSlotLeadDays,
+        earliestStart: earliestSlotStart(now, config),
+      },
+      // Students can book it until notice_hours before it starts.
+      studentsCanBookUntil: changesCloseAt(start, config),
+      serverTime: now,
     };
   }
 
@@ -3249,30 +3301,20 @@ export class MentorSlotService {
     // actually creating a slot (see createSlot). This used to mean a mentor
     // couldn't even view their own availability if Zoom was slow or had
     // briefly marked their account inactive. See MDA-11.
+    const config = await this.mentorshipConfig.get();
     const now = new Date();
 
     /* ============================
-       WEEK RANGE (MONDAY → SUNDAY)
+       WEEK RANGE (MONDAY → SUNDAY, India time)
+       Worked out in IST, not the server's timezone, so a Monday-morning
+       IST slot lands in its own week on a UTC server.
     ============================ */
 
-    const today = new Date();
-    const day = today.getDay();
-
-    const diffToMonday = day === 0 ? -6 : 1 - day;
-
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() + diffToMonday + weekOffset * 7);
-    startOfWeek.setHours(0, 0, 0, 0);
-
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 7);
-
-    /* ==================================================
-      DISPLAY END OF WEEK (SUNDAY 23:59:59)
-    ================================================== */
-
-    const displayWeekEnd = new Date(endOfWeek);
-    displayWeekEnd.setMilliseconds(displayWeekEnd.getMilliseconds() - 1);
+    const { start: startOfWeek, end: endOfWeek } = istWeekRange(
+      now,
+      weekOffset,
+    );
+    const displayWeekEnd = new Date(endOfWeek.getTime() - 1);
 
     /* ============================
        FETCH SLOTS
@@ -3297,6 +3339,38 @@ export class MentorSlotService {
           : desc(zuvyMentorSlotAvailability.slotStartDateTime),
       );
 
+    // Who is on each slot: its bookings, and reschedule requests holding a
+    // seat on it.
+    const slotIds = slots.map((slot) => slot.id);
+    const people = slotIds.length
+      ? await db
+          .select({
+            bookingId: zuvyMentorSlotBooking.id,
+            slotId: zuvyMentorSlotBooking.slotAvailabilityId,
+            proposedSlotId: zuvyMentorSlotBooking.rescheduleProposedSlotId,
+            rescheduleStatus: zuvyMentorSlotBooking.rescheduleStatus,
+            studentUserId: zuvyMentorSlotBooking.studentUserId,
+            studentName: users.name,
+          })
+          .from(zuvyMentorSlotBooking)
+          .innerJoin(users, eq(users.id, zuvyMentorSlotBooking.studentUserId))
+          .where(
+            and(
+              ne(zuvyMentorSlotBooking.status, 'cancelled'),
+              or(
+                inArray(zuvyMentorSlotBooking.slotAvailabilityId, slotIds),
+                and(
+                  inArray(
+                    zuvyMentorSlotBooking.rescheduleProposedSlotId,
+                    slotIds,
+                  ),
+                  eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
+                ),
+              ),
+            ),
+          )
+      : [];
+
     /* ============================
        PROCESS STATUS + METRICS
     ============================ */
@@ -3306,6 +3380,15 @@ export class MentorSlotService {
     let completed = 0;
     let closed = 0;
     let totalMinutes = 0;
+    const summary = {
+      slots: slots.length,
+      open: 0,
+      tooSoonToBook: 0,
+      booked: 0,
+      held: 0,
+      past: 0,
+    };
+    const bookableFrom = earliestBookableStart(now, config);
 
     const processedSlots = slots.map((slot) => {
       const slotStart = new Date(slot.slotStartDateTime);
@@ -3332,9 +3415,53 @@ export class MentorSlotService {
 
       totalMinutes += slot.durationMinutes;
 
+      // What the Availability calendar shows (MT2).
+      const booked = people.filter((p) => p.slotId === slot.id);
+      const held = people.filter(
+        (p) => p.proposedSlotId === slot.id && p.rescheduleStatus === 'pending',
+      );
+      const bookableUntil = changesCloseAt(slotStart, config);
+      let state: 'open' | 'tooSoonToBook' | 'booked' | 'held' | 'past';
+      let message: string;
+      if (slotStart <= now) {
+        state = 'past';
+        message = 'This slot has passed.';
+      } else if (booked.length) {
+        state = 'booked';
+        message = `Booked by ${booked.map((p) => p.studentName ?? 'a student').join(', ')}. Booked slots can't be removed. Cancel the booking first.`;
+      } else if (held.length) {
+        state = 'held';
+        message =
+          "A student asked to move their session to this slot, so it's held for them. Answer the request before removing it.";
+      } else if (slotStart < bookableFrom) {
+        state = 'tooSoonToBook';
+        message = `Students can't book this slot any more: it starts in under ${config.noticeHours} hours. You can remove it.`;
+      } else {
+        state = 'open';
+        message = `Students can book this slot until ${formatDayTime(bookableUntil)}, ${config.noticeHours} hours before it starts. You can remove it at any time while it's open.`;
+      }
+      summary[state] += 1;
+      const canRemove = state === 'open' || state === 'tooSoonToBook';
+
       return {
         ...slot,
         status,
+        // NEW (MT2)
+        state,
+        bookableUntil,
+        canRemove,
+        removeBlockedReason: canRemove
+          ? null
+          : state === 'past'
+            ? 'SLOT_PAST'
+            : 'SLOT_BOOKED',
+        message,
+        students: booked.map((p) => ({
+          bookingId: p.bookingId,
+          userId: p.studentUserId,
+          name: p.studentName,
+          shortName: shortName(p.studentName),
+        })),
       };
     });
 
@@ -3355,6 +3482,14 @@ export class MentorSlotService {
       weekStart: startOfWeek,
       weekEnd: displayWeekEnd,
       metrics,
+      // NEW: "5 slots this week · 2 open · 2 booked"
+      summary,
+      rules: {
+        noticeHours: config.noticeHours,
+        minSlotLeadDays: config.minSlotLeadDays,
+      },
+      earliestNewSlotStart: earliestSlotStart(now, config),
+      serverTime: now,
       slots: processedSlots,
     };
   }
@@ -3396,6 +3531,86 @@ export class MentorSlotService {
         ...b,
         meetingLink: this.mapMeetingLink(b, userIdBigInt),
       })),
+    };
+  }
+
+  /**
+   * The link the mentor (the meeting's host) starts the session with, fetched
+   * from Zoom at the moment they click Join (MT1). The host link saved at
+   * booking time carries a Zoom token that expires a few hours after it was
+   * issued, so it is usually dead by the session. Only inside the join
+   * window: joinOpenMinutes before the start until the end.
+   */
+  async getMentorJoinLink(
+    mentorUserId: number,
+    bookingId: number,
+    organizationId?: number,
+  ) {
+    const booking = await this.ensureMentorOwnsBooking(
+      mentorUserId,
+      bookingId,
+      organizationId,
+    );
+    if (booking.status === 'cancelled') {
+      throw new MentorshipError(
+        'ALREADY_CANCELLED',
+        'This session was cancelled.',
+      );
+    }
+    const [slot] = await db
+      .select({
+        start: zuvyMentorSlotAvailability.slotStartDateTime,
+        end: zuvyMentorSlotAvailability.slotEndDateTime,
+      })
+      .from(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId))
+      .limit(1);
+    if (!slot) throw new NotFoundException('Slot not found.');
+
+    const config = await this.mentorshipConfig.get();
+    const now = new Date();
+    const start = new Date(slot.start);
+    const end = new Date(slot.end);
+    const opensAt = new Date(start.getTime() - config.joinOpenMinutes * 60_000);
+    if (now < opensAt) {
+      throw new MentorshipError(
+        'JOIN_NOT_OPEN',
+        `Join opens ${config.joinOpenMinutes} min before the start (${formatDayTime(opensAt)}).`,
+        { joinOpensAt: opensAt },
+      );
+    }
+    if (now >= end) {
+      throw new MentorshipError('SESSION_ENDED', 'This session has ended.');
+    }
+
+    let url: string | null = null;
+    let fresh = false;
+    if (booking.isZoomMeet && booking.zoomMeetingId) {
+      const meeting = await this.zoomService.getMeeting(booking.zoomMeetingId);
+      if (meeting.success && meeting.data?.start_url) {
+        url = meeting.data.start_url;
+        fresh = true;
+      } else {
+        this.logger.warn(
+          `Fresh host link for booking ${bookingId} unavailable (${meeting.error ?? 'no start_url'}); using the saved one.`,
+        );
+      }
+    }
+    url = url ?? booking.zoomStartUrl ?? booking.meetingLink ?? null;
+    if (!url) {
+      throw new BadRequestException(
+        "This session's meeting isn't set up. Email team@zuvy.org.",
+      );
+    }
+    return {
+      bookingId,
+      url,
+      // false: Zoom couldn't be reached and this is the saved link, which
+      // may have expired; signing in to Zoom and using the join link works.
+      fresh,
+      joinLink: booking.meetingLink,
+      joinClosesAt: end,
+      serverTime: now,
     };
   }
 

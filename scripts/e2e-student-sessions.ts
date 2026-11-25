@@ -391,8 +391,11 @@ async function main() {
         BigInt(MENTOR),
       );
       report(
-        'mentor detail unchanged (no student card)',
-        !('displayState' in asMentor) && 'zoomStartUrl' in asMentor,
+        'mentor detail: the mentor card, not the student card',
+        asMentor.displayState === 'ACTION_NEEDED' &&
+          'studentCredits' in asMentor &&
+          !('rescheduleOutcome' in asMentor) &&
+          'zoomStartUrl' in asMentor,
       );
     });
   } finally {
