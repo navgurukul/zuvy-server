@@ -4,7 +4,7 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { and, eq, sql, gte, lte, inArray } from 'drizzle-orm';
+import { and, eq, ne, sql, gte, lte, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
@@ -201,7 +201,11 @@ export class MentorMetricsService {
        SLOT UTILIZATION
     ========================================================== */
 
-    const utilizationConditions: any[] = [];
+    // A removed slot (kept only for its cancelled bookings) isn't offered
+    // time, so it doesn't count towards the mentor's slots.
+    const utilizationConditions: any[] = [
+      ne(zuvyMentorSlotAvailability.status, 'removed'),
+    ];
 
     if (fromDate) {
       utilizationConditions.push(

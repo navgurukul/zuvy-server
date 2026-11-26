@@ -35,6 +35,9 @@ const {
 const {
   MentorshipConfigService,
 } = require('../src/controller/mentor-slot/mentorship-rules/mentorship-config.service');
+const {
+  MentorMetricsService,
+} = require('../src/controller/mentor-slot/metrics/mentor-metrics.service');
 const { db } = require('../src/db');
 const schema = require('../drizzle/schema');
 const { and, eq, gte, inArray, lt, sql } = require('drizzle-orm');
@@ -580,7 +583,14 @@ async function main() {
 
       // Removing a slot whose booking was cancelled keeps that booking's
       // history: the slot is marked removed, not deleted (the FK cascades).
+      const metrics = new MentorMetricsService();
+      const slotsBefore = (
+        await metrics.getMentorMetrics(BigInt(MENTOR), ORG, 'all')
+      ).utilization.totalSlots;
       const removed = await svc.removeSlot(MENTOR, goneSlot.id, ORG);
+      const slotsAfter = (
+        await metrics.getMentorMetrics(BigInt(MENTOR), ORG, 'all')
+      ).utilization.totalSlots;
       const [slotRow] = await db
         .select()
         .from(schema.zuvyMentorSlotAvailability)
@@ -603,6 +613,11 @@ async function main() {
           (await ids('cancelled')).includes(gone) &&
           !listed,
         JSON.stringify({ status: slotRow?.status, listed }),
+      );
+      report(
+        "a removed slot no longer counts in the mentor's utilization",
+        slotsAfter === slotsBefore - 1,
+        `${slotsBefore} -> ${slotsAfter}`,
       );
 
       const detail = await sessions.getSessionDetail(bookedId, BigInt(MENTOR));
