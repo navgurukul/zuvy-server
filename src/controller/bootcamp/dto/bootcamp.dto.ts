@@ -183,6 +183,16 @@ export class PatchBootcampSettingDto {
   @IsOptional()
   @IsBoolean()
   leaderboardEnabled?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+    description: 'Enable or disable view mentorship for bootcamp',
+  })
+  @IsOptional()
+  @IsBoolean()
+  viewMentorship?: boolean;
 }
 
 export class PatchBootcampDto {

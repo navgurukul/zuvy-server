@@ -964,3 +964,7 @@ VALUES (10, 'Download Certificate', NULL);
 
 ALTER TABLE zuvy_mentor_session_attendance
 RENAME TO zuvy_mentor_session_attendance_intervals;
+
+
+ALTER TABLE zuvy_bootcamp_type
+ADD COLUMN view_mentorship BOOLEAN NOT NULL DEFAULT FALSE;

@@ -481,6 +481,9 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
     leaderboardEnabled: boolean('leaderboard_enabled')
     .default(false)
     .notNull(),
+  viewMentorship: boolean('view_mentorship')
+  .default(false)
+  .notNull(),
     
   createdAt: timestamp('created_at', {
     withTimezone: true,

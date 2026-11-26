@@ -415,6 +415,7 @@ export class BootcampService {
           bootcampType: zuvyBootcampType.type,
           mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
           leaderboardEnabled: zuvyBootcampType.leaderboardEnabled,
+          viewMentorship: zuvyBootcampType.viewMentorship,
         })
         .from(zuvyBootcamps)
         .leftJoin(
