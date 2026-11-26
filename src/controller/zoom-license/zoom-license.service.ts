@@ -1244,12 +1244,7 @@ export class ZoomLicenseService {
             `Please free up a Business license in the Zoom admin panel before creating this session.`,
         );
       }
-      await this.transferLicenceToHost(
-        hostEmail,
-        startTime,
-        endTime,
-        licenseResult,
-      );
+      await this.transferLicenceToHost(hostEmail, startTime, endTime);
     });
   }
 
@@ -1451,7 +1446,6 @@ export class ZoomLicenseService {
     hostEmail: string,
     startTime: Date,
     endTime: Date,
-    licenseResult: { success: boolean; step?: string; error?: string },
   ) {
     // The caller has already checked this is a licence shortage.
     const donorEmail = await this.findAvailableLicensedDonor(

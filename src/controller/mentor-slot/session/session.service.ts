@@ -331,9 +331,12 @@ export class SessionService {
     }
 
     if (filter === 'action-needed' || filter === 'reschedule') {
+      // Also on the lifecycle, so a session marked completed while a request
+      // was pending sits only in the Completed tab.
       conditions.push(
         eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
         ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'RESCHEDULE_PENDING'),
       );
     }
 
@@ -365,12 +368,12 @@ export class SessionService {
       .select({
         total: sql<number>`COUNT(*)`,
         upcoming: sql<number>`COUNT(*) FILTER (WHERE status <> 'cancelled' AND session_lifecycle_state IN ('SCHEDULED', 'IN_PROGRESS'))`,
-        actionNeeded: sql<number>`COUNT(*) FILTER (WHERE status <> 'cancelled' AND reschedule_status = 'pending')`,
+        actionNeeded: sql<number>`COUNT(*) FILTER (WHERE status <> 'cancelled' AND reschedule_status = 'pending' AND session_lifecycle_state = 'RESCHEDULE_PENDING')`,
         completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
         missed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'MISSED')`,
         cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
         // Old name of actionNeeded, kept for existing screens.
-        reschedule: sql<number>`COUNT(*) FILTER (WHERE status <> 'cancelled' AND reschedule_status = 'pending')`,
+        reschedule: sql<number>`COUNT(*) FILTER (WHERE status <> 'cancelled' AND reschedule_status = 'pending' AND session_lifecycle_state = 'RESCHEDULE_PENDING')`,
       })
       .from(zuvyMentorSlotBooking)
       .where(and(...mine));

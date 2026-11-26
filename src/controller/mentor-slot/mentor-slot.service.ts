@@ -1954,6 +1954,16 @@ export class MentorSlotService {
           'This booking is no longer eligible for reschedule — it may have just been cancelled or already has a pending request.',
         );
       }
+      // A request accepted since the read above may have used up the limit.
+      if (locked.acceptedRescheduleCount >= config.maxAcceptedReschedules) {
+        throw new MentorshipError(
+          'RESCHEDULE_LIMIT',
+          config.maxAcceptedReschedules === 1
+            ? 'You can reschedule a booking once, and this session has already been moved. You can still cancel it.'
+            : `You can reschedule a booking ${config.maxAcceptedReschedules} times, and this session has already been moved that often. You can still cancel it.`,
+          { maxAcceptedReschedules: config.maxAcceptedReschedules },
+        );
+      }
 
       const [target] = await trx
         .select()

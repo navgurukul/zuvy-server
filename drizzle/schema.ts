@@ -3106,6 +3106,10 @@ export const zuvyMentorSlotBooking = main.table(
     feedbackIdx: index('idx_booking_feedback_pending').on(
       table.mentorFeedbackSubmittedAt,
     ),
+    // Created by migration 0052; declared here so drizzle-kit push keeps it.
+    reschedulePendingIdx: index('idx_booking_reschedule_pending')
+      .on(table.rescheduleStatus)
+      .where(sql`${table.rescheduleStatus} = 'pending'`),
   }),
 );
 
