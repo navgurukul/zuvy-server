@@ -10,12 +10,21 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
-import { and, eq, lt, gt } from 'drizzle-orm';
+import { and, eq, lt, gt, ne } from 'drizzle-orm';
 import { ZoomLicenseService } from '../../zoom-license/zoom-license.service';
+import { MentorshipConfigService } from '../mentorship-rules/mentorship-config.service';
+import {
+  earliestSlotStart,
+  formatIstDateTime,
+} from '../mentorship-rules/mentorship-rules';
+import { MentorshipError } from '../mentorship-rules/mentorship-error';
 
 @Injectable()
 export class MentorRecurrenceService {
-  constructor(private readonly zoomLicenseService: ZoomLicenseService) {}
+  constructor(
+    private readonly zoomLicenseService: ZoomLicenseService,
+    private readonly mentorshipConfig: MentorshipConfigService = new MentorshipConfigService(),
+  ) {}
 
   /* ==========================================================================
      GENERATE RECURRING SLOTS
@@ -82,7 +91,15 @@ export class MentorRecurrenceService {
     }));
 
     if (previewOnly) {
-      return generatedSlots;
+      // Mark the times a real run would refuse as too soon (slot lead time).
+      const leadConfig = await this.mentorshipConfig.get();
+      const earliestStart = earliestSlotStart(new Date(), leadConfig);
+      return generatedSlots.map((slot) => ({
+        ...slot,
+        tooSoon:
+          leadConfig.minSlotLeadDays > 0 &&
+          slot.slotStartDateTime.getTime() < earliestStart.getTime(),
+      }));
     }
 
     // Two ranges [aStart,aEnd) and [bStart,bEnd) overlap iff aStart < bEnd
@@ -113,6 +130,33 @@ export class MentorRecurrenceService {
           );
         }
       }
+    }
+
+    // New slots start at least slot_min_lead_days ahead (T+4 days). Like a
+    // busy licence, every time that's too soon is listed and nothing is
+    // created.
+    const config = await this.mentorshipConfig.get();
+    const earliest = earliestSlotStart(new Date(), config);
+    const tooSoon = !config.minSlotLeadDays
+      ? []
+      : generatedSlots.filter(
+          (slot) => slot.slotStartDateTime.getTime() < earliest.getTime(),
+        );
+    if (tooSoon.length) {
+      throw new MentorshipError(
+        'SLOT_LEAD_TOO_SHORT',
+        `Slots need to start at least ${config.minSlotLeadDays} day${config.minSlotLeadDays === 1 ? '' : 's'} from now. ${tooSoon.length} of these ${tooSoon.length === 1 ? 'is' : 'are'} too soon: ${tooSoon
+          .slice(0, 5)
+          .map((slot) => formatIstDateTime(slot.slotStartDateTime))
+          .join(
+            ', ',
+          )}${tooSoon.length > 5 ? ', …' : ''}. Start the series from ${formatIstDateTime(earliest)} on.`,
+        {
+          minSlotLeadDays: config.minSlotLeadDays,
+          earliestStart: earliest,
+          tooSoon: tooSoon.map((slot) => slot.slotStartDateTime),
+        },
+      );
     }
 
     await db.transaction(async (trx) => {
@@ -147,6 +191,8 @@ export class MentorRecurrenceService {
             ),
             lt(zuvyMentorSlotAvailability.slotStartDateTime, windowEnd),
             gt(zuvyMentorSlotAvailability.slotEndDateTime, windowStart),
+            // A removed slot (kept for its cancelled bookings) doesn't block.
+            ne(zuvyMentorSlotAvailability.status, 'removed'),
           ),
         );
 

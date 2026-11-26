@@ -145,6 +145,20 @@ export class InstructorMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/bookings/:bookingId/join-link')
+  @ApiOperation({
+    summary: "Mentor's Join: a fresh host link for the session (MT1)",
+    description:
+      'Call when the mentor clicks Join. Fetches a fresh host (start) link from Zoom; the one saved at booking time expires a few hours after it was issued. Only from joinOpenMinutes before the start until the end (JOIN_NOT_OPEN / SESSION_ENDED otherwise). fresh=false means Zoom could not be reached and the saved link was returned.',
+  })
+  getJoinLink(@Req() req, @Param('bookingId', ParseIntPipe) bookingId: number) {
+    return this.mentorSlotService.getMentorJoinLink(
+      Number(req.user[0].id),
+      bookingId,
+      Number(req.user[0].orgId),
+    );
+  }
+
   @Post('mentor-slots/bookings/:bookingId/reschedule/accept')
   @UseInterceptors(TrackActionInterceptor)
   @TrackAction({
@@ -438,7 +452,17 @@ export class InstructorMentorSlotController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'reschedule', 'completed', 'cancelled'],
+    enum: [
+      'all',
+      'upcoming',
+      'action-needed',
+      'completed',
+      'missed',
+      'cancelled',
+      'reschedule',
+    ],
+    description:
+      'The Sessions tabs. "reschedule" is the old name of "action-needed" (a student reschedule request waits for you).',
   })
   @ApiQuery({
     name: 'sort',
