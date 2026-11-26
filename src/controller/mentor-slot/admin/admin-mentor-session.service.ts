@@ -31,6 +31,7 @@ export const ATTENTION_AFTER_START_MIN = 5;
 
 /** An admin cancel needs a reason at least this long (after trimming). */
 export const ADMIN_CANCEL_REASON_MIN_LENGTH = 10;
+const ADMIN_CANCEL_SHORT_NOTICE_MS = 24 * 60 * 60 * 1000;
 
 const MINUTE = 60 * 1000;
 
@@ -302,9 +303,23 @@ export class AdminMentorSessionService {
    * credit back, the booking gap is recalculated, and both people are told
    * with the reason.
    */
-  async cancelSession(user: RequestUser, bookingId: number, rawReason: string) {
+  async cancelSession(
+    user: RequestUser,
+    bookingId: number,
+    input:
+      | string
+      | {
+          reason: string;
+          cancellationCategory?: string;
+          askedBy?: 'mentor' | 'student' | 'ops';
+        },
+  ) {
     this.assertIsAdmin(user, 'cancel mentor sessions');
 
+    const rawReason = typeof input === 'string' ? input : input.reason;
+    const cancellationCategory =
+      typeof input === 'string' ? 'Other' : input.cancellationCategory;
+    const askedBy = typeof input === 'string' ? 'ops' : input.askedBy;
     const reason = (rawReason ?? '').trim();
     if (reason.length < ADMIN_CANCEL_REASON_MIN_LENGTH) {
       throw new BadRequestException(
@@ -380,6 +395,10 @@ export class AdminMentorSessionService {
     const sessionTime = formatSessionTime(slotStart, slotEnd);
 
     await this.mentorSlotService.applyCancellation(bookingId, reason, 'admin', {
+      cancellationCategory,
+      cancellationAskedBy: askedBy,
+      closeSlot:
+        slotStart.getTime() - Date.now() < ADMIN_CANCEL_SHORT_NOTICE_MS,
       // Admins may cancel a live session; assertCancellableAt below still
       // rejects one that has ended or been completed.
       allowStarted: true,
@@ -423,6 +442,8 @@ export class AdminMentorSessionService {
       message: 'Session cancelled. The student and mentor have been told.',
       bookingId,
       cancelledBy: 'admin',
+      cancellationCategory,
+      askedBy,
       reason,
       creditReturned: true,
     };

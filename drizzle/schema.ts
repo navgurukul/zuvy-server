@@ -3047,6 +3047,8 @@ export const zuvyMentorSlotBooking = main.table(
 
     /* Cancellation */
     cancellationReason: text('cancellation_reason'),
+    cancellationCategory: text('cancellation_category'),
+    cancellationAskedBy: varchar('cancellation_asked_by', { length: 20 }),
     cancelledBy: varchar('cancelled_by', { length: 50 }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
 

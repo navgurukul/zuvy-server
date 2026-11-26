@@ -1335,6 +1335,9 @@ export class MentorSlotService {
       allowStarted?: boolean;
       studentMessage?: string;
       mentorMessage?: string;
+      cancellationCategory?: string;
+      cancellationAskedBy?: 'mentor' | 'student' | 'ops';
+      closeSlot?: boolean;
     } = {},
   ) {
     await this.syncZoomLicenseState();
@@ -1412,7 +1415,7 @@ export class MentorSlotService {
         .update(zuvyMentorSlotAvailability)
         .set({
           currentBookedCount: sql`GREATEST(${zuvyMentorSlotAvailability.currentBookedCount} - 1, 0)`,
-          status: 'available',
+          status: opts.closeSlot ? 'closed' : 'available',
         } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId));
 
@@ -1429,6 +1432,8 @@ export class MentorSlotService {
           status: 'cancelled',
           sessionLifecycleState: 'CANCELLED',
           cancellationReason: reason,
+          cancellationCategory: opts.cancellationCategory ?? null,
+          cancellationAskedBy: opts.cancellationAskedBy ?? null,
           cancelledBy,
           cancelledAt: new Date(),
           rescheduleStatus: null,

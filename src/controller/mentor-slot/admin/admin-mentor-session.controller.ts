@@ -122,13 +122,13 @@ export class AdminMentorSessionController {
   @HttpCode(200)
   @ApiOperation({
     summary:
-      'Ops cancels a mentor session (any time before it ends, including live). Credit goes back; student and mentor are told with the reason.',
+      'Ops cancels a mentor session (any time before it ends, including live). Provide who requested it, a cancellation category, and a note of at least 10 characters. Credit goes back; student and mentor are told with the note.',
   })
   @ApiResponse({ status: 200, description: 'Session cancelled' })
   @ApiResponse({
     status: 400,
     description:
-      'Reason under 10 characters, session already ended, or already cancelled',
+      'Missing/invalid cancellation details, note under 10 characters, session already ended, or already cancelled',
   })
   @ApiResponse({
     status: 403,
@@ -146,6 +146,6 @@ export class AdminMentorSessionController {
     @Body() dto: AdminCancelSessionDto,
   ) {
     const user = Array.isArray(req.user) ? req.user[0] : req.user;
-    return this.service.cancelSession(user, bookingId, dto.reason);
+    return this.service.cancelSession(user, bookingId, dto);
   }
 }
