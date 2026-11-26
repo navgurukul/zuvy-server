@@ -16,7 +16,7 @@ import {
 import { db } from 'src/db';
 import {
   users,
-  zuvyMentorBookingAttendance,
+  zuvyMentorSessionAttendance,
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
 } from '../../../../drizzle/schema';
@@ -126,9 +126,9 @@ export class MentorAttendanceJob implements OnModuleInit {
         )
         .innerJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
         .leftJoin(
-          zuvyMentorBookingAttendance,
+          zuvyMentorSessionAttendance,
           eq(
-            zuvyMentorBookingAttendance.mentorBookingId,
+            zuvyMentorSessionAttendance.mentorBookingId,
             zuvyMentorSlotBooking.id,
           ),
         )
@@ -151,11 +151,11 @@ export class MentorAttendanceJob implements OnModuleInit {
             // Never checked, or still pending and not retried in the last
             // RETRY_INTERVAL_MS. RECORDED and UNAVAILABLE are final.
             or(
-              isNull(zuvyMentorBookingAttendance.id),
+              isNull(zuvyMentorSessionAttendance.id),
               and(
-                eq(zuvyMentorBookingAttendance.status, 'PENDING'),
+                eq(zuvyMentorSessionAttendance.status, 'PENDING'),
                 lt(
-                  zuvyMentorBookingAttendance.checkedAt,
+                  zuvyMentorSessionAttendance.checkedAt,
                   new Date(now.getTime() - RETRY_INTERVAL_MS),
                 ),
               ),
@@ -164,7 +164,7 @@ export class MentorAttendanceJob implements OnModuleInit {
         )
         // Never-checked bookings first, then the ones retried longest ago.
         .orderBy(
-          sql`${zuvyMentorBookingAttendance.checkedAt} ASC NULLS FIRST`,
+          sql`${zuvyMentorSessionAttendance.checkedAt} ASC NULLS FIRST`,
           zuvyMentorSlotAvailability.slotEndDateTime,
         )
         .limit(BATCH_SIZE)
@@ -253,25 +253,25 @@ export class MentorAttendanceJob implements OnModuleInit {
   ) {
     const status = givingUp ? 'UNAVAILABLE' : 'PENDING';
     return db
-      .insert(zuvyMentorBookingAttendance)
+      .insert(zuvyMentorSessionAttendance)
       .values({
         mentorBookingId: bookingId,
         status,
         attempts: 1,
         lastError: reason,
         checkedAt: now,
-      } as typeof zuvyMentorBookingAttendance.$inferInsert)
+      } as typeof zuvyMentorSessionAttendance.$inferInsert)
       .onConflictDoUpdate({
-        target: zuvyMentorBookingAttendance.mentorBookingId,
+        target: zuvyMentorSessionAttendance.mentorBookingId,
         set: {
           status,
-          attempts: sql`${zuvyMentorBookingAttendance.attempts} + 1`,
+          attempts: sql`${zuvyMentorSessionAttendance.attempts} + 1`,
           lastError: reason,
           checkedAt: now,
           updatedAt: now,
-        } as Partial<typeof zuvyMentorBookingAttendance.$inferInsert>,
+        } as Partial<typeof zuvyMentorSessionAttendance.$inferInsert>,
         // Never downgrade a result another run already recorded.
-        where: eq(zuvyMentorBookingAttendance.status, 'PENDING'),
+        where: eq(zuvyMentorSessionAttendance.status, 'PENDING'),
       });
   }
 
@@ -290,7 +290,7 @@ export class MentorAttendanceJob implements OnModuleInit {
       // nothing is returned and nothing else happens — so a credit can't be
       // refunded twice.
       const claimed = await trx
-        .insert(zuvyMentorBookingAttendance)
+        .insert(zuvyMentorSessionAttendance)
         .values({
           mentorBookingId: booking.bookingId,
           status: 'RECORDED',
@@ -301,23 +301,23 @@ export class MentorAttendanceJob implements OnModuleInit {
           attempts: 1,
           lastError: null,
           checkedAt: now,
-        } as typeof zuvyMentorBookingAttendance.$inferInsert)
+        } as typeof zuvyMentorSessionAttendance.$inferInsert)
         .onConflictDoUpdate({
-          target: zuvyMentorBookingAttendance.mentorBookingId,
+          target: zuvyMentorSessionAttendance.mentorBookingId,
           set: {
             status: 'RECORDED',
             outcome: decision.outcome,
             mentorAttendedSeconds: decision.mentorSeconds,
             studentAttendedSeconds: decision.studentSeconds,
             creditRefunded: refundCredit,
-            attempts: sql`${zuvyMentorBookingAttendance.attempts} + 1`,
+            attempts: sql`${zuvyMentorSessionAttendance.attempts} + 1`,
             lastError: null,
             checkedAt: now,
             updatedAt: now,
-          } as Partial<typeof zuvyMentorBookingAttendance.$inferInsert>,
-          where: eq(zuvyMentorBookingAttendance.status, 'PENDING'),
+          } as Partial<typeof zuvyMentorSessionAttendance.$inferInsert>,
+          where: eq(zuvyMentorSessionAttendance.status, 'PENDING'),
         })
-        .returning({ id: zuvyMentorBookingAttendance.id });
+        .returning({ id: zuvyMentorSessionAttendance.id });
 
       if (claimed.length === 0) return false;
 

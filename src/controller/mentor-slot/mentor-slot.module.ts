@@ -21,6 +21,7 @@ import { NotificationModule } from 'src/notification/notification.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { RbacModule } from '../../rbac/rbac.module';
 import { AdminMentorSessionController } from './admin/admin-mentor-session.controller';
+import { AdminMentorSessionExportService } from './admin/admin-mentor-session-export.service';
 import { AdminMentorSessionService } from './admin/admin-mentor-session.service';
 
 @Module({
@@ -52,6 +53,7 @@ import { AdminMentorSessionService } from './admin/admin-mentor-session.service'
     MentorPublicService,
     SessionService,
     AdminMentorSessionService,
+    AdminMentorSessionExportService,
   ],
   exports: [MentorSlotService],
 })

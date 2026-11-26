@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { db } from '../../../db';
@@ -16,6 +16,7 @@ import {
   zuvyBootcampType,
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
+  zuvyMentorSessionAttendance,
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
 import { NotificationEmailService } from 'src/notification/email/email.service';
@@ -131,6 +132,7 @@ export class AdminMentorSessionService {
         topic: zuvyMentorSlotAvailability.topic,
         lifecycleState: zuvyMentorSlotBooking.sessionLifecycleState,
         meetingLink: zuvyMentorSlotBooking.meetingLink,
+        zoomStartUrl: zuvyMentorSlotBooking.zoomStartUrl,
         mentorJoinedAt: zuvyMentorSlotBooking.mentorJoinedAt,
         studentJoinedAt: zuvyMentorSlotBooking.studentJoinedAt,
         mentorId: zuvyMentorSlotBooking.mentorUserId,
@@ -189,6 +191,108 @@ export class AdminMentorSessionService {
       total: sessions.length,
       needsAttentionCount,
       sessions,
+    };
+  }
+
+  /**
+   * Top of the admin Mentorship page: the org's mentorship courses (for the
+   * course filter) and the day's numbers. Live now / need attention use the
+   * same rules as getLiveSessions, so they always match the live cards.
+   */
+  async getOverview(
+    user: RequestUser,
+    orgId: number,
+    bootcampId?: number,
+    date?: string,
+  ) {
+    this.assertCanViewOrg(user, orgId);
+    if (bootcampId) {
+      await this.assertCourseHasMentorship(orgId, bootcampId);
+    }
+
+    const day =
+      date ??
+      new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const dayStart = new Date(`${day}T00:00:00.000+05:30`);
+    const dayEnd = new Date(`${day}T23:59:59.999+05:30`);
+    if (isNaN(dayStart.getTime())) {
+      throw new BadRequestException('date must be a valid YYYY-MM-DD date.');
+    }
+
+    const courses = await db
+      .select({ id: zuvyBootcamps.id, name: zuvyBootcamps.name })
+      .from(zuvyBootcamps)
+      .innerJoin(
+        zuvyBootcampType,
+        eq(zuvyBootcampType.bootcampId, zuvyBootcamps.id),
+      )
+      .where(
+        and(
+          eq(zuvyBootcamps.organizationId, orgId),
+          eq(zuvyBootcampType.mentorshipEnabled, true),
+        ),
+      )
+      .groupBy(zuvyBootcamps.id, zuvyBootcamps.name)
+      .orderBy(asc(zuvyBootcamps.name));
+
+    // Older bookings have no bootcamp_id; use the mentor profile's course.
+    const courseId = sql`COALESCE(${zuvyMentorSlotBooking.bootcampId}, ${zuvyMentorSlotManagement.bootcampId})`;
+    const conditions = [
+      eq(zuvyMentorSlotBooking.organizationId, orgId),
+      ne(zuvyMentorSlotBooking.status, 'cancelled'),
+      ne(zuvyMentorSlotBooking.sessionLifecycleState, 'CANCELLED'),
+      gte(zuvyMentorSlotAvailability.slotStartDateTime, dayStart),
+      lte(zuvyMentorSlotAvailability.slotStartDateTime, dayEnd),
+    ];
+    if (bootcampId) {
+      conditions.push(sql`${courseId} = ${bootcampId}`);
+    }
+
+    const [counts] = await db
+      .select({
+        sessions: sql<number>`COUNT(*)`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${zuvyMentorSlotBooking.sessionLifecycleState} = 'COMPLETED')`,
+        noShows: sql<number>`COUNT(*) FILTER (WHERE ${zuvyMentorSessionAttendance.outcome} IN ('STUDENT_NO_SHOW', 'MENTOR_NO_SHOW', 'NOBODY_JOINED'))`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .innerJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotBooking.slotAvailabilityId,
+          zuvyMentorSlotAvailability.id,
+        ),
+      )
+      .innerJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+          zuvyMentorSlotManagement.id,
+        ),
+      )
+      .leftJoin(
+        zuvyMentorSessionAttendance,
+        and(
+          eq(
+            zuvyMentorSessionAttendance.mentorBookingId,
+            zuvyMentorSlotBooking.id,
+          ),
+          eq(zuvyMentorSessionAttendance.status, 'RECORDED'),
+        ),
+      )
+      .where(and(...conditions));
+
+    const live = await this.getLiveSessions(user, orgId, bootcampId, false);
+
+    return {
+      date: day,
+      courses,
+      stats: {
+        sessionsToday: Number(counts?.sessions ?? 0),
+        liveNow: 'total' in live ? live.total : 0,
+        needAttentionNow: live.needsAttentionCount,
+        completedToday: Number(counts?.completed ?? 0),
+        noShowsToday: Number(counts?.noShows ?? 0),
+      },
     };
   }
 
@@ -402,6 +506,10 @@ export class AdminMentorSessionService {
       phase,
       lifecycleState: r.lifecycleState,
       meetingLink: r.meetingLink ?? null,
+      // Host (start) link: opens the meeting as host without the student
+      // sign-in check. Admin-only; never send it to students
+      // (see withoutHostZoomFields). Null for Google Meet bookings.
+      hostMeetingLink: r.zoomStartUrl ?? null,
       mentor: {
         id: r.mentorId?.toString(),
         name: r.mentorName ?? null,
@@ -450,7 +558,7 @@ export class AdminMentorSessionService {
     }
   }
 
-  private async assertCourseHasMentorship(orgId: number, bootcampId: number) {
+  async assertCourseHasMentorship(orgId: number, bootcampId: number) {
     const [course] = await db
       .select({ id: zuvyBootcamps.id })
       .from(zuvyBootcamps)

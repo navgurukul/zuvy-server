@@ -3116,11 +3116,11 @@ export const zuvyMentorSlotBooking = main.table(
    Kept out of zuvy_mentor_slot_booking so reading bookings doesn't depend on
    it. The credit recount (cancelBooking, the attendance job) and
    completeSession DO read it, so migration
-   0049_mentor_booking_attendance.sql must be applied before deploying.
+   0049_mentor_session_attendance.sql must be applied before deploying.
 ============================================================================ */
 
-export const zuvyMentorBookingAttendance = main.table(
-  'zuvy_mentor_booking_attendance',
+export const zuvyMentorSessionAttendance = main.table(
+  'zuvy_mentor_session_attendance',
   {
     id: serial('id').primaryKey().notNull(),
 
@@ -3150,7 +3150,7 @@ export const zuvyMentorBookingAttendance = main.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
-    uniqBooking: unique('uniq_mentor_booking_attendance_booking').on(
+    uniqBooking: unique('uniq_mentor_session_attendance_booking').on(
       table.mentorBookingId,
     ),
   }),

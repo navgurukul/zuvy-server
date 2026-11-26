@@ -100,8 +100,8 @@ const getAttendance = async (id: number) =>
   (
     await db
       .select()
-      .from(schema.zuvyMentorBookingAttendance)
-      .where(eq(schema.zuvyMentorBookingAttendance.mentorBookingId, id))
+      .from(schema.zuvyMentorSessionAttendance)
+      .where(eq(schema.zuvyMentorSessionAttendance.mentorBookingId, id))
       .limit(1)
   )[0];
 const getMetrics = async () =>
@@ -604,9 +604,9 @@ async function main() {
     FLAGS.MENTOR_NO_SHOW_CREDIT_RULES = true;
     if (created.length) {
       await db
-        .delete(schema.zuvyMentorBookingAttendance)
+        .delete(schema.zuvyMentorSessionAttendance)
         .where(
-          inArray(schema.zuvyMentorBookingAttendance.mentorBookingId, created),
+          inArray(schema.zuvyMentorSessionAttendance.mentorBookingId, created),
         );
     }
     const m = await getMetrics();

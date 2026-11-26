@@ -22,7 +22,11 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { AdminMentorSessionService } from './admin-mentor-session.service';
 import { LiveSessionsQueryDto } from './dto/live-sessions.dto';
+import { OverviewQueryDto } from './dto/overview.dto';
 import { AdminCancelSessionDto } from './dto/cancel-session.dto';
+import { AdminMentorSessionExportService } from './admin-mentor-session-export.service';
+import { ExportSessionsQueryDto } from './dto/export-sessions.dto';
+import { SessionsListQueryDto } from './dto/sessions-list.dto';
 
 // Do NOT add @SkipOrgCheck() here: orgId must always go through the org guard.
 @ApiTags('Admin Mentor Sessions')
@@ -31,7 +35,64 @@ import { AdminCancelSessionDto } from './dto/cancel-session.dto';
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 @Controller('admin/mentor-sessions')
 export class AdminMentorSessionController {
-  constructor(private readonly service: AdminMentorSessionService) {}
+  constructor(
+    private readonly service: AdminMentorSessionService,
+    private readonly exportService: AdminMentorSessionExportService,
+  ) {}
+
+  @Get('today')
+  @ApiOperation({
+    summary:
+      'Sessions table (today / course Bookings tab): filter by date range, status tab, search, mentor, batch and has-recording; returns tab counts, credits, status, attendance, ratings, recording and canCancel. Times are IST days.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Other organisation, not an admin, or mentorship off for the course',
+  })
+  async getDaySessions(@Req() req, @Query() query: SessionsListQueryDto) {
+    const user = Array.isArray(req.user) ? req.user[0] : req.user;
+    return this.exportService.getDaySessions(user, query);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary:
+      'Every mentor session matching the filters (not only the current page), as JSON rows for the CSV download. Times are IST.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Other organisation, not an admin, or mentorship off for the course',
+  })
+  async exportSessions(@Req() req, @Query() query: ExportSessionsQueryDto) {
+    const user = Array.isArray(req.user) ? req.user[0] : req.user;
+    return this.exportService.exportSessions(user, query);
+  }
+
+  @Get('overview')
+  @ApiOperation({
+    summary:
+      "Top of the Mentorship page: mentorship courses (filter chips) and the day's numbers (sessions, live now, need attention, completed, no-shows)",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Other organisation, not an admin, or mentorship off for the course',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Course not found in this organisation',
+  })
+  async getOverview(@Req() req, @Query() query: OverviewQueryDto) {
+    const user = Array.isArray(req.user) ? req.user[0] : req.user;
+    return this.service.getOverview(
+      user,
+      query.orgId,
+      query.bootcampId,
+      query.date,
+    );
+  }
 
   @Get('live')
   @ApiOperation({

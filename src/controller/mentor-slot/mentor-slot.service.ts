@@ -19,7 +19,7 @@ import {
   zuvyBootcampType,
   zuvyBootcamps,
   zuvyMentorSessionRecordings,
-  zuvyMentorBookingAttendance,
+  zuvyMentorSessionAttendance,
   zuvyOrganizations,
   users,
   zuvyStudentBookingMetrics,
@@ -631,15 +631,15 @@ export class MentorSlotService {
       ne(zuvyMentorSlotBooking.status, 'cancelled'),
       notExists(
         trx
-          .select({ id: zuvyMentorBookingAttendance.id })
-          .from(zuvyMentorBookingAttendance)
+          .select({ id: zuvyMentorSessionAttendance.id })
+          .from(zuvyMentorSessionAttendance)
           .where(
             and(
               eq(
-                zuvyMentorBookingAttendance.mentorBookingId,
+                zuvyMentorSessionAttendance.mentorBookingId,
                 zuvyMentorSlotBooking.id,
               ),
-              eq(zuvyMentorBookingAttendance.creditRefunded, true),
+              eq(zuvyMentorSessionAttendance.creditRefunded, true),
             ),
           ),
       ),
@@ -3020,12 +3020,12 @@ export class MentorSlotService {
     // that is what happened: marking it complete by hand could otherwise
     // show a no-show (credit already refunded) as a session that was held.
     const [recorded] = await db
-      .select({ outcome: zuvyMentorBookingAttendance.outcome })
-      .from(zuvyMentorBookingAttendance)
+      .select({ outcome: zuvyMentorSessionAttendance.outcome })
+      .from(zuvyMentorSessionAttendance)
       .where(
         and(
-          eq(zuvyMentorBookingAttendance.mentorBookingId, bookingId),
-          eq(zuvyMentorBookingAttendance.status, 'RECORDED'),
+          eq(zuvyMentorSessionAttendance.mentorBookingId, bookingId),
+          eq(zuvyMentorSessionAttendance.status, 'RECORDED'),
         ),
       )
       .limit(1);
@@ -3050,15 +3050,15 @@ export class MentorSlotService {
           ne(zuvyMentorSlotBooking.status, 'cancelled'),
           notExists(
             db
-              .select({ id: zuvyMentorBookingAttendance.id })
-              .from(zuvyMentorBookingAttendance)
+              .select({ id: zuvyMentorSessionAttendance.id })
+              .from(zuvyMentorSessionAttendance)
               .where(
                 and(
                   eq(
-                    zuvyMentorBookingAttendance.mentorBookingId,
+                    zuvyMentorSessionAttendance.mentorBookingId,
                     zuvyMentorSlotBooking.id,
                   ),
-                  eq(zuvyMentorBookingAttendance.status, 'RECORDED'),
+                  eq(zuvyMentorSessionAttendance.status, 'RECORDED'),
                 ),
               ),
           ),
