@@ -14,10 +14,11 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest();
+    const user = request.user?.[0] || request.user;
 
     // If user has no roles array, they are a student
-    if (!user.roles) {
+    if (!user || !user.roles || !Array.isArray(user.roles)) {
       return false;
     }
 

@@ -28,8 +28,11 @@ import {
   TestCaseDto,
 } from './dto/codingPlatform.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { STATUS_CODES } from 'src/helpers/index';
 import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/decorators/roles.decorator';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
@@ -42,7 +45,7 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 @UseInterceptors(TrackActionInterceptor)
 export class CodingPlatformController {
@@ -82,15 +85,16 @@ export class CodingPlatformController {
     @Res() res: Response,
   ) {
     try {
-      let [err, success] = await this.codingPlatformService.submitPracticeCode(
-        questionId,
-        sourceCode,
-        action,
-        req.user[0].id,
-        submissionId,
-        codingOutsourseId,
-        chapterId,
-      );
+      const [err, success] =
+        await this.codingPlatformService.submitPracticeCode(
+          questionId,
+          sourceCode,
+          action,
+          req.user[0].id,
+          submissionId,
+          codingOutsourseId,
+          chapterId,
+        );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -143,13 +147,26 @@ export class CodingPlatformController {
     @Res() res: Response,
   ) {
     try {
-      let student_id;
-      if (!isNaN(studentId)) {
-        student_id = studentId;
-      } else {
-        student_id = req.user[0].id;
+      const user = Array.isArray(req.user) ? req.user[0] : req.user;
+      const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+      const isPrivileged =
+        userRoles.includes('admin') ||
+        userRoles.includes('super_admin') ||
+        userRoles.includes('instructor') ||
+        userRoles.includes('ops');
+
+      let student_id = Number(user.id);
+      if (studentId != null && !isNaN(studentId)) {
+        const requestedId = Number(studentId);
+        if (requestedId !== Number(user.id) && !isPrivileged) {
+          return ErrorResponse.BadRequestException(
+            "You are not authorized to view another student's practice code",
+            STATUS_CODES.FORBIDDEN,
+          ).send(res);
+        }
+        student_id = requestedId;
       }
-      let [err, success] = await this.codingPlatformService.getPracticeCode(
+      const [err, success] = await this.codingPlatformService.getPracticeCode(
         questionId,
         student_id,
         submissionId,
@@ -173,6 +190,7 @@ export class CodingPlatformController {
   }
 
   @Post('/:orgId/create-question')
+  @Roles('admin', 'instructor', 'ops')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -213,6 +231,7 @@ export class CodingPlatformController {
   }
 
   @Put('/:orgId/update-question/:id')
+  @Roles('admin', 'instructor', 'ops')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -253,6 +272,7 @@ export class CodingPlatformController {
   }
 
   @Delete('/:orgId/delete-question/:id')
+  @Roles('admin', 'instructor', 'ops')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -290,6 +310,7 @@ export class CodingPlatformController {
   }
 
   @Delete('delete-testcase/:id')
+  @Roles('admin', 'instructor', 'ops')
   @ApiOperation({ summary: 'Delete coding Testcase' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -345,6 +366,7 @@ export class CodingPlatformController {
   }
 
   @Post('add-test-case/:question_id')
+  @Roles('admin', 'instructor', 'ops')
   @ApiOperation({ summary: 'Add test case to coding question' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -382,13 +404,20 @@ export class CodingPlatformController {
   @ApiBearerAuth('JWT-auth')
   async getSubmissionsId(
     @Param('questionId') questionId: number,
+    @Req() req,
     @Res() res: Response,
   ): Promise<any> {
     try {
-      const [err, success] =
-        await this.codingPlatformService.getSubmissionsId(questionId);
+      const user = Array.isArray(req.user) ? req.user[0] : req.user;
+      const [err, success] = await this.codingPlatformService.getSubmissionsId(
+        questionId,
+        user,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
       return new SuccessResponse(
         success.message,
@@ -408,15 +437,21 @@ export class CodingPlatformController {
   @ApiBearerAuth('JWT-auth')
   async getPracticeCodeBySubmissionId(
     @Param('practiceSubmissionId') practiceSubmissionId: number,
+    @Req() req,
     @Res() res: Response,
   ): Promise<any> {
     try {
+      const user = Array.isArray(req.user) ? req.user[0] : req.user;
       const [err, success] =
         await this.codingPlatformService.getTestcasesSubmissionBySubmissionId(
           practiceSubmissionId,
+          user,
         );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
       return new SuccessResponse(
         success.message,

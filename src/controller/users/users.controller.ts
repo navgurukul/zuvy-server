@@ -5,7 +5,6 @@ import {
   HttpStatus,
   HttpException,
   Body,
-  Res,
   Query,
   Req,
   ParseIntPipe,
@@ -13,6 +12,9 @@ import {
   Put,
   Delete,
   UseInterceptors,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
@@ -33,9 +35,21 @@ import {
   UpdateUserDto,
   UserRoleResponseDto,
 } from './dto/user-role.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { RequirePermissions } from 'src/rbac/decorators/require-permissions.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
 
 @ApiTags('Users')
 @Controller('users')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+  }),
+)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth('JWT-auth')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -85,6 +99,7 @@ export class UsersController {
    * @returns User information
    */
   @Post('verify-token')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Verify JWT token and manage user' })
   @ApiQuery({
@@ -109,7 +124,7 @@ export class UsersController {
   }
 
   @Post('create/user/role')
-  //   @RequirePermissions('create_user_role')
+  @RequirePermissions('create_user_role')
   @ApiOperation({
     summary: 'Create a new user role',
     description:
@@ -164,7 +179,7 @@ export class UsersController {
   }
 
   @Get('get/all/roles/:orgId')
-  //   @RequirePermissions('read_user_roles')
+  @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
     description: 'Retrieves all user roles from the system',

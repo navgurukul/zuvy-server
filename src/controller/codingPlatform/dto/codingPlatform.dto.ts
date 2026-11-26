@@ -8,6 +8,7 @@ import {
   ValidateNested,
   IsObject,
   IsOptional,
+  IsDefined,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 export class SubmitCodeDto {
@@ -30,33 +31,47 @@ export class SubmitCodeDto {
   sourceCode: string;
 }
 
-class OutputParameter {
-  @ApiProperty({ type: 'string', example: 'str' })
+export class OutputParameter {
+  @ApiProperty({ type: 'string', example: 'str', required: false })
+  @IsOptional()
   @IsString()
-  parameterType: string;
+  parameterType?: string;
 
-  @ApiProperty({ type: 'any', example: '"example input"' })
+  @ApiProperty({ type: 'any', example: '"example input"', required: false })
+  @IsOptional()
+  @IsDefined()
+  parameterValue?: any;
+
+  @ApiProperty({ type: 'string', example: 'str', required: false })
+  @IsOptional()
   @IsString()
-  parameterValue: any;
+  expectedOutputType?: string;
+
+  @ApiProperty({ type: 'any', example: '"example output"', required: false })
+  @IsOptional()
+  @IsDefined()
+  expectedOutputValue?: any;
 }
 
-class InputsParameter {
+export class InputsParameter {
   @ApiProperty({ type: 'string', example: 'str' })
+  @IsNotEmpty()
   @IsString()
   parameterType: string;
 
   @ApiProperty({ type: 'any', example: '"example input"' })
-  @IsString()
+  @IsDefined()
   parameterValue: any;
 
   @ApiProperty({ type: 'string', example: 'a' })
+  @IsNotEmpty()
   @IsString()
   parameterName: string;
 }
 
 export class TestCaseDto {
   @ApiProperty({
-    type: 'array',
+    type: [InputsParameter],
     example: [
       {
         parameterType: 'str',
@@ -72,10 +87,12 @@ export class TestCaseDto {
     required: true,
   })
   @IsArray()
-  inputs: { [key: string]: InputsParameter };
+  @ValidateNested({ each: true })
+  @Type(() => InputsParameter)
+  inputs: InputsParameter[];
 
   @ApiProperty({
-    type: 'object',
+    type: OutputParameter,
     example: {
       expectedOutputType: 'str',
       expectedOutputValue: 'expected output',
@@ -83,6 +100,8 @@ export class TestCaseDto {
     required: true,
   })
   @IsObject()
+  @ValidateNested()
+  @Type(() => OutputParameter)
   expectedOutput: OutputParameter;
 }
 
@@ -175,7 +194,7 @@ export class updateTestCaseDto {
   id: number;
 
   @ApiProperty({
-    type: 'array',
+    type: [InputsParameter],
     example: [
       {
         parameterType: 'str',
@@ -191,10 +210,12 @@ export class updateTestCaseDto {
     required: true,
   })
   @IsArray()
-  inputs: { [key: string]: InputsParameter };
+  @ValidateNested({ each: true })
+  @Type(() => InputsParameter)
+  inputs: InputsParameter[];
 
   @ApiProperty({
-    type: 'object',
+    type: OutputParameter,
     example: {
       expectedOutputType: 'str',
       expectedOutputValue: 'expected output',
@@ -202,6 +223,8 @@ export class updateTestCaseDto {
     required: true,
   })
   @IsObject()
+  @ValidateNested()
+  @Type(() => OutputParameter)
   expectedOutput: OutputParameter;
 }
 

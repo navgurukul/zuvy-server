@@ -275,8 +275,6 @@ export class ZoomLicenseService {
     const detailMessage = `[Zoom License Pool][${context}] protectedUsers=${formatUsers(protectedLicenseUsers)}, reservedUsers=${reservedDetails}`;
     this.logger.log(message);
     this.logger.log(detailMessage);
-    console.log(message);
-    console.log(detailMessage);
   }
 
   private async getNextPoolAvailabilityTime(

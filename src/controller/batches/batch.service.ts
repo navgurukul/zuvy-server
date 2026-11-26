@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   users,
   zuvyBatches,
@@ -13,13 +13,14 @@ import {
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, ilike, inArray, or, sql, and, not, isNull } from 'drizzle-orm';
-import { log } from 'console';
 import { PatchBatchDto, BatchDto } from './dto/batch.dto';
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from 'http';
 
 @Injectable()
 export class BatchesService {
+  private readonly logger = new Logger(BatchesService.name);
+
   async createBatch(batch: BatchDto) {
     try {
       // Basic validation
@@ -64,19 +65,6 @@ export class BatchesService {
           },
           null,
         ];
-      }
-
-      // If assignAll, fetch available enrollments (unassigned students) limited to capEnrollment
-      let usersData;
-      if (batch.assignAll) {
-        usersData = await db
-          .select()
-          .from(zuvyBatchEnrollments)
-          .where(
-            sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
-          )
-          .orderBy(zuvyBatchEnrollments.id)
-          .limit(batch.capEnrollment);
       }
 
       // Ensure instructor user exists (create if missing)
@@ -165,7 +153,7 @@ export class BatchesService {
           }
         }
       } catch (err) {
-        console.error('Failed to assign instructor role:', err);
+        this.logger.error('Failed to assign instructor role:', err);
       }
 
       // batch.name = batch.name.charAt(0).toUpperCase() + batch.name.slice(1);
@@ -284,48 +272,71 @@ export class BatchesService {
         ];
       }
 
-      // assignAll flow
-      if (usersData && usersData.length > 0) {
-        const newData = await db
-          .insert(zuvyBatches)
-          .values(batchValue)
-          .returning();
-        const userIds = usersData.map((u) => u.userId);
+      // assignAll flow with transaction and row lock to prevent TOCTOU race condition
+      if (batch.assignAll) {
+        return await db.transaction(async (tx) => {
+          const availableEnrollments = await tx
+            .select()
+            .from(zuvyBatchEnrollments)
+            .where(
+              sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
+            )
+            .orderBy(zuvyBatchEnrollments.id)
+            .limit(batch.capEnrollment)
+            .for('update', { skipLocked: true });
 
-        await db
-          .update(zuvyBatchEnrollments)
-          .set({ batchId: newData[0].id })
-          .where(
-            sql`bootcamp_id = ${batch.bootcampId} AND ${inArray(zuvyBatchEnrollments.userId, userIds)}`,
-          );
+          if (!availableEnrollments || availableEnrollments.length === 0) {
+            return [
+              {
+                status: helperVariable.error,
+                message: 'No students found to enroll in this Batch',
+                code: 400,
+              },
+              null,
+            ];
+          }
 
-        const createdBatch = newData[0];
-        const createdBatchWithStatus = {
-          ...createdBatch,
-          instructorEmail: user[0]?.email || null,
-          startDate: createdBatch.startDate
-            ? new Date(String(createdBatch.startDate)).toISOString()
-            : null,
-          endDate: createdBatch.endDate
-            ? new Date(String(createdBatch.endDate)).toISOString()
-            : null,
-          status:
-            (createdBatch as any).endDate &&
-            new Date(String((createdBatch as any).endDate)) < new Date()
-              ? 'Completed'
-              : 'Ongoing',
-        } as any;
+          const newData = await tx
+            .insert(zuvyBatches)
+            .values(batchValue)
+            .returning();
+          const userIds = availableEnrollments.map((u) => u.userId);
 
-        return [
-          null,
-          {
-            status: helperVariable.success,
-            message: 'Batch created successfully',
-            code: 200,
-            batch: createdBatchWithStatus,
-            bootcampName,
-          },
-        ];
+          await tx
+            .update(zuvyBatchEnrollments)
+            .set({ batchId: newData[0].id })
+            .where(
+              sql`bootcamp_id = ${batch.bootcampId} AND ${inArray(zuvyBatchEnrollments.userId, userIds)}`,
+            );
+
+          const createdBatch = newData[0];
+          const createdBatchWithStatus = {
+            ...createdBatch,
+            instructorEmail: user[0]?.email || null,
+            startDate: createdBatch.startDate
+              ? new Date(String(createdBatch.startDate)).toISOString()
+              : null,
+            endDate: createdBatch.endDate
+              ? new Date(String(createdBatch.endDate)).toISOString()
+              : null,
+            status:
+              (createdBatch as any).endDate &&
+              new Date(String((createdBatch as any).endDate)) < new Date()
+                ? 'Completed'
+                : 'Ongoing',
+          } as any;
+
+          return [
+            null,
+            {
+              status: helperVariable.success,
+              message: 'Batch created successfully',
+              code: 200,
+              batch: createdBatchWithStatus,
+              bootcampName,
+            },
+          ];
+        });
       }
 
       return [
@@ -337,7 +348,7 @@ export class BatchesService {
         null,
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.error(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -354,10 +365,6 @@ export class BatchesService {
           null,
         ];
       }
-      let enrollStudents = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, id));
 
       const instructorId = data[0].instructorId;
       let instructorName = null;
@@ -396,7 +403,7 @@ export class BatchesService {
         },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.error(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -541,7 +548,7 @@ export class BatchesService {
             }
           }
         } catch (roleErr) {
-          console.error('Failed to assign new instructor role:', roleErr);
+          this.logger.error('Failed to assign new instructor role:', roleErr);
         }
 
         if (userObj?.id) {
@@ -625,7 +632,10 @@ export class BatchesService {
               potentialPrevIds.add(Number(prevUser[0].id));
             }
           } catch (err) {
-            console.error('Failed to find previous instructor by email:', err);
+            this.logger.error(
+              'Failed to find previous instructor by email:',
+              err,
+            );
           }
         }
 
@@ -678,7 +688,7 @@ export class BatchesService {
 
               if (instructorRoleId) {
                 const prevInstructorUserId = BigInt(previousInstructorId);
-                console.log(
+                this.logger.log(
                   `Removing instructor role for user ID: ${previousInstructorId} in Org: ${orgId}`,
                 );
                 await db
@@ -695,7 +705,7 @@ export class BatchesService {
               }
             }
           } catch (removeErr) {
-            console.error(
+            this.logger.error(
               `Failed to remove instructor role for User ${previousInstructorId}:`,
               removeErr,
             );
@@ -723,68 +733,89 @@ export class BatchesService {
         },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.error(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
 
   async deleteBatch(id: number) {
     try {
-      // Fetch batch details before deletion for tracking log
-      const batchToDelete = await db
-        .select({ name: zuvyBatches.name, bootcampId: zuvyBatches.bootcampId })
-        .from(zuvyBatches)
-        .where(eq(zuvyBatches.id, id))
-        .limit(1);
+      return await db.transaction(async (tx) => {
+        // Fetch batch details before deletion for tracking log
+        const batchToDelete = await tx
+          .select({
+            name: zuvyBatches.name,
+            bootcampId: zuvyBatches.bootcampId,
+          })
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.id, id))
+          .limit(1);
 
-      await db
-        .update(zuvyBatchEnrollments)
-        .set({ batchId: null })
-        .where(eq(zuvyBatchEnrollments.batchId, id))
-        .returning();
-      await db
-        .delete(zuvyStudentAttendance)
-        .where(eq(zuvyStudentAttendance.batchId, id));
+        if (batchToDelete.length === 0) {
+          return [
+            { status: 'error', message: 'Batch not found', code: 404 },
+            null,
+          ];
+        }
 
-      await db
-        .delete(zuvyStudentAttendanceRecords)
-        .where(eq(zuvyStudentAttendanceRecords.batchId, id));
-      await db
-        .delete(zuvySessions)
-        .where(
-          or(eq(zuvySessions.batchId, id), eq(zuvySessions.secondBatchId, id)),
-        );
-      let data = await db
-        .delete(zuvyBatches)
-        .where(eq(zuvyBatches.id, id))
-        .returning();
+        await tx
+          .update(zuvyBatchEnrollments)
+          .set({ batchId: null })
+          .where(eq(zuvyBatchEnrollments.batchId, id))
+          .returning();
 
-      if (data.length === 0) {
+        await tx
+          .delete(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.batchId, id));
+
+        await tx
+          .delete(zuvyStudentAttendanceRecords)
+          .where(eq(zuvyStudentAttendanceRecords.batchId, id));
+
+        await tx
+          .delete(zuvySessions)
+          .where(
+            or(
+              eq(zuvySessions.batchId, id),
+              eq(zuvySessions.secondBatchId, id),
+            ),
+          );
+
+        const data = await tx
+          .delete(zuvyBatches)
+          .where(eq(zuvyBatches.id, id))
+          .returning();
+
+        if (data.length === 0) {
+          return [
+            { status: 'error', message: 'Batch not found', code: 404 },
+            null,
+          ];
+        }
+
+        const courseRes = await tx
+          .select({ name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, batchToDelete[0]?.bootcampId))
+          .limit(1);
+        const bootcampName = courseRes[0]?.name || '';
+
         return [
-          { status: 'error', message: 'Batch not found', code: 404 },
           null,
+          {
+            status: 'success',
+            message: 'Batch deleted successfully',
+            code: 200,
+            batchName: batchToDelete[0]?.name || null,
+            bootcampId: batchToDelete[0]?.bootcampId || null,
+            descriptionSuffix: bootcampName
+              ? `from course ${bootcampName}`
+              : '',
+          },
         ];
-      }
-      const courseRes = await db
-        .select({ name: zuvyBootcamps.name })
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, batchToDelete[0]?.bootcampId))
-        .limit(1);
-      const bootcampName = courseRes[0]?.name || '';
-
-      return [
-        null,
-        {
-          status: 'success',
-          message: 'Batch deleted successfully',
-          code: 200,
-          batchName: batchToDelete[0]?.name || null,
-          bootcampId: batchToDelete[0]?.bootcampId || null,
-          descriptionSuffix: bootcampName ? `from course ${bootcampName}` : '',
-        },
-      ];
+      });
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.error(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -848,7 +879,7 @@ export class BatchesService {
         { code: 401, status: 'error', message: 'error in reassigning batch' },
       ];
     } catch (e) {
-      log(`error: ${e}`);
+      this.logger.error(`error: ${e}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }

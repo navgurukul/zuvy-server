@@ -3,14 +3,12 @@ import {
   IsNotEmpty,
   IsOptional,
   IsArray,
-  ValidateNested,
   IsEmail,
-  IsNumber,
+  IsInt,
   IsBoolean,
-  ArrayNotEmpty,
   IsDateString,
 } from 'class-validator';
-import { ApiProperty, ApiResponseProperty, ApiResponse } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class BatchDto {
   @ApiProperty({
@@ -37,7 +35,7 @@ export class BatchDto {
     required: true,
   })
   @IsNotEmpty()
-  @IsNumber()
+  @IsInt()
   bootcampId: number;
 
   @ApiProperty({
@@ -46,7 +44,7 @@ export class BatchDto {
     required: true,
   })
   @IsNotEmpty({ message: 'capEnrollment is required' })
-  @IsNumber()
+  @IsInt()
   capEnrollment: number;
 
   @ApiProperty({
@@ -95,7 +93,7 @@ export class BatchDto {
   })
   @IsOptional()
   @IsArray()
-  @IsNumber({}, { each: true })
+  @IsInt({ each: true })
   studentIds?: number[];
 }
 
@@ -122,7 +120,7 @@ export class PatchBatchDto {
     required: true,
   })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   capEnrollment: number;
 
   @ApiProperty({

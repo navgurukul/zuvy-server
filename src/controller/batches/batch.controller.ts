@@ -26,7 +26,6 @@ import {
 import { BatchDto, PatchBatchDto } from './dto/batch.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
-import { Roles } from 'src/decorators/roles.decorator';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
@@ -62,13 +61,13 @@ export class BatchesController {
       throw new BadRequestException(err);
     }
 
-    const user = req.user;
+    const user = Array.isArray(req.user) ? req.user[0] : req.user;
     const isInstructor = user?.roles?.includes('instructor');
     const isAdmin =
       user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
 
     if (isInstructor && !isAdmin) {
-      if (res['batch'].instructorId !== Number(user.id)) {
+      if (res['batch']?.instructorId !== Number(user?.id)) {
         throw new ForbiddenException(
           'You are not authorized to view this batch',
         );
