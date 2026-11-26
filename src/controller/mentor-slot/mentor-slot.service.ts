@@ -97,6 +97,10 @@ const shortName = (name: string | null) => {
     : `${parts[0]} ${parts[parts.length - 1][0]}.`;
 };
 
+// A removed slot that cancelled bookings still point at (removeSlot keeps
+// it so their history survives). Nobody can book it and no list shows it.
+export const REMOVED_SLOT_STATUS = 'removed';
+
 // A booking still without its join link this long after it was made is
 // treated as abandoned between bookSlot's steps: the abandoned-booking job
 // releases it, and it can't be rescheduled.
@@ -2407,6 +2411,25 @@ export class MentorSlotService {
 
       await this.zoomLicenseService.releaseMentorSlotAssignment(trx, slotId);
 
+      // Cancelled bookings still point at this slot (and their attendance
+      // and recordings at them); deleting the slot would cascade and wipe
+      // that history from both people's Cancelled lists. Keep such a slot,
+      // marked removed: nobody can book it and no list shows it.
+      const [{ count: history }] = await trx
+        .select({ count: count() })
+        .from(zuvyMentorSlotBooking)
+        .where(eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId));
+      if (Number(history) > 0) {
+        return trx
+          .update(zuvyMentorSlotAvailability)
+          .set({
+            status: REMOVED_SLOT_STATUS,
+            isPublic: false,
+          } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+          .where(eq(zuvyMentorSlotAvailability.id, slotId))
+          .returning();
+      }
+
       return trx
         .delete(zuvyMentorSlotAvailability)
         .where(eq(zuvyMentorSlotAvailability.id, slotId))
@@ -3167,6 +3190,7 @@ export class MentorSlotService {
           eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)),
           lt(zuvyMentorSlotAvailability.slotStartDateTime, end),
           gt(zuvyMentorSlotAvailability.slotEndDateTime, start),
+          ne(zuvyMentorSlotAvailability.status, REMOVED_SLOT_STATUS),
         ),
       );
 
@@ -3331,6 +3355,7 @@ export class MentorSlotService {
           ),
           gte(zuvyMentorSlotAvailability.slotStartDateTime, startOfWeek),
           lt(zuvyMentorSlotAvailability.slotStartDateTime, endOfWeek),
+          ne(zuvyMentorSlotAvailability.status, REMOVED_SLOT_STATUS),
         ),
       )
       .orderBy(
@@ -3426,9 +3451,15 @@ export class MentorSlotService {
       if (slotStart <= now) {
         state = 'past';
         message = 'This slot has passed.';
-      } else if (booked.length) {
+      } else if (
+        booked.length ||
+        (slot.currentBookedCount > 0 && !held.length)
+      ) {
         state = 'booked';
-        message = `Booked by ${booked.map((p) => p.studentName ?? 'a student').join(', ')}. Booked slots can't be removed. Cancel the booking first.`;
+        const who = booked.length
+          ? ` by ${booked.map((p) => p.studentName ?? 'a student').join(', ')}`
+          : '';
+        message = `Booked${who}. Booked slots can't be removed. Cancel the booking first.`;
       } else if (held.length) {
         state = 'held';
         message =

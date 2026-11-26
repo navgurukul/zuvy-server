@@ -459,14 +459,16 @@ export class SessionService {
     // Each student's credits ("Credits left 1 of 3 · Sessions used 2 ·
     // Next booking opens 20 Nov").
     const credits = new Map<string, ReturnType<typeof creditData>>();
-    for (const id of studentIds) {
-      credits.set(
-        id,
-        creditData(
-          await this.creditService.getState(BigInt(id), config, db, now),
-        ),
-      );
-    }
+    await Promise.all(
+      studentIds.map(async (id) => {
+        credits.set(
+          id,
+          creditData(
+            await this.creditService.getState(BigInt(id), config, db, now),
+          ),
+        );
+      }),
+    );
 
     return rows.map((row) => {
       const b = row.booking;
@@ -589,6 +591,9 @@ export class SessionService {
             studentIds.map((id) => BigInt(id)),
           ),
           eq(zuvyBatchEnrollments.status, 'active'),
+          // Only this organization's courses: a mentor in another org must
+          // not see the student's courses elsewhere.
+          eq(zuvyBootcamps.organizationId, organizationId),
         ),
       )
       .orderBy(desc(zuvyBatchEnrollments.id));

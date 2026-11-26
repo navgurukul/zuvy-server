@@ -532,7 +532,8 @@ async function main() {
         .update(schema.zuvyMentorSlotBooking)
         .set({ sessionLifecycleState: 'MISSED' })
         .where(eq(schema.zuvyMentorSlotBooking.id, missed));
-      const gone = await book((await slotAt(nextDay())).id);
+      const goneSlot = await slotAt(nextDay());
+      const gone = await book(goneSlot.id);
       await svc.cancelBooking(
         gone,
         'E2E: the student cancelled this',
@@ -576,6 +577,33 @@ async function main() {
       );
       const m = await mentorCard(missed);
       report('missed card', m.displayState === 'MISSED');
+
+      // Removing a slot whose booking was cancelled keeps that booking's
+      // history: the slot is marked removed, not deleted (the FK cascades).
+      const removed = await svc.removeSlot(MENTOR, goneSlot.id, ORG);
+      const [slotRow] = await db
+        .select()
+        .from(schema.zuvyMentorSlotAvailability)
+        .where(eq(schema.zuvyMentorSlotAvailability.id, goneSlot.id));
+      const [bookingRow] = await db
+        .select({ id: schema.zuvyMentorSlotBooking.id })
+        .from(schema.zuvyMentorSlotBooking)
+        .where(eq(schema.zuvyMentorSlotBooking.id, gone));
+      let listed = false;
+      for (let w = -1; w <= 8 && !listed; w++) {
+        const week = await svc.getMySlots(MENTOR, w, 'asc', ORG);
+        listed = week.slots.some((s: any) => s.id === goneSlot.id);
+      }
+      report(
+        'removing a slot after its booking was cancelled keeps the booking',
+        removed.message === 'Slot deleted successfully' &&
+          slotRow?.status === 'removed' &&
+          slotRow?.isPublic === false &&
+          !!bookingRow &&
+          (await ids('cancelled')).includes(gone) &&
+          !listed,
+        JSON.stringify({ status: slotRow?.status, listed }),
+      );
 
       const detail = await sessions.getSessionDetail(bookedId, BigInt(MENTOR));
       report(

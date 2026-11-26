@@ -10,7 +10,7 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
-import { and, eq, lt, gt } from 'drizzle-orm';
+import { and, eq, lt, gt, ne } from 'drizzle-orm';
 import { ZoomLicenseService } from '../../zoom-license/zoom-license.service';
 import { MentorshipConfigService } from '../mentorship-rules/mentorship-config.service';
 import {
@@ -91,7 +91,15 @@ export class MentorRecurrenceService {
     }));
 
     if (previewOnly) {
-      return generatedSlots;
+      // Mark the times a real run would refuse as too soon (slot lead time).
+      const leadConfig = await this.mentorshipConfig.get();
+      const earliestStart = earliestSlotStart(new Date(), leadConfig);
+      return generatedSlots.map((slot) => ({
+        ...slot,
+        tooSoon:
+          leadConfig.minSlotLeadDays > 0 &&
+          slot.slotStartDateTime.getTime() < earliestStart.getTime(),
+      }));
     }
 
     // Two ranges [aStart,aEnd) and [bStart,bEnd) overlap iff aStart < bEnd
@@ -183,6 +191,8 @@ export class MentorRecurrenceService {
             ),
             lt(zuvyMentorSlotAvailability.slotStartDateTime, windowEnd),
             gt(zuvyMentorSlotAvailability.slotEndDateTime, windowStart),
+            // A removed slot (kept for its cancelled bookings) doesn't block.
+            ne(zuvyMentorSlotAvailability.status, 'removed'),
           ),
         );
 
