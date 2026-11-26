@@ -48,6 +48,18 @@ export class CodingPlatformService {
       return [error];
     }
     let testCasesArray = question.data.testCases;
+    if (
+      !testCasesArray ||
+      !Array.isArray(testCasesArray) ||
+      testCasesArray.length === 0
+    ) {
+      return [
+        {
+          statusCode: STATUS_CODES.BAD_REQUEST,
+          message: 'Question has no test cases to execute',
+        },
+      ];
+    }
 
     const preparedSubmissions = testCasesArray.map((testCase) => {
       // Process inputs based on their data types
@@ -125,9 +137,33 @@ export class CodingPlatformService {
       const response = await axios.request(options);
 
       const tokens = response.data?.map((submission) => submission.token);
+      if (!tokens || tokens.length === 0) {
+        return [
+          {
+            statusCode: STATUS_CODES.BAD_REQUEST,
+            message: 'Failed to create code execution submissions',
+          },
+        ];
+      }
 
       let submissionInfo: any[] = [];
+      const MAX_ATTEMPTS = 30; // 30 attempts * 500ms = 15 seconds max polling deadline
+      let attempts = 0;
+
       do {
+        attempts++;
+        if (attempts > MAX_ATTEMPTS) {
+          Logger.warn(
+            `submitCodeBatch polling timed out after ${MAX_ATTEMPTS} attempts for tokens: ${tokens.join(',')}`,
+          );
+          return [
+            {
+              statusCode: STATUS_CODES.BAD_REQUEST,
+              message: 'Code execution timed out. Please try again.',
+            },
+          ];
+        }
+
         const getRes = await axios.request({
           method: 'GET',
           url: `${RAPID_BASE_URL}/submissions/batch`,
@@ -155,14 +191,21 @@ export class CodingPlatformService {
         });
 
         submissionInfo = getRes.data.submissions ?? getRes.data;
-        if (submissionInfo.some((s) => s.status_id < 3)) {
+        if (
+          Array.isArray(submissionInfo) &&
+          submissionInfo.some((s) => s.status_id < 3)
+        ) {
           await new Promise((r) => setTimeout(r, 500));
         }
-      } while (submissionInfo.some((s) => s.status_id < 3));
-      let testSubmission = testCasesArray?.map((testCase, index) => {
+      } while (
+        Array.isArray(submissionInfo) &&
+        submissionInfo.some((s) => s.status_id < 3)
+      );
+
+      const testSubmission = testCasesArray?.map((testCase, index) => {
         return {
           testcastId: testCase?.id,
-          status: submissionInfo[index].status?.description,
+          status: submissionInfo[index]?.status?.description,
           token: submissionInfo[index]?.token,
           stdout: submissionInfo[index]?.stdout,
           stderr: submissionInfo[index]?.stderr,
@@ -211,6 +254,18 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
+      if (
+        !testcasesSubmission?.data ||
+        !Array.isArray(testcasesSubmission.data) ||
+        testcasesSubmission.data.length === 0
+      ) {
+        return [
+          {
+            statusCode: STATUS_CODES.BAD_REQUEST,
+            message: 'No test case submission results found',
+          },
+        ];
+      }
       if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
         return [
           null,
@@ -222,7 +277,7 @@ export class CodingPlatformService {
         ];
       }
       let insertValues;
-      if (testcasesSubmission.data.length >= 0) {
+      if (testcasesSubmission.data.length > 0) {
         insertValues = {
           status: ACCEPTED,
           sourceCode: sourceCode.sourceCode,
@@ -606,18 +661,7 @@ export class CodingPlatformService {
         ];
       }
 
-      const question = await db
-        .update(zuvyCodingQuestions)
-        .set(questionData)
-        .where(
-          and(
-            eq(zuvyCodingQuestions.id, id),
-            eq(zuvyCodingQuestions.orgId, orgId),
-          ),
-        )
-        .returning();
-      let missingIdElements = [];
-      if (testCases.length < 2) {
+      if (!Array.isArray(testCases) || testCases.length < 2) {
         return [
           {
             message: 'Test case should be minimum 2',
@@ -625,32 +669,73 @@ export class CodingPlatformService {
           },
         ];
       }
-      if (Array.isArray(testCases) && testCases.length > 0) {
-        missingIdElements = testCases.filter(
+
+      const result = await db.transaction(async (tx) => {
+        const question = await tx
+          .update(zuvyCodingQuestions)
+          .set(questionData)
+          .where(
+            and(
+              eq(zuvyCodingQuestions.id, id),
+              eq(zuvyCodingQuestions.orgId, orgId),
+            ),
+          )
+          .returning();
+
+        let missingIdElements = testCases.filter(
           (element) => !element.hasOwnProperty('id'),
         );
-        testCases = testCases.filter((element) => element.hasOwnProperty('id'));
+        const existingTestCases = testCases.filter((element) =>
+          element.hasOwnProperty('id'),
+        );
         missingIdElements = missingIdElements.map((element) => ({
           ...element,
           questionId: id,
         }));
-      }
-      await db.delete(zuvyTestCases).where(
-        sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(
-          zuvyTestCases.id,
-          testCases.map((tc) => tc.id),
-        )}`,
-      );
-      const newAddedTestCases: any[] =
-        missingIdElements.length > 0
-          ? await db.insert(zuvyTestCases).values(missingIdElements).returning()
-          : [];
-      await this.updateTestCaseAndExpectedOutput(testCases);
+
+        const existingIds = existingTestCases.map((tc) => tc.id);
+        if (existingIds.length > 0) {
+          await tx
+            .delete(zuvyTestCases)
+            .where(
+              sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(
+                zuvyTestCases.id,
+                existingIds,
+              )}`,
+            );
+        } else {
+          await tx
+            .delete(zuvyTestCases)
+            .where(eq(zuvyTestCases.questionId, id));
+        }
+
+        const newAddedTestCases: any[] =
+          missingIdElements.length > 0
+            ? await tx
+                .insert(zuvyTestCases)
+                .values(missingIdElements)
+                .returning()
+            : [];
+
+        const [updateErr] = await this.updateTestCaseAndExpectedOutput(
+          existingTestCases,
+          tx,
+        );
+        if (updateErr) {
+          throw new Error(updateErr.message);
+        }
+
+        return {
+          question,
+          testCases: [...existingTestCases, ...newAddedTestCases],
+        };
+      });
+
       return [
         null,
         {
           message: 'Coding question updated successfully',
-          data: { question, testCases: [...testCases, ...newAddedTestCases] },
+          data: result,
           before,
           statusCode: STATUS_CODES.OK,
         },
@@ -663,7 +748,23 @@ export class CodingPlatformService {
 
   async deleteCodingQuestion(id: number, orgId: number): Promise<any> {
     try {
-      let data = await db
+      const existingSubmissions = await db
+        .select({ id: zuvyPracticeCode.id })
+        .from(zuvyPracticeCode)
+        .where(eq(zuvyPracticeCode.questionId, id))
+        .limit(1);
+
+      if (existingSubmissions.length > 0) {
+        return [
+          {
+            message:
+              'Cannot delete coding question with existing student submissions',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+        ];
+      }
+
+      const data = await db
         .delete(zuvyCodingQuestions)
         .where(
           and(
@@ -684,6 +785,16 @@ export class CodingPlatformService {
         },
       ];
     } catch (error) {
+      Logger.error(JSON.stringify(error));
+      if (error?.code === '23503') {
+        return [
+          {
+            message:
+              'Cannot delete coding question because it is referenced by other records',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+        ];
+      }
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
@@ -753,11 +864,15 @@ export class CodingPlatformService {
     }
   }
   // i want to update the test case and expected output for the coding question
-  async updateTestCaseAndExpectedOutput(testcases: any): Promise<any> {
+  async updateTestCaseAndExpectedOutput(
+    testcases: any,
+    tx?: any,
+  ): Promise<any> {
     try {
+      const dbClient = tx || db;
       for (const testCase of testcases) {
         const { inputs, expectedOutput } = testCase;
-        await db
+        await dbClient
           .update(zuvyTestCases)
           .set({ inputs, expectedOutput })
           .where(sql`${zuvyTestCases.id} = ${testCase.id}`);
@@ -777,6 +892,32 @@ export class CodingPlatformService {
 
   async deleteCodingTestcase(id: number): Promise<any> {
     try {
+      const existingTestCase = await db
+        .select()
+        .from(zuvyTestCases)
+        .where(eq(zuvyTestCases.id, id))
+        .limit(1);
+
+      if (!existingTestCase || existingTestCase.length === 0) {
+        return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
+      }
+
+      const questionId = existingTestCase[0].questionId;
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyTestCases)
+        .where(eq(zuvyTestCases.questionId, questionId));
+
+      const totalTestCases = Number(countResult[0]?.count || 0);
+      if (totalTestCases <= 2) {
+        return [
+          {
+            message: 'Test case should be minimum 2, cannot delete further',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+        ];
+      }
+
       let data = await db
         .delete(zuvyTestCases)
         .where(sql`${zuvyTestCases.id} = ${id}`)
@@ -820,13 +961,22 @@ export class CodingPlatformService {
   // getTestcasesSubmissionBySubmissionId
   async getTestcasesSubmissionBySubmissionId(
     submissionId: number,
+    user: any,
   ): Promise<any> {
     try {
+      const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+      const isSuperAdmin = userRoles.includes('super_admin');
+      const isInstructorOrAdmin =
+        userRoles.includes('admin') ||
+        userRoles.includes('instructor') ||
+        userRoles.includes('ops');
+
       const submission = await db.query.zuvyPracticeCode.findMany({
         where: (zuvyPracticeCode, { sql }) =>
           sql`${zuvyPracticeCode.id} = ${submissionId}`,
         columns: {
           id: true,
+          userId: true,
           status: true,
           action: true,
           questionId: true,
@@ -840,6 +990,7 @@ export class CodingPlatformService {
           questionDetail: {
             columns: {
               id: true,
+              orgId: true,
               title: true,
               description: true,
               difficulty: true,
@@ -865,11 +1016,40 @@ export class CodingPlatformService {
           },
         ];
       }
+
+      const sub = submission[0];
+      const isOwner = Number(user?.id) === Number(sub.userId);
+
+      if (!isOwner && !isSuperAdmin) {
+        if (!isInstructorOrAdmin) {
+          return [
+            {
+              message: 'You are not authorized to view this submission',
+              statusCode: STATUS_CODES.FORBIDDEN,
+            },
+          ];
+        }
+
+        if (
+          user?.orgId &&
+          sub.questionDetail?.orgId &&
+          Number(user.orgId) !== Number(sub.questionDetail.orgId)
+        ) {
+          return [
+            {
+              message:
+                'You are not authorized to view submissions from another organization',
+              statusCode: STATUS_CODES.FORBIDDEN,
+            },
+          ];
+        }
+      }
+
       return [
         null,
         {
           message: 'All submission by submission id',
-          data: submission[0],
+          data: sub,
           statusCode: STATUS_CODES.OK,
         },
       ];
@@ -877,11 +1057,57 @@ export class CodingPlatformService {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
-  async getSubmissionsId(questionId: number): Promise<any> {
+
+  async getSubmissionsId(questionId: number, user: any): Promise<any> {
     try {
+      const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+      const isSuperAdmin = userRoles.includes('super_admin');
+      const isInstructorOrAdmin =
+        userRoles.includes('admin') ||
+        userRoles.includes('instructor') ||
+        userRoles.includes('ops');
+
+      const question = await db.query.zuvyCodingQuestions.findFirst({
+        where: (zuvyCodingQuestions, { eq }) =>
+          eq(zuvyCodingQuestions.id, questionId),
+        columns: {
+          id: true,
+          orgId: true,
+        },
+      });
+
+      if (!question) {
+        return [
+          {
+            message: 'Question not found',
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
+        ];
+      }
+
+      if (isInstructorOrAdmin && !isSuperAdmin) {
+        if (
+          user?.orgId &&
+          question.orgId &&
+          Number(user.orgId) !== Number(question.orgId)
+        ) {
+          return [
+            {
+              message:
+                'You are not authorized to view submissions for this question',
+              statusCode: STATUS_CODES.FORBIDDEN,
+            },
+          ];
+        }
+      }
+
+      const isPrivileged = isSuperAdmin || isInstructorOrAdmin;
+      const whereCondition = isPrivileged
+        ? sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${SUBMIT}`
+        : sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${SUBMIT} AND ${zuvyPracticeCode.userId} = ${user?.id}`;
+
       const submissions = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) =>
-          sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${SUBMIT}`,
+        where: () => whereCondition,
         columns: {
           id: true,
           status: true,

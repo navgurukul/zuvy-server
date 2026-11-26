@@ -1,8 +1,6 @@
 import {
   Injectable,
-  NestMiddleware,
   UnauthorizedException,
-  ForbiddenException,
   Logger,
   InternalServerErrorException,
   NotFoundException,
@@ -16,7 +14,6 @@ import {
   zuvyOrganizations,
   zuvyPermissions,
   zuvyPermissionsRoles,
-  blacklistedTokens,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { and, eq, ilike, inArray, or, sql, asc, not } from 'drizzle-orm';
@@ -37,7 +34,6 @@ import { RbacService } from 'src/rbac/rbac.service';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { AuthService } from 'src/auth/auth.service';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
-import { bigint } from 'drizzle-orm/mysql-core';
 
 @Injectable()
 export class UsersService {
@@ -164,18 +160,24 @@ export class UsersService {
    * @param email Email of the user to check/create
    * @returns User information
    */
-  async verifyTokenAndManageUser(token) {
+  async verifyTokenAndManageUser(token: string) {
     try {
-      const decoded: any = await this.jwtService.decode(token);
+      const decoded: any = await this.jwtService.verifyAsync(token, {
+        secret: process.env.JWT_SECRET_KEY,
+      });
       if (!decoded) {
         throw new UnauthorizedException('Invalid token');
       }
+
+      const userId = decoded.id || decoded.sub;
 
       const user: any[] = await db
         .select()
         .from(users)
         .where(
-          sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`,
+          userId
+            ? and(eq(users.id, BigInt(userId)), eq(users.email, decoded.email))
+            : eq(users.email, decoded.email),
         );
       if (user.length > 0) {
         user[0].id = parseInt(user[0].id); // Assign default role
@@ -187,8 +189,8 @@ export class UsersService {
         };
       } else {
         // User doesn't exist, create new user
-        let userInset: any = {
-          id: decoded.id,
+        const userInset: any = {
+          ...(userId ? { id: BigInt(userId) } : {}),
           email: decoded.email,
           name: decoded.name || decoded.email.split('@')[0], // Use email as fallback for name
         };
@@ -205,7 +207,9 @@ export class UsersService {
       }
     } catch (error) {
       this.logger.error(`Error verifying user: ${error.message}`, error.stack);
-      throw new Error(`Failed to verify user: ${error.message}`);
+      throw new UnauthorizedException(
+        `Failed to verify user: ${error.message}`,
+      );
     }
   }
 
@@ -223,17 +227,24 @@ export class UsersService {
 
       //Normalize name (case-insensitive handling)
       const normalizedName = name.trim().toLowerCase();
+      const targetOrgId = createUserRoleDto.orgId
+        ? Number(createUserRoleDto.orgId)
+        : null;
 
-      // Fetch all roles with same name
+      // Fetch all roles with same name in the same org
       const existingRole = await db.query.zuvyUserRoles.findFirst({
-        where: (roles, { eq }) => eq(roles.name, normalizedName),
+        where: (roles, { eq, and, isNull }) =>
+          targetOrgId !== null
+            ? and(eq(roles.name, normalizedName), eq(roles.orgId, targetOrgId))
+            : and(eq(roles.name, normalizedName), isNull(roles.orgId)),
       });
 
       if (existingRole) {
         return {
           status: 'error',
           code: 400,
-          message: 'User role with this name already exists',
+          message:
+            'User role with this name already exists in this organization',
         };
       }
 
@@ -241,7 +252,7 @@ export class UsersService {
       const newRoleData = {
         name: normalizedName,
         description: description ?? null,
-        orgId: createUserRoleDto.orgId, // Default orgId to 1 if not provided
+        orgId: targetOrgId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -264,7 +275,7 @@ export class UsersService {
 
   async getAllUserRoles(
     orgId: number,
-    roleName: string,
+    roleName: string | string[],
     duplicate?: boolean,
   ): Promise<any> {
     orgId = Number(orgId);
@@ -278,7 +289,11 @@ export class UsersService {
           .from(zuvyUserRoles)
           .where(eq(zuvyUserRoles.orgId, orgId));
       } else {
-        if (roleName[0] === 'super admin') {
+        const isSuperAdmin = Array.isArray(roleName)
+          ? roleName.includes('super_admin')
+          : roleName === 'super_admin';
+
+        if (isSuperAdmin) {
           result = await db
             .select()
             .from(zuvyUserRoles)
@@ -385,28 +400,35 @@ export class UsersService {
         ];
       }
 
-      for (const permission of defaultPermissions) {
-        const [permissionDetails] = await executor
-          .select({ id: zuvyPermissions.id })
-          .from(zuvyPermissions)
-          .where(eq(zuvyPermissions.name, permission))
-          .limit(1);
+      const uniquePermissions = Array.from(new Set(defaultPermissions));
 
-        if (!permissionDetails) {
-          this.logger.warn(
-            `Permission not found in DB, skipping: ${permission}`,
-          );
-          continue;
+      if (uniquePermissions.length > 0) {
+        const permissionsDetails = await executor
+          .select({ id: zuvyPermissions.id, name: zuvyPermissions.name })
+          .from(zuvyPermissions)
+          .where(inArray(zuvyPermissions.name, uniquePermissions));
+
+        if (permissionsDetails.length < uniquePermissions.length) {
+          const foundNames = new Set(permissionsDetails.map((p) => p.name));
+          for (const perm of uniquePermissions) {
+            if (!foundNames.has(perm)) {
+              this.logger.warn(`Permission not found in DB, skipping: ${perm}`);
+            }
+          }
         }
 
-        await executor
-          .insert(zuvyPermissionsRoles)
-          .values({
-            roleId,
-            permissionId: permissionDetails.id,
-            orgId,
-          } as unknown as typeof zuvyPermissionsRoles.$inferInsert)
-          .onConflictDoNothing();
+        if (permissionsDetails.length > 0) {
+          await executor
+            .insert(zuvyPermissionsRoles)
+            .values(
+              permissionsDetails.map((p) => ({
+                roleId,
+                permissionId: p.id,
+                orgId,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
 
       return {
@@ -812,7 +834,7 @@ export class UsersService {
         totalPages,
       };
     } catch (error) {
-      console.error('Error in getAllUsersWithRoles:', error);
+      this.logger.error('Error in getAllUsersWithRoles:', error);
       throw error;
     }
   }
@@ -1091,13 +1113,20 @@ export class UsersService {
         updateUserDto.roleId === Number(existingUser.roleId)
       ) {
         // Only name is being updated
-        return await db
+        const [updatedUser] = await db
           .update(users)
           .set({
             name: updateUserDto.name,
             updatedAt: new Date().toISOString(),
           })
-          .where(eq(users.id, targetUserId));
+          .where(eq(users.id, targetUserId))
+          .returning();
+
+        if (!updatedUser) {
+          throw new NotFoundException(`User with ID ${id} not found`);
+        }
+
+        return await this.getUserByIdWithRole(targetUserId);
       }
 
       const result = await db.transaction(async (tx) => {
