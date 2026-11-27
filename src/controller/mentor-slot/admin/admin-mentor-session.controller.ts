@@ -90,7 +90,9 @@ export class AdminMentorSessionController {
       user,
       query.orgId,
       query.bootcampId,
+      query.bootcampName,
       query.date,
+      query.range,
     );
   }
 

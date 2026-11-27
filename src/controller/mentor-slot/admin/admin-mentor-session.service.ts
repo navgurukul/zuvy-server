@@ -21,6 +21,7 @@ import {
 } from '../../../../drizzle/schema';
 import { NotificationEmailService } from 'src/notification/email/email.service';
 import { MentorSlotService } from '../mentor-slot.service';
+import { MentorDashboardRange } from './dto/overview.dto';
 
 /** A session shows from this many minutes before it starts... */
 export const LIVE_WINDOW_BEFORE_START_MIN = 10;
@@ -34,6 +35,30 @@ export const ADMIN_CANCEL_REASON_MIN_LENGTH = 10;
 const ADMIN_CANCEL_SHORT_NOTICE_MS = 24 * 60 * 60 * 1000;
 
 const MINUTE = 60 * 1000;
+const IST = 'Asia/Kolkata';
+
+const istDay = (date: Date) =>
+  date.toLocaleDateString('en-CA', { timeZone: IST });
+
+const shiftDay = (day: string, amount: number) => {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+};
+
+export const getMentorDashboardRangeDates = (
+  range: MentorDashboardRange = 'today',
+  now = new Date(),
+) => {
+  const today = istDay(now);
+  if (range === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
+  if (range === 'week') {
+    const weekday = new Date(`${today}T00:00:00.000Z`).getUTCDay();
+    const monday = shiftDay(today, -((weekday + 6) % 7));
+    return { from: monday, to: shiftDay(monday, 6) };
+  }
+  return { from: today, to: today };
+};
 
 const escapeHtml = (value: string) =>
   value
@@ -204,20 +229,18 @@ export class AdminMentorSessionService {
     user: RequestUser,
     orgId: number,
     bootcampId?: number,
+    bootcampName?: string,
     date?: string,
+    range: MentorDashboardRange = 'today',
   ) {
     this.assertCanViewOrg(user, orgId);
-    if (bootcampId) {
-      await this.assertCourseHasMentorship(orgId, bootcampId);
-    }
-
-    const day =
-      date ??
-      new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const dayStart = new Date(`${day}T00:00:00.000+05:30`);
-    const dayEnd = new Date(`${day}T23:59:59.999+05:30`);
-    if (isNaN(dayStart.getTime())) {
-      throw new BadRequestException('date must be a valid YYYY-MM-DD date.');
+    const selectedRange = date
+      ? { from: date, to: date }
+      : getMentorDashboardRangeDates(range);
+    const rangeStart = new Date(`${selectedRange.from}T00:00:00.000+05:30`);
+    const rangeEnd = new Date(`${selectedRange.to}T23:59:59.999+05:30`);
+    if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
+      throw new BadRequestException('date range must contain valid dates.');
     }
 
     const courses = await db
@@ -236,17 +259,38 @@ export class AdminMentorSessionService {
       .groupBy(zuvyBootcamps.id, zuvyBootcamps.name)
       .orderBy(asc(zuvyBootcamps.name));
 
+    let selectedBootcampId = bootcampId;
+    if (!selectedBootcampId && bootcampName?.trim()) {
+      const matchingCourse = courses.find(
+        (course) =>
+          course.name.trim().toLocaleLowerCase() ===
+          bootcampName.trim().toLocaleLowerCase(),
+      );
+      if (!matchingCourse) {
+        throw new NotFoundException(
+          'Course not found in this organisation or mentorship is disabled.',
+        );
+      }
+      selectedBootcampId = matchingCourse.id;
+    }
+    if (selectedBootcampId) {
+      await this.assertCourseHasMentorship(orgId, selectedBootcampId);
+    }
+    const responseCourses = selectedBootcampId
+      ? courses.filter((course) => course.id === selectedBootcampId)
+      : courses;
+
     // Older bookings have no bootcamp_id; use the mentor profile's course.
     const courseId = sql`COALESCE(${zuvyMentorSlotBooking.bootcampId}, ${zuvyMentorSlotManagement.bootcampId})`;
     const conditions = [
       eq(zuvyMentorSlotBooking.organizationId, orgId),
       ne(zuvyMentorSlotBooking.status, 'cancelled'),
       ne(zuvyMentorSlotBooking.sessionLifecycleState, 'CANCELLED'),
-      gte(zuvyMentorSlotAvailability.slotStartDateTime, dayStart),
-      lte(zuvyMentorSlotAvailability.slotStartDateTime, dayEnd),
+      gte(zuvyMentorSlotAvailability.slotStartDateTime, rangeStart),
+      lte(zuvyMentorSlotAvailability.slotStartDateTime, rangeEnd),
     ];
-    if (bootcampId) {
-      conditions.push(sql`${courseId} = ${bootcampId}`);
+    if (selectedBootcampId) {
+      conditions.push(sql`${courseId} = ${selectedBootcampId}`);
     }
 
     const [counts] = await db
@@ -282,12 +326,26 @@ export class AdminMentorSessionService {
       )
       .where(and(...conditions));
 
-    const live = await this.getLiveSessions(user, orgId, bootcampId, false);
+    const live = await this.getLiveSessions(
+      user,
+      orgId,
+      selectedBootcampId,
+      false,
+    );
 
     return {
-      date: day,
-      courses,
+      range: date ? 'custom' : range,
+      date:
+        selectedRange.from === selectedRange.to
+          ? selectedRange.from
+          : undefined,
+      from: selectedRange.from,
+      to: selectedRange.to,
+      courses: responseCourses,
       stats: {
+        sessions: Number(counts?.sessions ?? 0),
+        completed: Number(counts?.completed ?? 0),
+        noShows: Number(counts?.noShows ?? 0),
         sessionsToday: Number(counts?.sessions ?? 0),
         liveNow: 'total' in live ? live.total : 0,
         needAttentionNow: live.needsAttentionCount,

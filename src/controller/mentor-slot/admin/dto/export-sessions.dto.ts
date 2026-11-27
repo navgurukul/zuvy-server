@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Matches, Min } from 'class-validator';
+import { MENTOR_DASHBOARD_RANGES, MentorDashboardRange } from './overview.dto';
 
 /** Status filter values, as shown in the admin dashboard. */
 export const EXPORT_STATUS_FILTERS = [
@@ -30,6 +31,11 @@ export class ExportSessionsQueryDto {
   @IsInt()
   @Min(1)
   bootcampId?: number;
+
+  @ApiPropertyOptional({ enum: MENTOR_DASHBOARD_RANGES, default: 'today' })
+  @IsOptional()
+  @IsIn(MENTOR_DASHBOARD_RANGES)
+  range?: MentorDashboardRange;
 
   @ApiPropertyOptional({
     description: 'Only sessions of this mentor (user id)',

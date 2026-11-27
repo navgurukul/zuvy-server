@@ -19,6 +19,7 @@ import {
   ATTENTION_AFTER_START_MIN,
   AdminMentorSessionService,
   RequestUser,
+  getMentorDashboardRangeDates,
 } from './admin-mentor-session.service';
 import { ExportSessionsQueryDto } from './dto/export-sessions.dto';
 import { SessionListTab, SessionsListQueryDto } from './dto/sessions-list.dto';
@@ -27,8 +28,6 @@ import { SessionListTab, SessionsListQueryDto } from './dto/sessions-list.dto';
 export const MENTORSHIP_SESSION_QUOTA = 3;
 /** Longest date range one export may cover. */
 export const EXPORT_MAX_RANGE_DAYS = 366;
-const DEFAULT_RANGE_DAYS = 30;
-
 const TZ = 'Asia/Kolkata';
 const IST_OFFSET = '+05:30';
 const DAY = 24 * 60 * 60 * 1000;
@@ -399,9 +398,9 @@ export class AdminMentorSessionExportService {
    * filters, and pagination.
    */
   async getDaySessions(user: RequestUser, query: SessionsListQueryDto) {
-    const today = istDate(new Date());
-    const from = query.from ?? query.to ?? query.date ?? today;
-    const to = query.to ?? query.from ?? query.date ?? today;
+    const preset = getMentorDashboardRangeDates(query.range);
+    const from = query.from ?? query.to ?? query.date ?? preset.from;
+    const to = query.to ?? query.from ?? query.date ?? preset.to;
     const ctx = await this.prepare(user, {
       orgId: query.orgId,
       bootcampId: query.bootcampId,
@@ -608,15 +607,9 @@ export class AdminMentorSessionExportService {
       courseName = course?.name ?? null;
     }
 
-    const to = query.to ?? istDate(new Date());
-    const from =
-      query.from ??
-      istDate(
-        new Date(
-          new Date(`${to}T12:00:00${IST_OFFSET}`).getTime() -
-            DEFAULT_RANGE_DAYS * DAY,
-        ),
-      );
+    const preset = getMentorDashboardRangeDates(query.range);
+    const to = query.to ?? query.from ?? preset.to;
+    const from = query.from ?? preset.from;
     const rangeStart = new Date(`${from}T00:00:00.000${IST_OFFSET}`);
     const rangeEnd = new Date(`${to}T23:59:59.999${IST_OFFSET}`);
     if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {

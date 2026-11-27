@@ -1,6 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Matches, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+export const MENTOR_DASHBOARD_RANGES = ['today', 'week', 'month'] as const;
+export type MentorDashboardRange = (typeof MENTOR_DASHBOARD_RANGES)[number];
 
 export class OverviewQueryDto {
   @ApiProperty({
@@ -11,12 +22,35 @@ export class OverviewQueryDto {
   @Min(1)
   orgId: number;
 
-  @ApiPropertyOptional({ description: 'Only sessions of this course' })
+  @ApiPropertyOptional({
+    description: 'Filter sessions by course ID. Use this or bootcampName.',
+    example: 674,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   bootcampId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter sessions by exact course name, case-insensitive. Use this or bootcampId.',
+    example: 'AFE Bootcamp - Data Structures & Algorithm',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  bootcampName?: string;
+
+  @ApiPropertyOptional({
+    enum: MENTOR_DASHBOARD_RANGES,
+    description:
+      'Dashboard date preset in IST. Week is Monday through Sunday. Explicit date/from/to values take precedence.',
+    default: 'today',
+  })
+  @IsOptional()
+  @IsIn(MENTOR_DASHBOARD_RANGES)
+  range?: MentorDashboardRange;
 
   @ApiPropertyOptional({
     description: 'Day to count, YYYY-MM-DD in IST. Default: today.',
