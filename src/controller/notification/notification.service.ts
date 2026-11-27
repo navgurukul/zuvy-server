@@ -8,6 +8,7 @@ import {
 } from '../../../drizzle/schema';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { NotificationType } from './notification.types';
+import { rescheduleRequestListMessage } from './notification-messages';
 
 @Injectable()
 export class NotificationService {
@@ -166,9 +167,7 @@ export class NotificationService {
           break;
 
         case NotificationType.RESCHEDULE_REQUEST:
-          message = studentName
-            ? `${studentName} requested to reschedule this mentorship session.`
-            : message;
+          message = rescheduleRequestListMessage(message, studentName);
           break;
 
         case NotificationType.RESCHEDULE_ACCEPTED:

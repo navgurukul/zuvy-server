@@ -323,6 +323,26 @@ async function main() {
         before.message,
       );
 
+      // Ops moves credits_counted_from past this booking: it no longer
+      // used a credit, so neither the preview nor the card says one.
+      rules({ creditsCountedFrom: new Date(Date.now() + DAY) });
+      const uncounted = await svc.getCancelPreview(STUDENT, id);
+      const uncountedCard = await card(id);
+      report(
+        'booking before credits_counted_from: preview says no credit is used',
+        uncounted.canCancel &&
+          /^This session doesn't use a credit, so your credits stay at \d+ of 100\.$/.test(
+            uncounted.message,
+          ),
+        uncounted.message,
+      );
+      report(
+        'booking before credits_counted_from: card uses no credit',
+        uncountedCard.usesCredit === false,
+        String(uncountedCard.usesCredit),
+      );
+      rules();
+
       rules({ noticeHours: noticeAround(new Date(slot.slotStartDateTime), 1) });
       const late = await svc.getCancelPreview(STUDENT, id);
       report(
@@ -448,6 +468,28 @@ async function main() {
               alert[0].message,
             ),
           alert[0]?.message,
+        );
+        // What the mentor's notification list shows: the student's name,
+        // with the new time and reply deadline kept.
+        const listed = (
+          await svc.notificationService.getUserNotifications(
+            BigInt(MENTOR),
+            ORG,
+          )
+        ).data.find(
+          (n: any) =>
+            n.referenceId === rsBooking && n.type === 'RESCHEDULE_REQUEST',
+        );
+        report(
+          "the mentor's alert list keeps the reply deadline, with the student's name",
+          !!listed?.studentName &&
+            listed.message.startsWith(
+              `${listed.studentName} asked to move their session to `,
+            ) &&
+            /Reply by .+, or the session stays as booked\.$/.test(
+              listed.message,
+            ),
+          listed?.message,
         );
 
         const r = await refusal(() =>

@@ -62,6 +62,12 @@ export interface MentorCardInput {
   recording: { status: string | null; url: string | null } | null;
   /** The mentor's own feedback on the session. */
   feedback: { submitted: boolean; locked: boolean };
+  /**
+   * Whether credits are counted for this booking (bookingCountsTowardCredits).
+   * False for one made before credits_counted_from: it never used the
+   * student's credit, so the card doesn't mention one.
+   */
+  countsTowardCredits: boolean;
 }
 
 export interface MentorSessionCard {
@@ -163,7 +169,7 @@ export function buildMentorSessionCard(
       : '';
     const message =
       by === 'you'
-        ? `You cancelled on ${when}${why}. ${student} got the credit back.`
+        ? `You cancelled on ${when}${why}.${input.countsTowardCredits ? ` ${student} got the credit back.` : ''}`
         : `Cancelled by ${byName ?? 'the student'} on ${when}${why}.`;
     return {
       ...base,
@@ -183,12 +189,16 @@ export function buildMentorSessionCard(
   /* Missed */
   if (input.lifecycleState === 'MISSED') {
     const outcome = input.attendance?.outcome;
+    // Made before credits_counted_from: no credit was used or returned.
+    const counted = input.countsTowardCredits;
     const message =
       outcome === 'STUDENT_NO_SHOW'
-        ? `${student} didn't join. The session used their credit.`
+        ? `${student} didn't join.${counted ? ' The session used their credit.' : ''}`
         : outcome === 'MENTOR_NO_SHOW'
-          ? `You didn't join, so ${student}'s credit was returned.`
-          : input.attendance?.creditRefunded
+          ? counted
+            ? `You didn't join, so ${student}'s credit was returned.`
+            : "You didn't join this session."
+          : counted && input.attendance?.creditRefunded
             ? `Nobody joined, so ${student}'s credit was returned.`
             : 'Nobody joined this session.';
     return {
@@ -348,7 +358,7 @@ export function buildMentorSessionCard(
       giveFeedback: blocked('SESSION_NOT_ENDED'),
     },
     message: changesOpen
-      ? `You can cancel until ${formatDayTime(changesCloseAt)}, ${config.noticeHours} hours before the session. The student gets the credit back.`
+      ? `You can cancel until ${formatDayTime(changesCloseAt)}, ${config.noticeHours} hours before the session.${input.countsTowardCredits ? ' The student gets the credit back.' : ''}`
       : tooLate,
     recording: notYet,
   };

@@ -65,6 +65,7 @@ import {
   assertCanChangeSession,
   assertSlotHasNotice,
   assertSlotLeadTime,
+  bookingCountsTowardCredits,
   changesCloseAt,
   earliestSlotStart,
   istWeekRange,
@@ -3126,6 +3127,9 @@ export class MentorSlotService {
       : after.blockReason === 'GAP_ACTIVE' && after.nextEligibleDate
         ? `and you can book again from ${formatIstDateTime(after.nextEligibleDate)}.`
         : '';
+    // A booking made before credits_counted_from never used a credit, so
+    // cancelling it gives none back.
+    const counted = bookingCountsTowardCredits(booking, config);
     return {
       bookingId,
       canCancel: !blocked,
@@ -3133,7 +3137,9 @@ export class MentorSlotService {
       creditsAfter: creditData(after),
       message: blocked
         ? null
-        : `Your credit comes back, so you'll have ${after.creditsLeft} of ${after.creditsAssigned} left${when ? `, ${when}` : '.'}`,
+        : counted
+          ? `Your credit comes back, so you'll have ${after.creditsLeft} of ${after.creditsAssigned} left${when ? `, ${when}` : '.'}`
+          : `This session doesn't use a credit, so your credits stay at ${after.creditsLeft} of ${after.creditsAssigned}.`,
       reasonMinLength: 10,
       serverTime: now,
     };

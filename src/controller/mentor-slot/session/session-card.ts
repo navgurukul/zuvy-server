@@ -78,6 +78,12 @@ export interface SessionCardInput {
     url: string | null;
   } | null;
   feedback: { submitted: boolean; locked: boolean };
+  /**
+   * Whether credits are counted for this booking (bookingCountsTowardCredits).
+   * False for one made before credits_counted_from: it never used a credit,
+   * so the card doesn't say it did, or that one comes back.
+   */
+  countsTowardCredits: boolean;
 }
 
 /** The student's credits, for the missed-session line. */
@@ -151,6 +157,7 @@ export function buildSessionCard(
   const t = now.getTime();
   const start = input.start.getTime();
   const end = input.end.getTime();
+  const counted = input.countsTowardCredits;
   const changesCloseAt = new Date(start - config.noticeHours * 60 * MIN_MS);
   const joinOpensAt = new Date(start - config.joinOpenMinutes * MIN_MS);
   const base = {
@@ -179,10 +186,13 @@ export function buildSessionCard(
         : by === 'ops'
           ? 'the Zuvy team'
           : null;
+    const returned = counted
+      ? ` Your credit was returned${by !== 'you' && credits.canBook ? ', so you can book again now' : ''}.`
+      : '';
     const message =
       by === 'you'
-        ? `Cancelled by you on ${formatDay(input.cancellation.at ?? now)}. Your credit was returned.`
-        : `Cancelled by ${byName}${input.cancellation.reason ? `: "${input.cancellation.reason}"` : ''}. Your credit was returned${credits.canBook ? ', so you can book again now' : ''}.`;
+        ? `Cancelled by you on ${formatDay(input.cancellation.at ?? now)}.${returned}`
+        : `Cancelled by ${byName ?? 'your mentor'}${input.cancellation.reason ? `: "${input.cancellation.reason}"` : ''}.${returned}`;
     return {
       ...base,
       displayState: 'CANCELLED',
@@ -193,7 +203,7 @@ export function buildSessionCard(
         byName,
         reason: input.cancellation.reason,
         at: input.cancellation.at,
-        creditReturned: true,
+        creditReturned: counted,
       },
       recording: noRecording,
       usesCredit: false,
@@ -205,7 +215,15 @@ export function buildSessionCard(
   /* Missed */
   if (input.lifecycleState === 'MISSED') {
     let message: string;
-    if (refunded) {
+    if (!counted) {
+      // Made before credits_counted_from: no credit was used or returned.
+      message =
+        input.attendance?.outcome === 'MENTOR_NO_SHOW'
+          ? `${input.mentorName ?? 'Your mentor'} didn't join this session.`
+          : input.attendance?.outcome === 'NOBODY_JOINED'
+            ? 'Nobody joined this session.'
+            : "You didn't join this session.";
+    } else if (refunded) {
       message =
         input.attendance?.outcome === 'MENTOR_NO_SHOW'
           ? `${input.mentorName ?? 'Your mentor'} didn't join, so your credit was returned.`
@@ -222,7 +240,7 @@ export function buildSessionCard(
       actions: closed('MISSED'),
       message,
       recording: noRecording,
-      usesCredit: !refunded,
+      usesCredit: counted && !refunded,
     };
   }
 
@@ -262,7 +280,7 @@ export function buildSessionCard(
       },
       message,
       recording,
-      usesCredit: !refunded,
+      usesCredit: counted && !refunded,
     };
   }
 
@@ -288,7 +306,7 @@ export function buildSessionCard(
       },
       message: `The session has started. If you can't attend, email ${SUPPORT_EMAIL}.`,
       recording: { state: 'NOT_YET', url: null },
-      usesCredit: true,
+      usesCredit: counted,
     };
   }
 
@@ -328,7 +346,7 @@ export function buildSessionCard(
         replyBy,
       },
       recording: { state: 'NOT_YET', url: null },
-      usesCredit: true,
+      usesCredit: counted,
     };
   }
 
@@ -359,7 +377,7 @@ export function buildSessionCard(
       },
       message: `Starts in ${minutes} min. If you can't attend, email ${SUPPORT_EMAIL}.`,
       recording: { state: 'NOT_YET', url: null },
-      usesCredit: true,
+      usesCredit: counted,
       rescheduleOutcome: outcome,
     };
   }
@@ -377,9 +395,9 @@ export function buildSessionCard(
     },
     message: changesOpen
       ? `Reschedule or cancel until ${formatDayTime(changesCloseAt)}. Join opens ${config.joinOpenMinutes} min before start.`
-      : `Rescheduling and cancelling close ${config.noticeHours} hours before the session. If you can't attend, email ${SUPPORT_EMAIL}. If you miss it, you lose the credit.`,
+      : `Rescheduling and cancelling close ${config.noticeHours} hours before the session. If you can't attend, email ${SUPPORT_EMAIL}.${counted ? ' If you miss it, you lose the credit.' : ''}`,
     recording: { state: 'NOT_YET', url: null },
-    usesCredit: true,
+    usesCredit: counted,
     rescheduleOutcome: outcome,
   };
 }
@@ -402,7 +420,7 @@ function rescheduleOutcome(
     case 'declined':
       return {
         status: 'declined',
-        message: `${mentor} can't make that time. Your session stays on ${when}.${changesOpen ? ` You can still cancel until ${formatDayTime(changesCloseAt)}, and your credit comes back.` : ''}`,
+        message: `${mentor} can't make that time. Your session stays on ${when}.${changesOpen ? ` You can still cancel until ${formatDayTime(changesCloseAt)}${input.countsTowardCredits ? ', and your credit comes back' : ''}.` : ''}`,
       };
     case 'expired':
       return {

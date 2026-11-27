@@ -26,7 +26,10 @@ import {
   MentorshipConfigService,
 } from '../mentorship-rules/mentorship-config.service';
 import { CreditService } from '../mentorship-rules/credit.service';
-import { creditData } from '../mentorship-rules/mentorship-rules';
+import {
+  bookingCountsTowardCredits,
+  creditData,
+} from '../mentorship-rules/mentorship-rules';
 import { CardCredits, buildSessionCard } from './session-card';
 import { buildMentorSessionCard } from './mentor-session-card';
 
@@ -235,6 +238,7 @@ export class SessionService {
                 submitted: !!b.studentFeedbackSubmittedAt,
                 locked: b.studentFeedbackLocked === true,
               },
+              countsTowardCredits: bookingCountsTowardCredits(b, config),
             },
             config,
             now,
@@ -513,6 +517,7 @@ export class SessionService {
                 submitted: !!b.mentorFeedbackSubmittedAt,
                 locked: b.mentorFeedbackLocked === true,
               },
+              countsTowardCredits: bookingCountsTowardCredits(b, config),
             },
             config,
             now,

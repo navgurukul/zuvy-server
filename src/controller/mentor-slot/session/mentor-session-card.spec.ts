@@ -29,6 +29,7 @@ function session(over: Partial<MentorCardInput> = {}): MentorCardInput {
     attendance: null,
     recording: null,
     feedback: { submitted: false, locked: false },
+    countsTowardCredits: true,
     ...over,
   };
 }
@@ -223,5 +224,63 @@ describe('mentor session card (MT1)', () => {
         END,
       ).actions.giveFeedback.reason,
     ).toBe('FEEDBACK_CLOSED');
+  });
+});
+
+describe('mentor card: a booking made before credits_counted_from', () => {
+  // The student's credit was never used, so the card doesn't mention one.
+  const old = (over: Partial<MentorCardInput> = {}) =>
+    session({ countsTowardCredits: false, ...over });
+
+  it('upcoming: no "The student gets the credit back"', () => {
+    expect(card(old(), at(-100 * HOUR)).message).toBe(
+      'You can cancel until Tue, 3 Nov at 6:00 PM, 72 hours before the session.',
+    );
+  });
+
+  it('cancelled by you: no credit line', () => {
+    const c = card(
+      old({
+        status: 'cancelled',
+        cancellation: {
+          cancelledBy: 'mentor',
+          reason: 'Unwell today',
+          at: ist('2026-10-26T10:00:00'),
+        },
+      }),
+      at(-200 * HOUR),
+    );
+    expect(c.message).toBe('You cancelled on 26 Oct: "Unwell today".');
+  });
+
+  it('missed: no credit used or returned', () => {
+    const missed = (outcome: string, creditRefunded = false) =>
+      card(
+        old({
+          lifecycleState: 'MISSED',
+          attendance: { outcome, creditRefunded },
+        }),
+        at(2 * HOUR),
+      ).message;
+    expect(missed('STUDENT_NO_SHOW')).toBe("Riya Sharma didn't join.");
+    expect(missed('MENTOR_NO_SHOW', true)).toBe(
+      "You didn't join this session.",
+    );
+    expect(missed('NOBODY_JOINED', true)).toBe('Nobody joined this session.');
+  });
+
+  it('a counted booking keeps the credit lines', () => {
+    expect(card(session(), at(-100 * HOUR)).message).toBe(
+      'You can cancel until Tue, 3 Nov at 6:00 PM, 72 hours before the session. The student gets the credit back.',
+    );
+    expect(
+      card(
+        session({
+          lifecycleState: 'MISSED',
+          attendance: { outcome: 'STUDENT_NO_SHOW', creditRefunded: false },
+        }),
+        at(2 * HOUR),
+      ).message,
+    ).toBe("Riya Sharma didn't join. The session used their credit.");
   });
 });

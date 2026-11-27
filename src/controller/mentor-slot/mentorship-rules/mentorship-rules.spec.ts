@@ -10,6 +10,7 @@ import {
   assertCreditsAllowBooking,
   assertSlotHasNotice,
   assertSlotLeadTime,
+  bookingCountsTowardCredits,
   istWeekRange,
   computeCreditState,
   earliestBookableStart,
@@ -405,5 +406,62 @@ describe('config from the table', () => {
     service.invalidate();
     await service.get();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('which bookings count toward credits (credits_counted_from)', () => {
+  // Default: counted from 15 Apr 2026, 00:00 UTC.
+  const from = config.creditsCountedFrom;
+  const before = new Date(from.getTime() - MIN);
+  const after = new Date(from.getTime() + MIN);
+
+  it('counts a booking made on or after the date, not one made before it', () => {
+    expect(bookingCountsTowardCredits({ confirmedAt: after }, config)).toBe(
+      true,
+    );
+    expect(bookingCountsTowardCredits({ confirmedAt: from }, config)).toBe(
+      true,
+    );
+    expect(bookingCountsTowardCredits({ confirmedAt: before }, config)).toBe(
+      false,
+    );
+  });
+
+  it('uses confirmedAt, then bookedAt, then createdAt, like the credit count', () => {
+    expect(
+      bookingCountsTowardCredits(
+        { confirmedAt: before, bookedAt: after, createdAt: after },
+        config,
+      ),
+    ).toBe(false);
+    expect(
+      bookingCountsTowardCredits(
+        { confirmedAt: null, bookedAt: after, createdAt: before },
+        config,
+      ),
+    ).toBe(true);
+    expect(
+      bookingCountsTowardCredits(
+        { confirmedAt: null, bookedAt: null, createdAt: before },
+        config,
+      ),
+    ).toBe(false);
+    expect(
+      bookingCountsTowardCredits({ bookedAt: after.toISOString() }, config),
+    ).toBe(true);
+  });
+
+  it('a booking with no time at all counts', () => {
+    expect(bookingCountsTowardCredits({}, config)).toBe(true);
+  });
+
+  it('follows the configured date when Ops moves it forward', () => {
+    const moved = {
+      ...config,
+      creditsCountedFrom: new Date(after.getTime() + HOUR),
+    };
+    expect(bookingCountsTowardCredits({ confirmedAt: after }, moved)).toBe(
+      false,
+    );
   });
 });

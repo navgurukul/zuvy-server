@@ -120,6 +120,26 @@ export function assertCreditsAllowBooking(
 
 const SUPPORT_EMAIL = 'team@zuvy.org';
 
+/**
+ * Whether a booking is one that credits are counted from: made on or after
+ * `credits_counted_from`. "Made" is confirmedAt, falling back to bookedAt and
+ * createdAt for older rows, the same order CreditService.loadUsage uses, so
+ * a session card agrees with the credit count. A booking with none of the
+ * three counts (it can only be a new one).
+ */
+export function bookingCountsTowardCredits(
+  booking: {
+    confirmedAt?: Date | string | null;
+    bookedAt?: Date | string | null;
+    createdAt?: Date | string | null;
+  },
+  config: MentorshipConfig,
+): boolean {
+  const madeAt = booking.confirmedAt ?? booking.bookedAt ?? booking.createdAt;
+  if (!madeAt) return true;
+  return new Date(madeAt).getTime() >= config.creditsCountedFrom.getTime();
+}
+
 /** Reschedule and cancel close this long before the session (notice_hours). */
 export function changesCloseAt(sessionStart: Date, config: MentorshipConfig) {
   return new Date(sessionStart.getTime() - config.noticeHours * HOUR_MS);

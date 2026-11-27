@@ -35,6 +35,7 @@ function session(over: Partial<SessionCardInput> = {}): SessionCardInput {
     attendance: null,
     recording: null,
     feedback: { submitted: false, locked: false },
+    countsTowardCredits: true,
     ...over,
   };
 }
@@ -380,5 +381,133 @@ describe('date formats on the cards (India time)', () => {
       'Thu, 5 Nov at 6:00 PM',
     );
     expect(formatDay(ist('2026-10-26T10:00:00'))).toBe('26 Oct');
+  });
+});
+
+describe('cancelled by a mentor with no name', () => {
+  it('says "your mentor", not "null"', () => {
+    const c = card(
+      session({
+        mentorName: null,
+        status: 'cancelled',
+        cancellation: {
+          cancelledBy: 'mentor',
+          reason: 'Unwell today',
+          at: START,
+        },
+      }),
+      at(-1 * HOUR),
+    );
+    expect(c.message).toBe(
+      'Cancelled by your mentor: "Unwell today". Your credit was returned, so you can book again now.',
+    );
+  });
+});
+
+describe('a booking made before credits_counted_from', () => {
+  // It never used a credit, so the card doesn't say it did or that one
+  // comes back (the credit count leaves it out the same way).
+  const old = (over: Partial<SessionCardInput> = {}) =>
+    session({ countsTowardCredits: false, ...over });
+
+  it('upcoming: uses no credit; inside the notice there is no "lose the credit" line', () => {
+    expect(card(old(), at(-100 * HOUR)).usesCredit).toBe(false);
+    const c = card(old(), at(-24 * HOUR));
+    expect(c.usesCredit).toBe(false);
+    expect(c.message).toBe(
+      "Rescheduling and cancelling close 72 hours before the session. If you can't attend, email team@zuvy.org.",
+    );
+  });
+
+  it('live, starting soon and reschedule requested: uses no credit', () => {
+    expect(card(old(), at(5 * MIN)).usesCredit).toBe(false);
+    expect(card(old(), at(-5 * MIN)).usesCredit).toBe(false);
+    expect(
+      card(
+        old({
+          lifecycleState: 'RESCHEDULE_PENDING',
+          reschedule: {
+            status: 'pending',
+            proposedStart: ist('2026-11-11T17:00:00'),
+            proposedEnd: ist('2026-11-11T17:45:00'),
+            acceptedCount: 0,
+          },
+        }),
+        at(-100 * HOUR),
+      ).usesCredit,
+    ).toBe(false);
+  });
+
+  it('cancelled: no credit was returned', () => {
+    const byYou = card(
+      old({
+        status: 'cancelled',
+        cancellation: {
+          cancelledBy: 'student',
+          reason: 'Exam clash',
+          at: ist('2026-10-26T10:00:00'),
+        },
+      }),
+      at(-200 * HOUR),
+    );
+    expect(byYou.message).toBe('Cancelled by you on 26 Oct.');
+    expect(byYou.cancellation?.creditReturned).toBe(false);
+
+    const byMentor = card(
+      old({
+        status: 'cancelled',
+        cancellation: {
+          cancelledBy: 'mentor',
+          reason: 'Unwell today',
+          at: START,
+        },
+      }),
+      at(-1 * HOUR),
+    );
+    expect(byMentor.message).toBe('Cancelled by Arjun Mehta: "Unwell today".');
+  });
+
+  it('missed: no credit used or returned', () => {
+    const missed = (outcome: string, creditRefunded = false) =>
+      card(
+        old({
+          lifecycleState: 'MISSED',
+          attendance: { outcome, creditRefunded },
+        }),
+        at(2 * HOUR),
+      );
+    expect(missed('STUDENT_NO_SHOW').usesCredit).toBe(false);
+    expect(missed('STUDENT_NO_SHOW').message).toBe(
+      "You didn't join this session.",
+    );
+    expect(missed('MENTOR_NO_SHOW', true).message).toBe(
+      "Arjun Mehta didn't join this session.",
+    );
+    expect(missed('NOBODY_JOINED', true).message).toBe(
+      'Nobody joined this session.',
+    );
+  });
+
+  it('completed: uses no credit', () => {
+    const c = card(old({ lifecycleState: 'COMPLETED' }), at(2 * HOUR));
+    expect(c.displayState).toBe('COMPLETED');
+    expect(c.usesCredit).toBe(false);
+  });
+
+  it('declined reschedule: no "your credit comes back"', () => {
+    const c = card(
+      old({
+        reschedule: {
+          status: 'declined',
+          proposedStart: null,
+          proposedEnd: null,
+          acceptedCount: 0,
+        },
+      }),
+      at(-100 * HOUR),
+    );
+    expect(c.rescheduleOutcome?.message).toBe(
+      "Arjun Mehta can't make that time. Your session stays on Fri, 6 Nov at 6:00 PM. You can still cancel until Tue, 3 Nov at 6:00 PM.",
+    );
   });
 });
