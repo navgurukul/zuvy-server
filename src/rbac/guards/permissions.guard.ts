@@ -338,10 +338,10 @@ export class PermissionsGuard implements CanActivate {
         .from(zuvyBatches)
         .where(inArray(zuvyBatches.id, batchIds));
 
-      if (batches.length < batchIds.length) {
-        // Batch not found — nothing to enforce
-        return;
-      }
+      // if (batches.length < batchIds.length) {
+      //   // Batch not found — nothing to enforce
+      //   return;
+      // }
 
       for (const batch of batches) {
         // If a bootcampId is also in the request, make sure it matches the batch's bootcamp

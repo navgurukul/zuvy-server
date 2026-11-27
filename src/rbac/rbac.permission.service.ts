@@ -388,7 +388,7 @@ export class RbacPermissionService {
   ): Promise<any> {
     try {
       const { userId, permissions } = assignPermissionsDto;
-      console.log('Assigning permissions:', assignPermissionsDto);
+      // console.log('Assigning permissions:', assignPermissionsDto);
       let insertUserPermission;
       // Check if user exists
       const userExists = await db

@@ -7,7 +7,6 @@ import {
 import { db } from 'src/db/index';
 import { inArray, sql, eq, and, isNull } from 'drizzle-orm';
 import {
-  userRoles,
   users,
   zuvyExtraPermissions,
   zuvyPermissions,
@@ -16,7 +15,13 @@ import {
   zuvyUserRoles,
   zuvyUserRolesAssigned,
 } from 'drizzle/schema';
-import { ResourceList } from 'src/rbac/utility';
+import { ResourceKey, ResourceList } from 'src/rbac/utility';
+
+const MULTIPLE_RESOURCE_KEYS: ResourceKey[] = [
+  'Course',
+  'Question',
+  'RolesAndPermission',
+];
 
 @Injectable()
 export class PermissionsAllocationService {
@@ -173,7 +178,7 @@ export class PermissionsAllocationService {
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
             sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`,
-            inArray(zuvyPermissions.resourcesId, [1, 2, 3]),
+            inArray(zuvyResources.key, MULTIPLE_RESOURCE_KEYS),
           ),
         );
 
