@@ -20,8 +20,8 @@ import { ZoomLicenseModule } from '../zoom-license/zoom-license.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { RbacModule } from '../../rbac/rbac.module';
-import { AdminMentorSessionsController } from './admin/admin-mentor-sessions.controller';
-import { AdminMentorSessionsService } from './admin/admin-mentor-sessions.service';
+import { AdminMentorSessionsController } from './admin-md/admin-mentor-sessions-md.controller';
+import { AdminMentorSessionsService } from './admin-md/admin-mentor-sessions-md.service';
 
 @Module({
   imports: [

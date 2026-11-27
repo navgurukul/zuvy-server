@@ -19,7 +19,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 // import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 // import { RequirePermissions } from 'src/rbac/decorators/require-permissions.decorator';
-import { AdminMentorSessionsService } from './admin-mentor-sessions.service';
+import { AdminMentorSessionsService } from './admin-mentor-sessions-md.service';
 import {
   AdminMentorSessionsFilterDto,
   AdminMentorSessionsQueryDto,
