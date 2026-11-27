@@ -1,162 +1,121 @@
 import {
-  ArrayMinSize,
   IsArray,
-  IsDateString,
-  IsInt,
   IsNotEmpty,
+  IsNumber,
   IsString,
+  IsObject,
   IsOptional,
-  Min,
-  ValidateIf,
   ValidateNested,
+  IsISO8601,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-class PoolTopicDto {
-  @IsInt()
-  @Min(1)
-  id: number;
-
-  @IsString()
-  @IsNotEmpty()
-  name: string;
-}
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAiAssessmentDto {
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @IsNotEmpty()
   bootcampId: number;
-
-  @IsInt()
-  @Min(1)
-  chapterId: number;
-
-  /**
-   * Required when chapterIds is non-empty (legacy tag resolve needs it).
-   * Optional when mapping from poolTopics only.
-   */
-  @ValidateIf((o) => Array.isArray(o.chapterIds) && o.chapterIds.length > 0)
-  @IsInt()
-  @Min(1)
-  moduleId?: number;
 
   @IsString()
   @IsNotEmpty()
   title: string;
 
   @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsObject()
   @IsNotEmpty()
-  objective: string;
+  topics: Record<string, number>;
 
+  // add start date and end date
+  @ApiProperty({
+    type: String,
+    example: '2025-05-21T10:00:00',
+    description: 'Optional. When the assessment becomes active for taking',
+  })
   @IsOptional()
-  @IsString()
-  description?: string | null;
+  @IsISO8601()
+  startDatetime?: string;
 
+  @ApiProperty({
+    type: String,
+    example: '2025-05-21T11:30:00',
+    description: 'Optional. When the assessment expires',
+  })
   @IsOptional()
-  audience?: any | null;
+  @IsISO8601()
+  endDatetime?: string;
 
-  @IsOptional()
-  @IsString()
-  expectedOutcomes?: string;
-
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @IsNotEmpty()
   totalNumberOfQuestions: number;
-
-  /** When set, moduleId is required so chapter tags can be resolved. */
-  @IsOptional()
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  chapterIds?: number[];
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => PoolTopicDto)
-  poolTopics: PoolTopicDto[];
 }
 
-export class ScheduleAssessmentDto {
-  @IsDateString()
-  startDatetime: string;
+export class SelectedAnswerByStudentDto {
+  @IsNumber()
+  @IsNotEmpty()
+  id: number;
 
-  @IsOptional()
-  @IsDateString()
-  endDatetime?: string;
+  @IsNumber()
+  @IsNotEmpty()
+  questionId: number;
+
+  @IsString()
+  @IsNotEmpty()
+  optionText: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  optionNumber: number;
 }
+class QuestionAnswerDto {
+  @IsNumber()
+  @IsNotEmpty()
+  id: number;
 
-export class PublishAssessmentDto {
+  @IsString()
+  @IsNotEmpty()
+  question: string;
+
+  @IsString()
   @IsOptional()
-  @IsDateString()
-  endDatetime?: string;
+  topic?: string;
+
+  @IsString()
+  @IsOptional()
+  difficulty?: string;
+
+  @ValidateNested()
+  @Type(() => SelectedAnswerByStudentDto)
+  options: SelectedAnswerByStudentDto;
+
+  @ValidateNested()
+  @Type(() => SelectedAnswerByStudentDto)
+  selectedAnswerByStudent: SelectedAnswerByStudentDto;
+
+  @IsString()
+  @IsOptional()
+  language?: string;
 }
 
 export class SubmitAssessmentDto {
+  @IsArray()
+  @IsNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionAnswerDto)
+  answers: QuestionAnswerDto[];
+
+  @IsNumber()
   aiAssessmentId: number;
-  answers: any[];
 }
 
 export class GenerateAssessmentDto {
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @IsNotEmpty()
   aiAssessmentId: number;
 
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @IsNotEmpty()
   bootcampId: number;
-}
-
-export class ScoreQuestionItemDto {
-  @IsInt()
-  @Min(1)
-  questionId: number;
-
-  @IsInt()
-  @Min(1)
-  position: number;
-
-  @IsString()
-  question: string;
-
-  options: Record<string, string>;
-
-  @IsString()
-  difficulty: string;
-
-  @IsString()
-  topic: string;
-
-  @IsString()
-  language: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  correctOptionSelectedByStudents?: number;
-}
-
-export class ScoreSubmitDto {
-  @IsInt()
-  @Min(1)
-  assessmentId: number;
-
-  @IsInt()
-  @Min(1)
-  courseId: number;
-
-  @IsInt()
-  @Min(1)
-  moduleId: number;
-
-  @IsInt()
-  @Min(1)
-  chapterId: number;
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => ScoreQuestionItemDto)
-  questions: ScoreQuestionItemDto[];
 }

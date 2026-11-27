@@ -39,6 +39,15 @@ import {
 } from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { QuizChapterScopeGuard } from './quiz-chapter-scope.guard';
+
+const QUIZ_SUBMISSION_VIEWER_ROLES = [
+  helperVariable.admin,
+  helperVariable.instructor,
+  'ops',
+  'super_admin',
+];
 
 @Controller('submission')
 @ApiTags('submissions')
@@ -1065,6 +1074,245 @@ export class SubmissionController {
         200,
         result,
       ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // Quiz submissions tab (admin side). The /submission prefix is readable by
+  // enrolled students in PermissionsGuard, so these handlers also check the
+  // caller's role.
+  private assertQuizSubmissionViewer(req: any) {
+    const roles: string[] = req.user?.[0]?.roles || [];
+    if (!QUIZ_SUBMISSION_VIEWER_ROLES.some((role) => roles.includes(role))) {
+      throw new ForbiddenException(
+        'You are not authorized to view quiz submissions',
+      );
+    }
+  }
+
+  @Get('/quiz/summary/:bootcampId')
+  @UseGuards(PermissionsGuard)
+  @ApiOperation({
+    summary:
+      'Quiz submission summary of a bootcamp: module-wise quiz chapters with submitted / pending counts',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Count only students of this batch',
+  })
+  @ApiQuery({
+    name: 'searchQuiz',
+    required: false,
+    type: String,
+    description: 'Search by quiz chapter title',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of modules per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of modules to skip',
+  })
+  async getQuizSubmissionSummary(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Res() res,
+    @Query('batchId') batchId?: number,
+    @Query('searchQuiz') searchQuiz?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    this.assertQuizSubmissionViewer(req);
+    try {
+      const [err, result] =
+        await this.submissionService.getQuizSubmissionSummary(
+          bootcampId,
+          batchId,
+          searchQuiz,
+          limit,
+          offset,
+        );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse(
+        'Quiz submission summary fetched',
+        200,
+        result,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/quiz/status/:bootcampId/:moduleId')
+  @UseGuards(PermissionsGuard)
+  @ApiOperation({
+    summary:
+      'Submitted / Not Submitted status of every enrolled student for a quiz chapter',
+  })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'Quiz chapter id',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['submitted', 'notSubmitted'],
+    description: 'Filter by submission status',
+  })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by student name, email or Student ID',
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    enum: ['submittedDate', 'name', 'email', 'marks'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  async getQuizStudentStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Param('moduleId') moduleId: number,
+    @Req() req,
+    @Res() res,
+    @Query('chapterId') chapterId: number,
+    @Query('batchId') batchId?: number,
+    @Query('status') status?: string,
+    @Query('searchStudent') searchStudent?: string,
+    @Query('orderBy') orderBy?: string,
+    @Query('orderDirection') orderDirection?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    this.assertQuizSubmissionViewer(req);
+    try {
+      const [err, result] = await this.submissionService.getQuizStudentStatus(
+        bootcampId,
+        moduleId,
+        chapterId,
+        batchId,
+        status,
+        searchStudent,
+        orderBy,
+        orderDirection,
+        limit,
+        offset,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse(
+        'Quiz submission status of students fetched',
+        200,
+        result,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/quiz/report')
+  @UseGuards(QuizChapterScopeGuard, PermissionsGuard)
+  @ApiOperation({
+    summary:
+      'Quiz report of a chapter for one student (user_id / student_id) or all enrolled students, with Submitted / Not Submitted status and question-level answers',
+  })
+  @ApiQuery({ name: 'chapter_id', required: true, type: Number })
+  @ApiQuery({
+    name: 'user_id',
+    required: false,
+    type: Number,
+    description: 'Report for this user only',
+  })
+  @ApiQuery({
+    name: 'student_id',
+    required: false,
+    type: String,
+    description:
+      'Report for this Student ID only (must match user_id if both are given)',
+  })
+  @ApiQuery({ name: 'bootcamp_id', required: false, type: Number })
+  @ApiQuery({ name: 'module_id', required: false, type: Number })
+  @ApiQuery({ name: 'batch_id', required: false, type: Number })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({
+    name: 'page_size',
+    required: false,
+    type: Number,
+    description: 'Default 20, max 100',
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    enum: ['submittedDate', 'name', 'email', 'marks'],
+  })
+  @ApiQuery({ name: 'orderDirection', required: false, enum: ['asc', 'desc'] })
+  async getQuizReport(
+    @Req() req,
+    @Res() res,
+    @Query('chapter_id') chapterId: number,
+    @Query('user_id') userId?: string,
+    @Query('student_id') studentId?: string,
+    @Query('bootcamp_id') bootcampId?: number,
+    @Query('module_id') moduleId?: number,
+    @Query('batch_id') batchId?: number,
+    @Query('page') page?: number,
+    @Query('page_size') pageSize?: number,
+    @Query('orderBy') orderBy?: string,
+    @Query('orderDirection') orderDirection?: string,
+  ) {
+    this.assertQuizSubmissionViewer(req);
+    try {
+      const [err, result] = await this.submissionService.getQuizReport({
+        chapterId,
+        userId,
+        studentId,
+        bootcampId,
+        moduleId,
+        batchId,
+        page,
+        pageSize,
+        orderBy,
+        orderDirection,
+      });
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse('Quiz report fetched', 200, result).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
