@@ -22,7 +22,6 @@ These are foundational. Any new admin/super-admin dashboard feature will sit dir
    `PermissionsGuard` import and `@UseGuards(PermissionsGuard)` are commented out, and every `@RequirePermissions(...)` decorator is commented out per-route (e.g. `rbac.controller.ts:58,68,413`; `permissions.controller.ts:50,396`). Any authenticated user can currently grant arbitrary permissions to any role/user. If the admin dashboard includes a "manage roles/permissions" screen, it's sitting on an already wide-open backend.
 
 4. **`src/super-admin/super-admin.service.ts` — three bugs, worth fixing together since you'll be in this file for #2 anyway:**
-
    - `addSuperAdmin` isn't idempotent — a second call for the same email throws a raw unique-constraint DB error instead of a clean response.
    - `addSuperAdmin` clears `zuvyUserRolesAssigned` but never clears `zuvyUserOrganizations`, despite the response message claiming "existing organization data cleared" — overstated/incorrect user-facing message.
    - `removeSuperAdmin` does two separate deletes with no transaction — a failure between them leaves an orphaned, inconsistent state.

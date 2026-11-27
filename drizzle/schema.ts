@@ -3018,6 +3018,11 @@ export const zuvyMentorSlotBooking = main.table(
       .notNull()
       .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
 
+    /* Course this booking belongs to (null on older bookings) */
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
+      onDelete: 'set null',
+    }),
+
     /* Original booking state */
     status: varchar('status', { length: 50 }).default('confirmed'),
 
@@ -3049,6 +3054,8 @@ export const zuvyMentorSlotBooking = main.table(
 
     /* Cancellation */
     cancellationReason: text('cancellation_reason'),
+    cancellationCategory: text('cancellation_category'),
+    cancellationAskedBy: varchar('cancellation_asked_by', { length: 20 }),
     cancelledBy: varchar('cancelled_by', { length: 50 }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
 
@@ -3056,6 +3063,10 @@ export const zuvyMentorSlotBooking = main.table(
     joinedAt: timestamp('joined_at', { withTimezone: true }),
     leftAt: timestamp('left_at', { withTimezone: true }),
     durationAttended: integer('duration_attended'),
+
+    /* Per-person live join times (filled from Zoom join events) */
+    mentorJoinedAt: timestamp('mentor_joined_at', { withTimezone: true }),
+    studentJoinedAt: timestamp('student_joined_at', { withTimezone: true }),
 
     /* Mentor Feedback (PRD aligned) */
     mentorFeedback: jsonb('mentor_feedback'),
@@ -3097,6 +3108,8 @@ export const zuvyMentorSlotBooking = main.table(
       table.slotAvailabilityId,
     ),
     mentorIdx: index('idx_booking_mentor').on(table.mentorUserId),
+    orgIdx: index('idx_booking_org').on(table.organizationId),
+    bootcampIdx: index('idx_booking_bootcamp').on(table.bootcampId),
     lifecycleIdx: index('idx_booking_lifecycle').on(
       table.sessionLifecycleState,
     ),
@@ -3162,7 +3175,7 @@ export const zuvyMentorSessionAttendanceIntervals= main.table(
    Kept out of zuvy_mentor_slot_booking so reading bookings doesn't depend on
    it. The credit recount (cancelBooking, the attendance job) and
    completeSession DO read it, so migration
-   0047_mentor_session_attendance.sql must be applied before deploying.
+   0049_mentor_session_attendance.sql must be applied before deploying.
 ============================================================================ */
 
 export const zuvyMentorSessionAttendance = main.table(

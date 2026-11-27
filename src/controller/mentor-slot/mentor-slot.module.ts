@@ -22,6 +22,9 @@ import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { RbacModule } from '../../rbac/rbac.module';
 import { AdminMentorSessionsController } from './admin-md/admin-mentor-sessions-md.controller';
 import { AdminMentorSessionsService } from './admin-md/admin-mentor-sessions-md.service';
+import { AdminMentorSessionController } from './admin/admin-mentor-session.controller';
+import { AdminMentorSessionExportService } from './admin/admin-mentor-session-export.service';
+import { AdminMentorSessionService } from './admin/admin-mentor-session.service';
 
 @Module({
   imports: [
@@ -42,6 +45,7 @@ import { AdminMentorSessionsService } from './admin-md/admin-mentor-sessions-md.
     StudentMentorSlotController,
     InstructorMentorSlotController,
     AdminMentorSessionsController,
+    AdminMentorSessionController,
   ],
   providers: [
     MentorSlotService,
@@ -52,6 +56,8 @@ import { AdminMentorSessionsService } from './admin-md/admin-mentor-sessions-md.
     MentorPublicService,
     SessionService,
     AdminMentorSessionsService,
+    AdminMentorSessionService,
+    AdminMentorSessionExportService,
   ],
   exports: [MentorSlotService],
 })
