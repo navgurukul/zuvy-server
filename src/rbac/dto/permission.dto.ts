@@ -243,7 +243,10 @@ export class AssignPermissionsToRoleDto {
   @Transform(({ value }) => {
     // ensure keys are numbers and values are booleans
     return Object.fromEntries(
-      Object.entries(value).map(([key, val]) => [Number(key), Boolean(val)]),
+      Object.entries(value).map(([key, val]) => [
+        Number(key),
+        val === true || val === 'true',
+      ]),
     );
   })
   permissions: Record<number, boolean>;

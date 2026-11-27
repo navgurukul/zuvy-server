@@ -32,7 +32,7 @@ export class RbacAllocPermsService {
     orgId: number | null,
   ): Promise<any> {
     try {
-      await this.permissionAllocationService.getUserPermissionsByResource(
+      return await this.permissionAllocationService.getUserPermissionsByResource(
         userId,
         resourceId,
         orgId,
