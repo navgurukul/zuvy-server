@@ -623,10 +623,18 @@ export class BootcampService {
           .limit(1),
       ]);
       // Mentorship tab: needs the course setting AND the (course-scoped) permission.
+      // if (grantedPermissions?.permissions) {
+      //   grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION] =
+      //     Boolean(grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION]) &&
+      //     Boolean(bootcampType?.mentorshipEnabled);
+      // }
+
+      const viewMentorship =
+        Boolean(
+          grantedPermissions?.permissions?.[VIEW_MENTORSHIP_PERMISSION],
+        ) && Boolean(bootcampType?.mentorshipEnabled);
       if (grantedPermissions?.permissions) {
-        grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION] =
-          Boolean(grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION]) &&
-          Boolean(bootcampType?.mentorshipEnabled);
+        delete grantedPermissions.permissions[VIEW_MENTORSHIP_PERMISSION];
       }
       return [
         null,
@@ -637,7 +645,7 @@ export class BootcampService {
           bootcamp: { ...bootcamp[0], ...res },
 
           leaderboardEnabled: (bootcamp[0] as any)?.leaderboardEnabled ?? false,
-
+          viewMentorship,
           ...grantedPermissions,
         },
       ];
