@@ -48,7 +48,7 @@ const RETRY_INTERVAL_MS = 30 * 60 * 1000;
 const BATCH_SIZE = 20;
 
 // Off unless MENTOR_ATTENDANCE_JOB_ENABLED=true, like the other background
-// workers. Turn it on only once migration 0047 is applied, and on one server
+// workers. Turn it on only once migration 0049 is applied, and on one server
 // only: on several, each calls Zoom for the same sessions (the claim in
 // record() still stops a double refund).
 export function mentorAttendanceJobEnabled(
