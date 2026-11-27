@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiParam,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -114,6 +115,39 @@ export class AdminMentorSessionController {
       user,
       query.orgId,
       query.bootcampId,
+      query.summary === true,
+    );
+  }
+
+  @Get('courses/:bootcampId/live')
+  @ApiOperation({
+    summary:
+      'Live mentor sessions for one course (10 min before start to 15 min after end) and how many need attention',
+  })
+  @ApiParam({
+    name: 'bootcampId',
+    type: Number,
+    description: 'Course ID',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Other organisation, not an admin, or mentorship off for the course',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Course not found in this organisation',
+  })
+  async getCourseLiveSessions(
+    @Req() req,
+    @Param('bootcampId', ParseIntPipe) bootcampId: number,
+    @Query() query: LiveSessionsQueryDto,
+  ) {
+    const user = Array.isArray(req.user) ? req.user[0] : req.user;
+    return this.service.getLiveSessions(
+      user,
+      query.orgId,
+      bootcampId,
       query.summary === true,
     );
   }
