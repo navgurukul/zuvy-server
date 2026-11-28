@@ -23,6 +23,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { MentorSlotService } from './mentor-slot.service';
 import { SessionService } from './session/session.service';
+import { sessionListOrder } from './session/session-order';
 import { MentorMetricsService } from './metrics/mentor-metrics.service';
 import { MentorRecurrenceService } from './recurrence/mentor-recurrence.service';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -112,6 +113,26 @@ export class InstructorMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/licence-check')
+  @ApiOperation({
+    summary: 'Check a Zoom licence is free for a slot time before creating it',
+    description:
+      'Reserves nothing. Returns available=false with the next free time when the licence pool is full at that time; creating the slot would then be refused.',
+  })
+  @ApiQuery({ name: 'slotStartDateTime', required: true, type: String })
+  @ApiQuery({ name: 'slotEndDateTime', required: true, type: String })
+  async checkSlotLicence(
+    @Req() req,
+    @Query('slotStartDateTime') slotStartDateTime: string,
+    @Query('slotEndDateTime') slotEndDateTime: string,
+  ) {
+    return this.mentorSlotService.checkSlotLicenceAvailability(
+      Number(req.user[0].id),
+      slotStartDateTime,
+      slotEndDateTime,
+    );
+  }
+
   @Get('mentor-slots/:slotId/details')
   @ApiOperation({ summary: 'Get instructor-owned slot details and bookings' })
   async getSlotDetails(
@@ -121,6 +142,20 @@ export class InstructorMentorSlotController {
     return this.mentorSlotService.getSlotDetails(
       Number(req.user[0].id),
       slotId,
+      Number(req.user[0].orgId),
+    );
+  }
+
+  @Get('mentor-slots/bookings/:bookingId/join-link')
+  @ApiOperation({
+    summary: "Mentor's Join: a fresh host link for the session (MT1)",
+    description:
+      'Call when the mentor clicks Join. Fetches a fresh host (start) link from Zoom; the one saved at booking time expires a few hours after it was issued. Only from joinOpenMinutes before the start until the end (JOIN_NOT_OPEN / SESSION_ENDED otherwise). fresh=false means Zoom could not be reached and the saved link was returned.',
+  })
+  getJoinLink(@Req() req, @Param('bookingId', ParseIntPipe) bookingId: number) {
+    return this.mentorSlotService.getMentorJoinLink(
+      Number(req.user[0].id),
+      bookingId,
       Number(req.user[0].orgId),
     );
   }
@@ -418,7 +453,17 @@ export class InstructorMentorSlotController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'reschedule', 'completed', 'cancelled'],
+    enum: [
+      'all',
+      'upcoming',
+      'action-needed',
+      'completed',
+      'missed',
+      'cancelled',
+      'reschedule',
+    ],
+    description:
+      'The Sessions tabs. "reschedule" is the old name of "action-needed" (a student reschedule request waits for you).',
   })
   @ApiQuery({
     name: 'sort',
@@ -435,20 +480,30 @@ export class InstructorMentorSlotController {
     required: false,
     type: Number,
   })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts (with sort=asc, the next session first).',
+  })
   async getMentorSessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
-    @Query('sort') sort: 'asc' | 'desc' = 'desc',
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getMentorSessions(
       BigInt(req.user[0].id),
       req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),
-      sort,
+      order.sort,
+      order.sortBy,
     );
   }
 

@@ -16,13 +16,18 @@ import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class AssignRoleToUserStrategy implements IAuditStrategy<any> {
-  async execute(dto: {
-    actorUserId: number | string | bigint;
-    targetUserId: number | string | bigint;
-    roleId: number;
-    action: string;
-    permissions?: null; // will always be null for this strategy
-  }): Promise<void> {
+  async execute(
+    dto: {
+      actorUserId: number | string | bigint;
+      targetUserId: number | string | bigint;
+      roleId: number;
+      action: string;
+      permissions?: null; // will always be null for this strategy
+    },
+    // The caller's transaction, if any: the entry is then saved (or rolled
+    // back) with the change it records.
+    executor: any = db,
+  ): Promise<void> {
     const { actorUserId, targetUserId, roleId, action } = dto ?? {};
     if (!actorUserId || !targetUserId || !roleId) {
       throw new BadRequestException(
@@ -31,7 +36,7 @@ export class AssignRoleToUserStrategy implements IAuditStrategy<any> {
     }
 
     try {
-      await db.transaction(async (tx) => {
+      await executor.transaction(async (tx) => {
         const [actor] = await tx
           .select({ id: users.id })
           .from(users)

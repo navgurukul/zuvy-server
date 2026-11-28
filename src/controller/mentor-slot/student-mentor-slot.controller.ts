@@ -20,6 +20,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { MentorSlotService } from './mentor-slot.service';
 import { SessionService } from './session/session.service';
+import { sessionListOrder } from './session/session-order';
 import { MentorPublicService } from './public/mentor-public.service';
 import { BookSlotDto } from './dto/book-slot.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -54,6 +55,38 @@ export class StudentMentorSlotController {
       query.title,
       query.search,
       query.organizationId ? Number(query.organizationId) : undefined,
+      query.available === 'true',
+    );
+  }
+
+  // Declared before mentors/:mentorUserId so "skills" isn't taken for an id.
+  @Get('mentors/skills')
+  @ApiOperation({
+    summary: 'The skill chips: the fixed skill list with mentor counts',
+    description:
+      "Every active skill with mentorCount: mentors who have it among those matching search, organizationId and available (the same filters as GET /student/mentors). Use a skill's slug in ?expertise=.",
+  })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'organizationId', required: false, type: Number })
+  @ApiQuery({ name: 'available', required: false, enum: ['true', 'false'] })
+  @ApiQuery({
+    name: 'inUse',
+    required: false,
+    enum: ['true', 'false'],
+    description:
+      'true = only skills at least one matching mentor has (for the filter dropdown). Default: the whole list (for the mentor profile form).',
+  })
+  getSkillChips(
+    @Query('search') search?: string,
+    @Query('organizationId') organizationId?: string,
+    @Query('available') available?: string,
+    @Query('inUse') inUse?: string,
+  ) {
+    return this.mentorPublicService.getSkillChips(
+      search || undefined,
+      organizationId ? Number(organizationId) : undefined,
+      available === 'true',
+      inUse === 'true',
     );
   }
 
@@ -91,10 +124,33 @@ export class StudentMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/:slotId/booking-preview')
+  @ApiOperation({
+    summary: 'Booking drawer: what booking this slot would do (ST2)',
+    description:
+      'canBook, and when not, blocked: { code, message } (SLOT_TOO_SOON, NO_CREDITS, GAP_ACTIVE, SLOT_TAKEN) exactly as booking would refuse. impact: creditsLeftAfter, nextBookingOpensAt, summary ("Uses 1 credit, 1 left after this"), detail. goodToKnow: the rule lines. Reserves nothing.',
+  })
+  getBookingPreview(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
+    return this.mentorSlotService.getBookingPreview(
+      Number(req.user[0].id),
+      slotId,
+    );
+  }
+
   @Post('mentor-slots/book')
   @ApiOperation({ summary: 'Book an available mentor slot as a student' })
   async bookSlot(@Req() req, @Body() dto: BookSlotDto) {
     return this.mentorSlotService.bookSlot(Number(req.user[0].id), dto.slotId);
+  }
+
+  @Get('mentorship/eligibility')
+  @ApiOperation({
+    summary: "The student's mentorship credits and the booking rules",
+    description:
+      'credits: creditsAssigned, creditsUsed, creditsLeft, nextEligibleDate (when the 2-week gap ends, null when the student can book now or has no credits left), canBook, blockReason (NO_CREDITS | GAP_ACTIVE | MENTORSHIP_NOT_AVAILABLE | null). access: { allowed, code (MENTORSHIP_NOT_AVAILABLE | null), message } — not allowed without an active enrolment in a course with mentorship, and then canBook is false. rules: the numbers in force, including maxAcceptedReschedules. earliestBookableStart: slots starting before this cannot be booked. serverTime: use it instead of the device clock.',
+  })
+  async getBookingEligibility(@Req() req) {
+    return this.mentorSlotService.getBookingEligibility(Number(req.user[0].id));
   }
 
   @Get('mentor-slots/my')
@@ -124,7 +180,7 @@ export class StudentMentorSlotController {
   async proposeReschedule(
     @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
-    @Query('slotId') slotId: number,
+    @Query('slotId', ParseIntPipe) slotId: number,
     @Body() body: ProposeRescheduleDto,
   ) {
     return this.mentorSlotService.proposeReschedule(
@@ -145,6 +201,22 @@ export class StudentMentorSlotController {
     @Param('bookingId', ParseIntPipe) bookingId: number,
   ) {
     return this.mentorSlotService.getRescheduleSlotsForBooking(
+      Number(req.user[0].id),
+      bookingId,
+    );
+  }
+
+  @Get('mentor-slots/bookings/:bookingId/cancel-preview')
+  @ApiOperation({
+    summary: 'Cancel form: what cancelling would do (ST4)',
+    description:
+      'canCancel, and when not, blocked: { code, message } (TOO_LATE_TO_CHANGE, RESCHEDULE_PENDING, SESSION_ENDED, ALREADY_CANCELLED). creditsAfter and message ("Your credit comes back, so you\'ll have 2 of 3 left, and you can book again straight away."). Changes nothing.',
+  })
+  getCancelPreview(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getCancelPreview(
       Number(req.user[0].id),
       bookingId,
     );
@@ -228,7 +300,7 @@ export class StudentMentorSlotController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'completed', 'cancelled'],
+    enum: ['all', 'upcoming', 'completed', 'cancelled', 'missed'],
   })
   @ApiQuery({
     name: 'limit',
@@ -240,17 +312,30 @@ export class StudentMentorSlotController {
     required: false,
     type: Number,
   })
+  @ApiQuery({ name: 'sort', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts (with sort=asc, the next session first).',
+  })
   async getMySessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getStudentSessions(
       BigInt(req.user[0].id),
       filter,
       Number(limit),
       Number(offset),
+      order.sort,
+      order.sortBy,
     );
   }
 

@@ -10,12 +10,21 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
-import { and, eq, lt, gt } from 'drizzle-orm';
+import { and, eq, lt, gt, ne } from 'drizzle-orm';
 import { ZoomLicenseService } from '../../zoom-license/zoom-license.service';
+import { MentorshipConfigService } from '../mentorship-rules/mentorship-config.service';
+import {
+  earliestSlotStart,
+  formatIstDateTime,
+} from '../mentorship-rules/mentorship-rules';
+import { MentorshipError } from '../mentorship-rules/mentorship-error';
 
 @Injectable()
 export class MentorRecurrenceService {
-  constructor(private readonly zoomLicenseService: ZoomLicenseService) {}
+  constructor(
+    private readonly zoomLicenseService: ZoomLicenseService,
+    private readonly mentorshipConfig: MentorshipConfigService = new MentorshipConfigService(),
+  ) {}
 
   /* ==========================================================================
      GENERATE RECURRING SLOTS
@@ -82,7 +91,15 @@ export class MentorRecurrenceService {
     }));
 
     if (previewOnly) {
-      return generatedSlots;
+      // Mark the times a real run would refuse as too soon (slot lead time).
+      const leadConfig = await this.mentorshipConfig.get();
+      const earliestStart = earliestSlotStart(new Date(), leadConfig);
+      return generatedSlots.map((slot) => ({
+        ...slot,
+        tooSoon:
+          leadConfig.minSlotLeadDays > 0 &&
+          slot.slotStartDateTime.getTime() < earliestStart.getTime(),
+      }));
     }
 
     // Two ranges [aStart,aEnd) and [bStart,bEnd) overlap iff aStart < bEnd
@@ -113,6 +130,33 @@ export class MentorRecurrenceService {
           );
         }
       }
+    }
+
+    // New slots start at least slot_min_lead_days ahead (T+4 days). Like a
+    // busy licence, every time that's too soon is listed and nothing is
+    // created.
+    const config = await this.mentorshipConfig.get();
+    const earliest = earliestSlotStart(new Date(), config);
+    const tooSoon = !config.minSlotLeadDays
+      ? []
+      : generatedSlots.filter(
+          (slot) => slot.slotStartDateTime.getTime() < earliest.getTime(),
+        );
+    if (tooSoon.length) {
+      throw new MentorshipError(
+        'SLOT_LEAD_TOO_SHORT',
+        `Slots need to start at least ${config.minSlotLeadDays} day${config.minSlotLeadDays === 1 ? '' : 's'} from now. ${tooSoon.length} of these ${tooSoon.length === 1 ? 'is' : 'are'} too soon: ${tooSoon
+          .slice(0, 5)
+          .map((slot) => formatIstDateTime(slot.slotStartDateTime))
+          .join(
+            ', ',
+          )}${tooSoon.length > 5 ? ', …' : ''}. Start the series from ${formatIstDateTime(earliest)} on.`,
+        {
+          minSlotLeadDays: config.minSlotLeadDays,
+          earliestStart: earliest,
+          tooSoon: tooSoon.map((slot) => slot.slotStartDateTime),
+        },
+      );
     }
 
     await db.transaction(async (trx) => {
@@ -147,6 +191,8 @@ export class MentorRecurrenceService {
             ),
             lt(zuvyMentorSlotAvailability.slotStartDateTime, windowEnd),
             gt(zuvyMentorSlotAvailability.slotEndDateTime, windowStart),
+            // A removed slot (kept for its cancelled bookings) doesn't block.
+            ne(zuvyMentorSlotAvailability.status, 'removed'),
           ),
         );
 
@@ -167,46 +213,37 @@ export class MentorRecurrenceService {
         );
       }
 
-      // NOTE: the license-assignment loop below is deliberately left
-      // sequential, not parallelized. assignLicense can perform a real,
-      // stateful Zoom-side license transfer (downgrading a different
-      // mentor's account to free a seat) when the host isn't already
-      // licensed for a window — running several of those concurrently risks
-      // two calls racing to claim the same donor. That's a correctness risk
-      // in a subsystem with a long history of its own bugfix branches, not
-      // something to parallelize as a drive-by performance change. See the
-      // note on MDA-10 for the same reasoning.
-      const licenseIds: number[] = [];
+      // Open slots don't hold a Zoom licence (one is reserved only when a
+      // student books), but every slot time must have a licence free, so a
+      // student can book any open slot. One batch check under the
+      // licence-pool lock: assignments and open slots are loaded once for the
+      // whole range, not once per slot.
+      const unavailableIndexes =
+        await this.zoomLicenseService.findUnavailableSlotTimes(
+          trx,
+          Number(mentorProfile.mentorUserId),
+          generatedSlots.map((slot) => ({
+            startTime: slot.slotStartDateTime,
+            endTime: slot.slotEndDateTime,
+          })),
+        );
+      const unavailable = unavailableIndexes.map((index) =>
+        this.zoomLicenseService.formatAvailabilityMessage(
+          generatedSlots[index].slotStartDateTime,
+        ),
+      );
 
-      for (const slot of generatedSlots) {
-        const licenseId = await this.zoomLicenseService.assignLicense(trx, {
-          instructorId: Number(mentorProfile.mentorUserId),
-          startTime: slot.slotStartDateTime,
-          endTime: slot.slotEndDateTime,
-        });
-
-        licenseIds.push(licenseId);
+      if (unavailable.length > 0) {
+        throw new BadRequestException(
+          `No Zoom licence is free for ${unavailable.length} of these slot times: ${unavailable.join(', ')}. Remove those times and try again.`,
+        );
       }
 
-      const createdSlots = await trx
+      await trx
         .insert(zuvyMentorSlotAvailability)
         .values(
           generatedSlots as (typeof zuvyMentorSlotAvailability.$inferInsert)[],
-        )
-        .returning();
-
-      for (let index = 0; index < createdSlots.length; index += 1) {
-        const createdSlot = createdSlots[index];
-
-        await this.zoomLicenseService.createLicenseAssignment(trx, {
-          licenseId: licenseIds[index],
-          instructorId: Number(mentorProfile.mentorUserId),
-          mentorSlotAvailabilityId: createdSlot.id,
-          sourceType: 'mentor_slot',
-          startTime: new Date(createdSlot.slotStartDateTime),
-          endTime: new Date(createdSlot.slotEndDateTime),
-        });
-      }
+        );
     });
 
     return { message: 'Recurring slots created successfully.' };

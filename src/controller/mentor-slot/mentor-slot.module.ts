@@ -20,6 +20,9 @@ import { ZoomLicenseModule } from '../zoom-license/zoom-license.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { RbacModule } from '../../rbac/rbac.module';
+import { MentorshipConfigService } from './mentorship-rules/mentorship-config.service';
+import { CreditService } from './mentorship-rules/credit.service';
+import { MentorSkillsService } from './skills/mentor-skills.service';
 
 @Module({
   imports: [
@@ -48,7 +51,15 @@ import { RbacModule } from '../../rbac/rbac.module';
     MentorAttendanceJob,
     MentorPublicService,
     SessionService,
+    MentorshipConfigService,
+    CreditService,
+    MentorSkillsService,
   ],
-  exports: [MentorSlotService],
+  exports: [
+    MentorSlotService,
+    MentorshipConfigService,
+    CreditService,
+    MentorSkillsService,
+  ],
 })
 export class MentorSlotModule {}

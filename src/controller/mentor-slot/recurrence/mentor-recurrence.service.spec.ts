@@ -28,8 +28,13 @@ import { MentorRecurrenceService } from './mentor-recurrence.service';
 describe('MentorRecurrenceService.generateRecurringSlots — self-overlap check (MDA-17)', () => {
   const fakeZoomLicenseService = {
     syncLicensedUsersFromZoom: jest.fn().mockResolvedValue(undefined),
-    assignLicense: jest.fn(),
-    createLicenseAssignment: jest.fn(),
+    findUnavailableSlotTimes: jest.fn(),
+    formatAvailabilityMessage: jest.fn(),
+  };
+  // These tests use fixed past dates; the slot lead-time rule is tested in
+  // e2e-mentor-tab, so it's off here.
+  const noLeadTimeConfig = {
+    get: async () => ({ minSlotLeadDays: 0 }),
   };
 
   beforeEach(() => {
@@ -39,7 +44,10 @@ describe('MentorRecurrenceService.generateRecurringSlots — self-overlap check 
 
   it('rejects occurrences that overlap each other, before ever opening a transaction', async () => {
     dbSelectResults.push([{ id: 1, mentorUserId: 41027n }]);
-    const service = new MentorRecurrenceService(fakeZoomLicenseService as any);
+    const service = new MentorRecurrenceService(
+      fakeZoomLicenseService as any,
+      noLeadTimeConfig as any,
+    );
 
     // DTSTART 10:00, every 30 minutes, 1h-long slots -> 10:00-11:00 and
     // 10:30-11:30 overlap each other.
@@ -58,7 +66,10 @@ describe('MentorRecurrenceService.generateRecurringSlots — self-overlap check 
   it('allows non-overlapping occurrences through to the (mocked) transaction', async () => {
     dbSelectResults.push([{ id: 1, mentorUserId: 41027n }]);
 
-    const service = new MentorRecurrenceService(fakeZoomLicenseService as any);
+    const service = new MentorRecurrenceService(
+      fakeZoomLicenseService as any,
+      noLeadTimeConfig as any,
+    );
 
     // Daily occurrences, 1h-long slots -> never overlap each other.
     await expect(

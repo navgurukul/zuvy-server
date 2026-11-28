@@ -15,12 +15,16 @@ export class AuditlogService {
     private readonly permToRole: AssignPermToRoleStrategy,
     private readonly roleToUser: AssignRoleToUserStrategy,
   ) {}
-  async log(action: 'perm_to_role' | 'role_to_user', dto: any) {
+  /**
+   * `executor`: pass the caller's transaction to record the entry together
+   * with the change (both saved, or neither).
+   */
+  async log(action: 'perm_to_role' | 'role_to_user', dto: any, executor?: any) {
     const map = {
       perm_to_role: this.permToRole,
       role_to_user: this.roleToUser,
     } as const;
-    await map[action].execute(dto);
+    await map[action].execute(dto, executor);
   }
 
   async getAllAudit(limit: number, offset: number) {

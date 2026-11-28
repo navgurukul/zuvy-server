@@ -32,7 +32,6 @@ import {
   gte,
   lt,
   count,
-  notInArray,
 } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
@@ -41,10 +40,7 @@ import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
 import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 import { Console } from 'console';
-import {
-  ZOOM_LICENSE_COOLDOWN_MS,
-  buildZoomLicenseCooldownIntervalSql,
-} from '../../common/constants/zoom-license.constants';
+import { ZOOM_LICENSE_COOLDOWN_MS } from '../../common/constants/zoom-license.constants';
 import moment = require('moment-timezone');
 import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 import {
@@ -75,188 +71,31 @@ export class ClassesService {
     );
   }
 
-  private blockingZoomAssignmentCondition() {
-    return or(
-      and(
-        eq(licenseAssignments.sourceType, 'class_session'),
-        this.blockingZoomSessionCondition(),
-      ),
-      eq(licenseAssignments.sourceType, 'mentor_slot'),
-    );
-  }
-
-  private async isInstructorFreeForTimeRange(
-    email: string,
-    startTime: Date,
-    endTime: Date,
-  ): Promise<boolean> {
-    const bufferedStartTime = startTime;
-    const overlapping = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(licenseAssignments)
-      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
-      .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
-      .where(
-        and(
-          this.blockingZoomAssignmentCondition(),
-          eq(users.email, email),
-          sql`${licenseAssignments.startTime} < ${endTime}`,
-          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${bufferedStartTime}`,
-        ),
-      );
-
-    return Number(overlapping[0]?.count || 0) === 0;
-  }
-
-  private buildZoomScopeError(
-    action: 'list' | 'transfer',
-    sourceEmail?: string,
-    targetEmail?: string,
-  ) {
-    if (action === 'list') {
-      return 'Cannot inspect currently licensed Zoom users because the configured Zoom access token is missing the required admin read scope (user:read:list_users:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.';
-    }
-
-    return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
-  }
-
-  private async findAvailableLicensedDonor(
-    instructorEmail: string,
-    startTime: Date,
-    endTime: Date,
-  ): Promise<string | null> {
-    const licensedUsers = await this.zoomService.listAuthorizedUsers({
-      status: 'active',
-      hostType: 'licensed',
-      page_size: 300,
-    });
-
-    if (!licensedUsers.success) {
-      if (
-        /does not contain scopes/i.test(licensedUsers.error || '') &&
-        /user:read:list_users:admin/i.test(licensedUsers.error || '')
-      ) {
-        throw new Error(this.buildZoomScopeError('list'));
-      }
-
-      throw new Error(
-        `Failed to inspect Zoom licensed users: ${licensedUsers.error || 'Unknown Zoom error'}`,
-      );
-    }
-
-    const protectedEmails =
-      await this.zoomLicenseService.getProtectedLicenseEmails();
-    const donors = (licensedUsers.data?.users || [])
-      .filter((user) => user.email !== instructorEmail)
-      .filter((user) => !protectedEmails.has(user.email.toLowerCase()));
-    console.log('donors', donors);
-    for (const donor of donors) {
-      const donorIsFree = await this.isInstructorFreeForTimeRange(
-        donor.email,
-        startTime,
-        endTime,
-      );
-
-      if (donorIsFree) {
-        return donor.email;
-      }
-    }
-
-    return null;
-  }
-
+  /**
+   * Makes sure the instructor's Zoom account is licensed for the session,
+   * moving a licence from a free donor account if needed. One shared
+   * implementation (ZoomLicenseService.ensureHostLicensedForWindow) for
+   * classes and mentor bookings, under the same licence-transfer lock, so two
+   * transfers never pick the same donor.
+   */
   private async ensureInstructorHasZoomLicenseForSession(
     instructorEmail: string,
     startTime: Date,
     endTime: Date,
   ) {
-    let licenseResult = await this.zoomService.ensureLicensedUser(
-      instructorEmail,
-      '',
-      '',
-    );
-
-    if (licenseResult.success && licenseResult.licensed) {
-      return;
-    }
-
-    const needsSeatTransfer =
-      licenseResult.step === 'license' ||
-      /license/i.test(licenseResult.error || '') ||
-      /maximum number of .* paying users/i.test(licenseResult.error || '');
-
-    // The real signal when Zoom's license pool is full: setUserLicense returned
-    // HTTP 200 (no error thrown) but the user is still basic after the attempt.
-    // step === 'verify' + "currently basic" means the upgrade silently did nothing.
-    const isZoomLicensePoolFull =
-      licenseResult.step === 'verify' &&
-      /currently basic/i.test(licenseResult.error || '');
-
-    if (isZoomLicensePoolFull) {
-      throw new Error(
-        `Cannot assign a Zoom Business license to ${instructorEmail}: your Zoom account has reached the Business license limit. ` +
-          `Please free up a Business license in the Zoom admin panel before creating this session.`,
-      );
-    }
-
-    if (needsSeatTransfer) {
-      const donorEmail = await this.findAvailableLicensedDonor(
+    try {
+      await this.zoomLicenseService.ensureHostLicensedForWindow(
         instructorEmail,
         startTime,
         endTime,
+        // As before for classes: when the Zoom account has no licence left,
+        // ask for one to be freed in Zoom rather than moving one.
+        { transferWhenAccountFull: false },
       );
-
-      if (!donorEmail) {
-        throw new Error(
-          `No free licensed Zoom user is available to transfer a seat to ${instructorEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
-        );
-      }
-
-      const downgradeResult = await this.zoomService.downgradeUser(donorEmail);
-      if (!downgradeResult.success) {
-        if (
-          /does not contain scopes/i.test(downgradeResult.error || '') &&
-          /user:update:user(?::admin)?/i.test(downgradeResult.error || '')
-        ) {
-          throw new Error(
-            this.buildZoomScopeError('transfer', donorEmail, instructorEmail),
-          );
-        }
-
-        throw new Error(
-          `Failed to transfer Zoom license from ${donorEmail} to ${instructorEmail}: ${downgradeResult.error}`,
-        );
-      }
-
-      licenseResult = await this.zoomService.ensureLicensedUser(
-        instructorEmail,
-        '',
-        '',
-      );
-
-      if (licenseResult.success && licenseResult.licensed) {
-        this.logger.log(
-          `Transferred Zoom license from ${donorEmail} to ${instructorEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
-        );
-        return;
-      }
-
-      // Best-effort rollback to avoid losing the donor seat if re-licensing target fails.
-      const rollbackResult = await this.zoomService.ensureLicensedUser(
-        donorEmail,
-        '',
-        '',
-      );
-      if (!rollbackResult.success || !rollbackResult.licensed) {
-        this.logger.error(
-          `Failed to restore Zoom license to donor ${donorEmail} after unsuccessful transfer to ${instructorEmail}.`,
-        );
-      }
+    } catch (error: any) {
+      // Callers here expect a plain Error and show its message.
+      throw new Error(error?.message || 'Failed to assign a Zoom license.');
     }
-
-    throw new Error(
-      `Failed to assign Zoom license to ${instructorEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
-    );
   }
 
   private createPendingZoomMeetingId() {
@@ -385,7 +224,10 @@ export class ClassesService {
     const verifiedAltHosts: string[] = [];
     for (const email of candidateAltHosts) {
       try {
-        const res = await this.zoomService.ensureLicensedUser(email, '', '');
+        // Under the licence-transfer lock: this may take a free licence,
+        // and must not take one a transfer is moving to another host.
+        const res =
+          await this.zoomLicenseService.ensureLicensedUnderTransferLock(email);
         if (res.success && res.licensed) {
           verifiedAltHosts.push(email);
         } else {
@@ -1019,14 +861,43 @@ export class ClassesService {
 
       // 1. Assign Zoom License (6 concurrent limit)
       let assignedLicenseId: number | null = null;
+      // Open mentor slots don't hold a licence until a student books them,
+      // so this class can take a licence an open slot would need. The class
+      // is still created; the creator is told which slots it affects.
+      let mentorSlotsAtRisk: Array<{
+        slotId: number;
+        mentorEmail: string;
+        startTime: Date;
+      }> = [];
       try {
-        assignedLicenseId = await db.transaction(async (trx) => {
-          return await this.zoomLicenseService.assignLicense(trx, {
+        // Refresh the licence rows from Zoom if they look empty, before the
+        // transaction: assignLicense makes no Zoom calls itself.
+        await this.zoomLicenseService.ensureLicencePoolSynced(instructorEmail);
+        // A pre-check, so a class that can't get a licence fails before any
+        // Zoom call. The licence is allocated for real when the session is
+        // saved (saveSessionsToDatabase), in the transaction that writes its
+        // assignment.
+        assignedLicenseId = await db.transaction((trx) =>
+          this.zoomLicenseService.assignLicense(trx, {
             instructorId: Number(instructorId),
             startTime: startDate,
             endTime: endDate,
-          });
-        });
+          }),
+        );
+        // Advisory only, so after the transaction: it doesn't hold the
+        // licence-pool lock, and a failure here can't affect the class.
+        try {
+          mentorSlotsAtRisk =
+            await this.zoomLicenseService.findOpenMentorSlotsAtRisk(
+              db,
+              { startTime: startDate, endTime: endDate },
+              instructorEmail,
+            );
+        } catch (warnError: any) {
+          this.logger.warn(
+            `Could not check open mentor slots for licence pressure: ${warnError.message}`,
+          );
+        }
         // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
         await this.zoomLicenseService.logLicenseStatus(
           `After assigning license for ${instructorEmail}`,
@@ -1167,6 +1038,12 @@ export class ClassesService {
         //   : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
         data: responseSessions,
         descriptionSuffix,
+        ...(mentorSlotsAtRisk.length
+          ? {
+              licenceWarning: `This class uses a Zoom licence that ${mentorSlotsAtRisk.length} open mentor slot(s) at the same time would need. Those slots can no longer be booked unless a licence frees up.`,
+              mentorSlotsAtRisk,
+            }
+          : {}),
       };
     } catch (error: any) {
       if (
@@ -1646,8 +1523,6 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
-            const protectedEmails =
-              await this.zoomLicenseService.getProtectedLicenseEmails(trx);
             const batch = await trx
               .select({
                 instructorId: zuvyBatches.instructorId,
@@ -1658,72 +1533,36 @@ export class ClassesService {
               .where(eq(zuvyBatches.id, original.batchId))
               .limit(1);
 
-            const instructorEmail = batch[0]?.instructorEmail
-              ? String(batch[0].instructorEmail).toLowerCase()
-              : null;
-            const usingProtectedSeat = instructorEmail
-              ? protectedEmails.has(instructorEmail)
-              : false;
-
-            const overlappingAssignments = await trx
-              .select({ count: sql<number>`count(*)` })
-              .from(licenseAssignments)
-              .leftJoin(
-                zuvySessions,
-                eq(licenseAssignments.sessionId, zuvySessions.id),
-              )
-              .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
-              .where(
-                and(
-                  this.blockingZoomAssignmentCondition(),
-                  sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
-                  sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${new Date(original.startTime)}`,
-                  usingProtectedSeat
-                    ? eq(sql<string>`lower(${users.email})`, instructorEmail!)
-                    : Array.from(protectedEmails).length
-                      ? notInArray(
-                          sql<string>`lower(${users.email})`,
-                          Array.from(protectedEmails),
-                        )
-                      : sql.raw('1 = 1'),
-                ),
-              );
-
-            const activePoolCount = usingProtectedSeat
-              ? 1
-              : await this.zoomLicenseService.getTransferableLicensePoolCount(
-                  trx,
-                );
-
-            if (
-              Number(overlappingAssignments[0]?.count || 0) >= activePoolCount
-            ) {
-              const nextAvailableAt =
-                await this.zoomLicenseService.getNextAvailableLicenseTimeForInstructor(
-                  trx,
-                  {
-                    startTime: new Date(original.startTime),
-                    endTime: new Date(original.endTime),
-                  },
-                  instructorEmail,
-                );
-
-              throw new Error(
-                nextAvailableAt &&
-                  nextAvailableAt.getTime() >
-                    new Date(original.startTime).getTime()
-                  ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
-                  : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
-              );
-            }
-
             if (batch[0]?.instructorId) {
+              // Allocate the licence here, in the transaction that writes
+              // its assignment: assignLicense takes the pool lock (held until
+              // commit), checks the pool at the peak and picks a licence row
+              // that is free now. So two classes saved at once can neither
+              // overfill the pool nor get the same licence row. Earlier
+              // sessions of this same save count, as their assignments are
+              // already written in this transaction.
+              const startTime = new Date(original.startTime);
+              const endTime = new Date(original.endTime);
+              const licenseId = await this.zoomLicenseService.assignLicense(
+                trx,
+                {
+                  instructorId: Number(batch[0].instructorId),
+                  startTime,
+                  endTime,
+                },
+              );
+              if (licenseId !== original.licenseId) {
+                await trx
+                  .update(zuvySessions)
+                  .set({ licenseId } as any)
+                  .where(eq(zuvySessions.id, results[i].id));
+              }
               await this.zoomLicenseService.createLicenseAssignment(trx, {
-                licenseId: original.licenseId,
+                licenseId,
                 instructorId: Number(batch[0].instructorId),
                 sessionId: Number(results[i].id),
-                startTime: new Date(original.startTime),
-                endTime: new Date(original.endTime),
+                startTime,
+                endTime,
               });
             }
           }

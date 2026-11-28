@@ -1,16 +1,62 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { db } from 'src/db';
 import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
-  zuvyStudentBookingMetrics,
 } from '../../../../drizzle/schema';
 
-import { and, eq, lt, gte, ne, inArray, isNull } from 'drizzle-orm';
+import { and, eq, lt, inArray, isNull } from 'drizzle-orm';
+import { MentorSlotService } from '../mentor-slot.service';
+
+// On unless MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false. It is the safety net
+// for bookSlot's three steps, so it should normally run; the switch is there
+// to stop it quickly if it ever misbehaves.
+export function abandonedBookingJobEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return (env.MENTOR_ABANDONED_BOOKING_JOB_ENABLED || '').trim() !== 'false';
+}
 
 @Injectable()
-export class MentorSlotJob {
+export class MentorSlotJob implements OnModuleInit {
+  private readonly logger = new Logger(MentorSlotJob.name);
+  private releasingAbandoned = false;
+  private expiringReschedules = false;
+
+  constructor(private readonly mentorSlotService: MentorSlotService) {}
+
+  onModuleInit() {
+    if (!abandonedBookingJobEnabled()) {
+      this.logger.warn(
+        'Abandoned-booking release is off (MENTOR_ABANDONED_BOOKING_JOB_ENABLED=false).',
+      );
+    }
+  }
+
+  /* ==========================================================================
+       RUN EVERY 5 MINUTES — RELEASE ABANDONED BOOKINGS
+       A booking whose Zoom step never finished (app restart, failed undo)
+       would otherwise keep its seat, licence and the student's credit.
+    ========================================================================== */
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async releaseAbandonedBookings() {
+    if (!abandonedBookingJobEnabled()) return;
+    // A slow run (Zoom calls) must not overlap the next tick.
+    if (this.releasingAbandoned) return;
+    this.releasingAbandoned = true;
+    try {
+      await this.mentorSlotService.releaseAbandonedBookings();
+    } catch (error: any) {
+      this.logger.error(
+        `Releasing abandoned bookings failed: ${error.message}`,
+      );
+    } finally {
+      this.releasingAbandoned = false;
+    }
+  }
+
   /* ==========================================================================
        RUN EVERY MINUTE — HANDLE SESSION STATE TRANSITIONS
     ========================================================================== */
@@ -158,58 +204,27 @@ export class MentorSlotJob {
   }
 
   /* ==========================================================================
-       RUN EVERY 5 MINUTES — EXPIRE RESCHEDULE REQUESTS (24H WINDOW)
+       RUN EVERY MINUTE — EXPIRE UNANSWERED RESCHEDULE REQUESTS
+       A request the mentor didn't answer lapses when the original session
+       starts: the session runs as booked, the held seat on the proposed
+       slot is given back and the student is told (decision, 17 Nov 2026).
     ========================================================================== */
 
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(CronExpression.EVERY_MINUTE)
   async expireRescheduleRequests() {
-    const now = new Date();
-    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    // Excluding cancelled bookings here is defense in depth: cancelBooking
-    // already clears rescheduleStatus to null on cancel, so a cancelled
-    // booking's row shouldn't match `rescheduleStatus = 'pending'` at all —
-    // but re-checking status != 'cancelled' means this job can never revive
-    // a cancelled booking even if that invariant is ever violated elsewhere.
-    await db
-      .update(zuvyMentorSlotBooking)
-      .set({
-        rescheduleStatus: 'declined',
-        sessionLifecycleState: 'SCHEDULED',
-      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(
-        and(
-          eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'),
-          lt(zuvyMentorSlotBooking.rescheduleRequestedAt, cutoff),
-          ne(zuvyMentorSlotBooking.status, 'cancelled'),
-        ),
+    if (this.expiringReschedules) return;
+    this.expiringReschedules = true;
+    try {
+      const expired = await this.mentorSlotService.expireRescheduleRequests();
+      if (expired) {
+        this.logger.log(`Expired ${expired} unanswered reschedule request(s).`);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Expiring reschedule requests failed: ${error.message}`,
       );
-  }
-
-  /* ==========================================================================
-       RUN DAILY AT MIDNIGHT — RESET STUDENT QUOTAS
-    ========================================================================== */
-
-  @Cron('0 0 * * *') // Daily at midnight
-  async resetStudentQuotas() {
-    const now = new Date();
-    const currentYear = now.getUTCFullYear();
-    const nextQuotaStart = new Date(Date.UTC(currentYear, 3, 15)); // April 15
-
-    // Only reset if today is April 15
-    if (now.getUTCMonth() === 3 && now.getUTCDate() === 15) {
-      const nextQuotaReset = new Date(Date.UTC(currentYear + 1, 3, 15));
-
-      await db
-        .update(zuvyStudentBookingMetrics)
-        .set({
-          quotaUsed: 0,
-          isQuotaExhausted: false,
-          quotaResetDate: nextQuotaReset,
-        } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>)
-        .where(lt(zuvyStudentBookingMetrics.quotaResetDate, now));
-
-      console.log('Student booking quotas reset for the new year');
+    } finally {
+      this.expiringReschedules = false;
     }
   }
 }

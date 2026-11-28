@@ -18,6 +18,7 @@ import {
 
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { SessionService } from './session.service';
+import { sessionListOrder } from './session-order';
 
 @ApiTags('Mentor Sessions')
 @ApiBearerAuth('JWT-auth')
@@ -48,18 +49,31 @@ export class SessionController {
     required: false,
     type: Number,
   })
+  @ApiQuery({ name: 'sort', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts.',
+  })
   @Get('my')
   async getMySessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getStudentSessions(
       BigInt(req.user[0].id),
       filter,
       Number(limit),
       Number(offset),
+      order.sort,
+      order.sortBy,
     );
   }
 
@@ -94,21 +108,31 @@ export class SessionController {
     required: false,
     type: Number,
   })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts.',
+  })
   @Get('mentor/my')
   async getMentorSessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
-    @Query('sort') sort: 'asc' | 'desc' = 'desc',
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getMentorSessions(
       BigInt(req.user[0].id),
       req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),
-      sort,
+      order.sort,
+      order.sortBy,
     );
   }
 

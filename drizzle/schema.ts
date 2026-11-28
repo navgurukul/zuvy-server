@@ -3036,9 +3036,19 @@ export const zuvyMentorSlotBooking = main.table(
       withTimezone: true,
     }),
     rescheduleProposedSlotId: integer('reschedule_proposed_slot_id'),
+    // 'pending' | 'accepted' | 'declined' | 'expired' (kept after the answer)
     rescheduleStatus: varchar('reschedule_status', {
       length: 50,
     }),
+    /* Migration 0052 */
+    rescheduleReason: text('reschedule_reason'),
+    acceptedRescheduleCount: integer('accepted_reschedule_count')
+      .default(0)
+      .notNull(),
+    // The pending request holds a seat (and licence) on the proposed slot.
+    rescheduleSeatHeld: boolean('reschedule_seat_held')
+      .default(false)
+      .notNull(),
 
     /* Cancellation */
     cancellationReason: text('cancellation_reason'),
@@ -3096,6 +3106,10 @@ export const zuvyMentorSlotBooking = main.table(
     feedbackIdx: index('idx_booking_feedback_pending').on(
       table.mentorFeedbackSubmittedAt,
     ),
+    // Created by migration 0052; declared here so drizzle-kit push keeps it.
+    reschedulePendingIdx: index('idx_booking_reschedule_pending')
+      .on(table.rescheduleStatus)
+      .where(sql`${table.rescheduleStatus} = 'pending'`),
   }),
 );
 
@@ -3269,6 +3283,66 @@ export const zuvyStudentBookingMetrics = main.table(
   },
   (table) => ({
     userIdx: uniqueIndex('idx_student_metrics_user').on(table.userId),
+  }),
+);
+
+/* Mentorship rules Ops can change without a release (migration 0050).
+   Read through MentorshipConfigService; see that file for the keys. */
+export const zuvyMentorshipConfig = main.table('zuvy_mentorship_config', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: jsonb('value').notNull(),
+  description: text('description'),
+  updatedBy: bigint('updated_by', { mode: 'bigint' }).references(
+    () => users.id,
+    { onDelete: 'set null' },
+  ),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/* The fixed list of mentor skills (migration 0051). MentorSkillsService
+   matches names, slugs and aliases ignoring case, spaces, dots and ".js". */
+export const zuvySkills = main.table(
+  'zuvy_skills',
+  {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 100 }).notNull(),
+    slug: varchar('slug', { length: 100 }).notNull(),
+    aliases: jsonb('aliases').$type<string[]>().default([]).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique('zuvy_skills_slug_unique').on(table.slug),
+  }),
+);
+
+/* Which skills each mentor has (migration 0051). */
+export const zuvyMentorSkills = main.table(
+  'zuvy_mentor_skills',
+  {
+    mentorUserId: bigint('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    skillId: integer('skill_id')
+      .notNull()
+      .references(() => zuvySkills.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'zuvy_mentor_skills_pk',
+      columns: [table.mentorUserId, table.skillId],
+    }),
+    skillIdx: index('zuvy_mentor_skills_skill_idx').on(table.skillId),
   }),
 );
 
