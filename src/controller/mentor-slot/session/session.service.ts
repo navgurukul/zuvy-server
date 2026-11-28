@@ -32,6 +32,12 @@ import {
 } from '../mentorship-rules/mentorship-rules';
 import { CardCredits, buildSessionCard } from './session-card';
 import { buildMentorSessionCard } from './mentor-session-card';
+import {
+  SessionSortBy,
+  SessionSortOrder,
+  sessionListOrder,
+  sessionOrderBy,
+} from './session-order';
 
 // The slot a pending reschedule would move the booking to.
 const proposedSlot = alias(zuvyMentorSlotAvailability, 'proposed_slot');
@@ -69,19 +75,21 @@ export class SessionService {
    *
    * filter: all | upcoming (not cancelled, not yet over: scheduled,
    * reschedule requested or in progress) | completed | cancelled | missed.
+   * sortBy: booked (default, when the booking was made) | start (when the
+   * session starts); sort: desc (default) | asc.
    */
   async getStudentSessions(
     userId: bigint,
     filter = 'all',
     limit = 10,
     offset = 0,
-    sort: 'asc' | 'desc' = 'desc',
+    sort: SessionSortOrder = 'desc',
+    sortBy: SessionSortBy = 'booked',
   ) {
     // Lifecycle transitions (SCHEDULED -> IN_PROGRESS -> COMPLETED/MISSED) are
     // handled only by MentorSlotJob.handleSessionTransitions, which runs every
     // minute. This read path used to write those transitions too, racing the
     // cron with different rules. See MDA-09.
-    void sort;
     const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
@@ -109,10 +117,11 @@ export class SessionService {
 
     const config = await this.mentorshipConfig.get();
     const now = new Date();
-    const rows = await this.studentSessionRows(and(...conditions), {
-      limit,
-      offset,
-    });
+    const rows = await this.studentSessionRows(
+      and(...conditions),
+      { limit, offset },
+      sessionListOrder(sortBy, sort),
+    );
     const credits = await this.creditService.getState(userId, config, db, now);
     const cards = await this.studentCards(rows, config, now, credits);
 
@@ -135,15 +144,20 @@ export class SessionService {
       rules: {
         noticeHours: config.noticeHours,
         joinOpenMinutes: config.joinOpenMinutes,
+        maxAcceptedReschedules: config.maxAcceptedReschedules,
       },
       serverTime: now,
     };
   }
 
-  /** The student's bookings with what their cards need, newest booking first. */
+  /** The student's bookings with what their cards need, newest booking first by default. */
   private async studentSessionRows(
     where: any,
     page?: { limit: number; offset: number },
+    order: { sortBy: SessionSortBy; sort: SessionSortOrder } = {
+      sortBy: 'booked',
+      sort: 'desc',
+    },
   ) {
     let query = db
       .select({
@@ -182,10 +196,7 @@ export class SessionService {
         ),
       )
       .where(where)
-      .orderBy(
-        desc(zuvyMentorSlotBooking.bookedAt),
-        desc(zuvyMentorSlotBooking.id),
-      )
+      .orderBy(...sessionOrderBy(order.sortBy, order.sort))
       .$dynamic();
     if (page) query = query.limit(page.limit).offset(page.offset);
     return query;
@@ -308,6 +319,8 @@ export class SessionService {
    * filter (tabs): all | upcoming (scheduled or live, no request waiting) |
    * action-needed (a student's reschedule request waits; old name
    * "reschedule") | completed | missed | cancelled.
+   * sortBy: booked (default, when the booking was made) | start (when the
+   * session starts); sort: desc (default) | asc.
    */
   async getMentorSessions(
     userId: bigint,
@@ -315,7 +328,8 @@ export class SessionService {
     filter = 'all',
     limit = 10,
     offset = 0,
-    sort: 'asc' | 'desc' = 'desc',
+    sort: SessionSortOrder = 'desc',
+    sortBy: SessionSortBy = 'booked',
   ) {
     // See the note in getStudentSessions above — MDA-09.
     const mine = [
@@ -362,10 +376,11 @@ export class SessionService {
 
     const config = await this.mentorshipConfig.get();
     const now = new Date();
-    const rows = await this.mentorSessionRows(and(...conditions), sort, {
-      limit,
-      offset,
-    });
+    const rows = await this.mentorSessionRows(
+      and(...conditions),
+      { limit, offset },
+      sessionListOrder(sortBy, sort),
+    );
     const cards = await this.mentorCards(rows, organizationId, config, now);
 
     const [counts] = await db
@@ -388,6 +403,7 @@ export class SessionService {
       rules: {
         noticeHours: config.noticeHours,
         joinOpenMinutes: config.joinOpenMinutes,
+        maxAcceptedReschedules: config.maxAcceptedReschedules,
       },
       serverTime: now,
     };
@@ -396,8 +412,11 @@ export class SessionService {
   /** The mentor's bookings with what their cards need. */
   private async mentorSessionRows(
     where: any,
-    sort: 'asc' | 'desc' = 'desc',
     page?: { limit: number; offset: number },
+    order: { sortBy: SessionSortBy; sort: SessionSortOrder } = {
+      sortBy: 'booked',
+      sort: 'desc',
+    },
   ) {
     let query = db
       .select({
@@ -431,12 +450,7 @@ export class SessionService {
         ),
       )
       .where(where)
-      .orderBy(
-        sort === 'asc'
-          ? zuvyMentorSlotBooking.bookedAt
-          : desc(zuvyMentorSlotBooking.bookedAt),
-        desc(zuvyMentorSlotBooking.id),
-      )
+      .orderBy(...sessionOrderBy(order.sortBy, order.sort))
       .$dynamic();
     if (page) query = query.limit(page.limit).offset(page.offset);
     return query;

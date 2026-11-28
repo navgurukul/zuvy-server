@@ -20,6 +20,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { MentorSlotService } from './mentor-slot.service';
 import { SessionService } from './session/session.service';
+import { sessionListOrder } from './session/session-order';
 import { MentorPublicService } from './public/mentor-public.service';
 import { BookSlotDto } from './dto/book-slot.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -146,7 +147,7 @@ export class StudentMentorSlotController {
   @ApiOperation({
     summary: "The student's mentorship credits and the booking rules",
     description:
-      'credits: creditsAssigned, creditsUsed, creditsLeft, nextEligibleDate (when the 2-week gap ends, null when the student can book now or has no credits left), canBook, blockReason (NO_CREDITS | GAP_ACTIVE | null). rules: the numbers in force. earliestBookableStart: slots starting before this cannot be booked. serverTime: use it instead of the device clock.',
+      'credits: creditsAssigned, creditsUsed, creditsLeft, nextEligibleDate (when the 2-week gap ends, null when the student can book now or has no credits left), canBook, blockReason (NO_CREDITS | GAP_ACTIVE | MENTORSHIP_NOT_AVAILABLE | null). access: { allowed, code (MENTORSHIP_NOT_AVAILABLE | null), message } — not allowed without an active enrolment in a course with mentorship, and then canBook is false. rules: the numbers in force, including maxAcceptedReschedules. earliestBookableStart: slots starting before this cannot be booked. serverTime: use it instead of the device clock.',
   })
   async getBookingEligibility(@Req() req) {
     return this.mentorSlotService.getBookingEligibility(Number(req.user[0].id));
@@ -311,17 +312,30 @@ export class StudentMentorSlotController {
     required: false,
     type: Number,
   })
+  @ApiQuery({ name: 'sort', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts (with sort=asc, the next session first).',
+  })
   async getMySessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getStudentSessions(
       BigInt(req.user[0].id),
       filter,
       Number(limit),
       Number(offset),
+      order.sort,
+      order.sortBy,
     );
   }
 

@@ -4,7 +4,10 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { and, eq, ne, sql, gte, lte, inArray } from 'drizzle-orm';
+import { and, eq, ne, sql, gt, gte, lte, inArray } from 'drizzle-orm';
+
+// The Sessions "Upcoming" tab's states (session.service getMentorSessions).
+const MENTOR_UPCOMING_STATES = ['SCHEDULED', 'IN_PROGRESS'];
 
 @Injectable()
 export class MentorMetricsService {
@@ -47,52 +50,24 @@ export class MentorMetricsService {
       organizationId,
     );
 
-    let filteredSlotIds: number[] = [];
-
     if (fromDate) {
-      const upperBound = filter === 'all' ? null : endOfToday;
-
-      const filteredSlots = await db
-        .select({
-          id: zuvyMentorSlotAvailability.id,
-        })
-        .from(zuvyMentorSlotAvailability)
-        .where(
-          upperBound
-            ? and(
-                gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
-                lte(zuvyMentorSlotAvailability.slotStartDateTime, upperBound),
-              )
-            : gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
-        );
-
-      filteredSlotIds = filteredSlots.map((slot) => slot.id);
-
-      if (filteredSlotIds.length === 0) {
-        return {
-          sessions: {
-            total: 0,
-            completed: 0,
-            cancelled: 0,
-            missed: 0,
-            completionRate: '0.00',
-            cancellationRate: '0.00',
-          },
-          ratings: {
-            averageRating: '0.00',
-            totalRatings: 0,
-          },
-          upcomingSessions: 0,
-          utilization: {
-            totalSlots: 0,
-            usedSlots: 0,
-            utilizationRate: '0.00',
-          },
-        };
-      }
-
+      // Sessions starting in the period (fromDate to the end of today).
+      // A subquery, so an empty period still returns the full response
+      // shape (it used to return a different one) and the period's slot ids
+      // stay in the database instead of being loaded here.
       sessionConditions.push(
-        inArray(zuvyMentorSlotBooking.slotAvailabilityId, filteredSlotIds),
+        inArray(
+          zuvyMentorSlotBooking.slotAvailabilityId,
+          db
+            .select({ id: zuvyMentorSlotAvailability.id })
+            .from(zuvyMentorSlotAvailability)
+            .where(
+              and(
+                gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+                lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
+              ),
+            ),
+        ),
       );
     }
 
@@ -147,55 +122,47 @@ export class MentorMetricsService {
        UPCOMING SESSIONS
     ========================================================== */
 
-    const upcomingSlots = await db
-      .select({
-        id: zuvyMentorSlotAvailability.id,
-      })
-      .from(zuvyMentorSlotAvailability)
-      .where(
-        filter === 'all'
-          ? gte(zuvyMentorSlotAvailability.slotStartDateTime, now)
-          : and(
-              gte(zuvyMentorSlotAvailability.slotStartDateTime, now),
-              lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
-            ),
+    // Deliberately NOT reusing sessionConditions here: its optional last
+    // entry (inArray on filteredSlotIds, pushed above when fromDate is set)
+    // scopes to the PAST 30d/3m window for the completed/cancelled/missed
+    // counts, and "upcoming" is in the future. Only the mentor/org scoping
+    // applies (see MDA-12).
+    //
+    // Upcoming is what the Sessions "Upcoming" tab lists: not cancelled,
+    // scheduled or live (IN_PROGRESS), and not over yet. A live session
+    // started before now, so it is matched on its end, not its start.
+    const upcomingConditions: any[] = [
+      ...this.mentorScopeConditions(mentorUserId, organizationId),
+      ne(zuvyMentorSlotBooking.status, 'cancelled'),
+      inArray(
+        zuvyMentorSlotBooking.sessionLifecycleState,
+        MENTOR_UPCOMING_STATES,
+      ),
+      gt(zuvyMentorSlotAvailability.slotEndDateTime, now),
+    ];
+    if (filter !== 'all') {
+      // Unchanged: with a 30d/3m period, only sessions starting by the end
+      // of today count.
+      upcomingConditions.push(
+        lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
       );
-
-    const upcomingSlotIds = upcomingSlots.map((slot) => slot.id);
-
-    let upcomingCount = 0;
-
-    if (upcomingSlotIds.length > 0) {
-      // Deliberately NOT reusing sessionConditions here: its optional last
-      // entry (inArray on filteredSlotIds, pushed above when fromDate is
-      // set) scopes to the PAST 30d/3m window for the completed/cancelled/
-      // missed counts — combined with upcomingSlotIds (a FUTURE window) the
-      // intersection is always empty. Only the mentor/org scoping applies
-      // to "upcoming", so it's rebuilt explicitly instead of filtering
-      // sessionConditions by shape (the previous `typeof c === 'object'`
-      // check matched every condition, including mentorUserId/organizationId,
-      // and silently turned this into an unscoped, platform-wide count
-      // whenever fromDate was set — see MDA-12).
-      const upcomingConditions = this.mentorScopeConditions(
-        mentorUserId,
-        organizationId,
-      );
-
-      const [upcoming] = await db
-        .select({
-          upcomingCount: sql<number>`COUNT(*)`,
-        })
-        .from(zuvyMentorSlotBooking)
-        .where(
-          and(
-            ...upcomingConditions,
-            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
-            inArray(zuvyMentorSlotBooking.slotAvailabilityId, upcomingSlotIds),
-          ),
-        );
-
-      upcomingCount = Number(upcoming?.upcomingCount || 0);
     }
+
+    const [upcoming] = await db
+      .select({
+        upcomingCount: sql<number>`COUNT(*)`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .innerJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .where(and(...upcomingConditions));
+
+    const upcomingCount = Number(upcoming?.upcomingCount || 0);
 
     /* ==========================================================
        SLOT UTILIZATION

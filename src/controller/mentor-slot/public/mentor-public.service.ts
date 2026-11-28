@@ -459,6 +459,11 @@ export class MentorPublicService {
           ),
           sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
         ),
+      )
+      // Soonest first, so the booking drawer lists the days in order.
+      .orderBy(
+        asc(zuvyMentorSlotAvailability.slotStartDateTime),
+        asc(zuvyMentorSlotAvailability.id),
       );
 
     return slots.map((slot) => ({

@@ -23,6 +23,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { MentorSlotService } from './mentor-slot.service';
 import { SessionService } from './session/session.service';
+import { sessionListOrder } from './session/session-order';
 import { MentorMetricsService } from './metrics/mentor-metrics.service';
 import { MentorRecurrenceService } from './recurrence/mentor-recurrence.service';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -479,20 +480,30 @@ export class InstructorMentorSlotController {
     required: false,
     type: Number,
   })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['booked', 'start'],
+    description:
+      'booked (default): when the booking was made. start: when the session starts (with sort=asc, the next session first).',
+  })
   async getMentorSessions(
     @Req() req,
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
-    @Query('sort') sort: 'asc' | 'desc' = 'desc',
+    @Query('sort') sort?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
+    const order = sessionListOrder(sortBy, sort);
     return this.sessionService.getMentorSessions(
       BigInt(req.user[0].id),
       req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),
-      sort,
+      order.sort,
+      order.sortBy,
     );
   }
 

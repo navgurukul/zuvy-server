@@ -707,13 +707,27 @@ export class MentorSlotService {
       db,
       now,
     );
+    // Booking also needs an active enrolment in a course with mentorship
+    // (bookSlot refuses without one), so the banner says so instead of
+    // "You can book a session now".
+    const access = await this.mentorshipAccess(BigInt(studentId));
+    const creditBlock = creditData(credits);
     return {
-      credits: creditData(credits),
+      credits: access.allowed
+        ? creditBlock
+        : {
+            ...creditBlock,
+            canBook: false,
+            blockReason: access.code,
+            nextEligibleDate: null,
+          },
+      access,
       rules: {
         totalCredits: config.totalCredits,
         gapDays: config.gapDays,
         noticeHours: config.noticeHours,
         joinOpenMinutes: config.joinOpenMinutes,
+        maxAcceptedReschedules: config.maxAcceptedReschedules,
       },
       earliestBookableStart: earliestBookableStart(now, config),
       serverTime: now,
@@ -724,6 +738,20 @@ export class MentorSlotService {
      ENSURE MENTORSHIP IS ENABLED
   ========================================================================== */
   private async ensureMentorshipEnabled(studentUserId: bigint) {
+    const access = await this.mentorshipAccess(studentUserId);
+    if (!access.allowed) throw new ForbiddenException(access.message);
+  }
+
+  /**
+   * Whether the student may use mentorship: an active enrolment in a course
+   * that has it. code is MENTORSHIP_NOT_AVAILABLE when not, the code the
+   * booking preview reports.
+   */
+  async mentorshipAccess(studentUserId: bigint): Promise<{
+    allowed: boolean;
+    code: 'MENTORSHIP_NOT_AVAILABLE' | null;
+    message: string | null;
+  }> {
     const enrollments = await db
       .select({
         mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
@@ -741,18 +769,24 @@ export class MentorSlotService {
       );
 
     if (enrollments.length === 0) {
-      throw new ForbiddenException(
-        'You are not enrolled in a course with mentorship access.',
-      );
+      return {
+        allowed: false,
+        code: 'MENTORSHIP_NOT_AVAILABLE',
+        message: 'You are not enrolled in a course with mentorship access.',
+      };
     }
 
     const hasMentorship = enrollments.some((e) => e.mentorshipEnabled === true);
 
     if (!hasMentorship) {
-      throw new ForbiddenException(
-        'One-on-one mentorship is not available for your current programme.',
-      );
+      return {
+        allowed: false,
+        code: 'MENTORSHIP_NOT_AVAILABLE',
+        message:
+          'One-on-one mentorship is not available for your current programme.',
+      };
     }
+    return { allowed: true, code: null, message: null };
   }
 
   /* ==========================================================================
